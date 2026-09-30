@@ -797,8 +797,9 @@ class Tracking:
 
         self.num_kf_ref_tracked_points = num_kf_ref_tracked_points
 
-        is_local_mapping_idle = self.local_mapping.is_idle()
-        local_mapping_queue_size = self.local_mapping.queue_size()
+        # In single-thread mode these come from the simulated mapper (see LocalMapping.charge_sim_step)
+        is_local_mapping_idle = self.local_mapping.is_idle_for_keyframe_decision()
+        local_mapping_queue_size = self.local_mapping.queue_size_for_keyframe_decision()
         print(
             "is_local_mapping_idle: ",
             is_local_mapping_idle,
@@ -1128,6 +1129,12 @@ class Tracking:
             f"@tracking {self.sensor_type.name}, img id: {img_id}, frame id: {Frame.next_id()}, state: {self.state.name}"
         )
         time_start = time.time()
+
+        if (
+            not Parameters.kLocalMappingOnSeparateThread
+            and Parameters.kLocalMappingSimulateBusyTimeInSingleThread
+        ):
+            self.local_mapping.set_sim_time(timestamp)
 
         # check image size is coherent with camera params
         print(f"img.shape: {img.shape}, camera: {self.camera.height}x{self.camera.width}")
@@ -1464,7 +1471,9 @@ class Tracking:
                     if not Parameters.kLocalMappingOnSeparateThread:
                         self.local_mapping.is_running = True
                         while self.local_mapping.queue_size() > 0:
+                            step_start = time.perf_counter()
                             self.local_mapping.step()
+                            self.local_mapping.charge_sim_step(time.perf_counter() - step_start)
                             for kf in self.map.local_map.get_keyframes():
                                 kf.update_connections()
                             # if self.kf_ref is not None:
