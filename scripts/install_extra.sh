@@ -131,9 +131,16 @@ function clone_repo() {
 # update_submodules <thirdparty dir>: fetch the submodules of a cloned repository (shallow if possible)
 function update_submodules() {
     local dir="$ROOT_DIR/thirdparty/$1"
+    if [[ -n "$PYSLAM_RESET_CLONES" ]]; then
+        # submodules that carry an older patch cannot be moved to their recorded commits: discard the
+        # changes to their tracked files first (their patches are applied again afterwards)
+        git -C "$dir" submodule foreach --quiet --recursive 'git checkout -q -- .'
+    fi
     git -C "$dir" submodule update --init --recursive --depth 1 \
         || git -C "$dir" submodule update --init --recursive \
-        || { print_red "ERROR: could not fetch the submodules of thirdparty/$1"; exit 1; }
+        || { print_red "ERROR: could not fetch the submodules of thirdparty/$1."
+             print_red "  If they have local changes (for example an older patch), run this script again with PYSLAM_RESET_CLONES=1."
+             exit 1; }
 }
 
 # file_size <file>: its size in bytes (GNU and BSD stat)
