@@ -93,6 +93,8 @@ python main_slam.py                                 # SLAM on the bundled KITTI 
 `main_slam.py` opens an image window, a 3D viewer and plots. Press `q` in a window to quit. The
 **first run downloads the ORB vocabulary** (about 105 MB) before tracking starts. With
 `python main_slam.py --headless` it runs without windows and prints the trajectory error at the end.
+Frames are fed at the camera's rate, with or without windows; `--speed 2` plays twice as fast and
+`--speed 0` as fast as possible (see [here](./TROUBLESHOOTING.md#non-determinism-and-run-to-run-variability)).
 
 ## 6. Optional components (extras)
 

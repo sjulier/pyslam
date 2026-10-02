@@ -100,6 +100,8 @@ AFAIK, **main sources of non-determinism** include:
 - RANSAC / robust estimation randomness: RANSAC-family methods and several OpenCV routines are inherently stochastic. Setting a single Python seed is generally insufficient for full reproducibility, as randomness may arise from multiple layers (Python, NumPy, OpenCV’s internal C++ RNG, and per-thread execution in parallel code).
 - Floating-point reduction order / parallel math (often overlooked): Even without “explicit randomness”, multi-threaded reductions (OpenMP / BLAS / TBB) can yield tiny numeric differences due to floating-point non-associativity; those small differences can cascade in SLAM.
 
+- Playback speed: `main_slam.py` feeds the frames at the camera's rate (`--speed 1`, the default, also with `--headless`). Tracking alone runs several times faster than the camera, and with `--speed 0` (as fast as possible) local mapping gets less time per frame: on the bundled KITTI 06 video tracking was then sometimes lost at the turns, and the trajectory error varied more from run to run. Use the default speed when you compare results.
+
 See the related discussion [here](https://github.com/luigifreda/pyslam/issues/221).
 
 --- 

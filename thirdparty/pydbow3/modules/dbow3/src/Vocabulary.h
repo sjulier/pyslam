@@ -503,6 +503,11 @@ protected:
   
   /// Tree nodes
   std::vector<Node> m_nodes;
+
+  /// Storage for the node descriptors loaded by load_fromtxt(): one block instead of one small
+  /// heap allocation per node (about a million), which is very slow with the macOS allocator.
+  /// Nodes' descriptors point into it; operator= copies it and re-points the copied nodes.
+  std::vector<uchar> m_descriptor_pool;
   
   /// Words of the vocabulary (tree leaves)
   /// this condition holds: m_words[wid]->word_id == wid

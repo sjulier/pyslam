@@ -113,6 +113,15 @@ if __name__ == "__main__":
     )
     parser.add_argument("--headless", action="store_true", help="Run in headless mode")
     parser.add_argument(
+        "--speed",
+        type=float,
+        default=1.0,
+        help="Playback speed relative to the camera's frame rate, with or without --headless: "
+        "1 = the camera's rate (default), 2 = twice as fast, 0 = as fast as possible. "
+        "Feeding frames faster than the camera leaves local mapping less time per frame, "
+        "which can make tracking fail.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Print the full camera and configuration dumps (JSON)",
@@ -515,10 +524,13 @@ if __name__ == "__main__":
                 do_reset = viewer3D.reset() and do_reset == False
                 is_viewer_closed = viewer3D.is_closed()
 
-            if not args.headless and img is not None:
+            # Keep the camera's frame period (divided by --speed), also in headless mode: tracking alone
+            # runs several times faster than the camera, and feeding frames at that rate starves local
+            # mapping (e.g. tracking is then lost at the turns of KITTI 06). --speed 0 disables the wait.
+            if img is not None and args.speed > 0 and frame_duration > 0:
                 processing_duration = time.time() - time_start
                 delta_time_sleep = (
-                    frame_duration - processing_duration - 1e-3
+                    frame_duration / args.speed - processing_duration - 1e-3
                 )  # NOTE: 1e-3 is the cv wait time we use below with cv2.waitKey(1)
                 if delta_time_sleep > 1e-3:
                     time.sleep(delta_time_sleep)

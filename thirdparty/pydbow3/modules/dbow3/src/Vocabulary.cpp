@@ -2,6 +2,7 @@
 #include "DescManip.h"
 #include "quicklz.h"
 #include <sstream>
+#include <cstdlib>
 #include "timers.h"
 #include <chrono>
 
@@ -124,6 +125,7 @@ Vocabulary&
 Vocabulary::operator=
   (const Vocabulary &voc)
 {
+  if (this == &voc) return *this;
   this->m_k = voc.m_k;
   this->m_L = voc.m_L;
   this->m_scoring = voc.m_scoring;
@@ -135,6 +137,19 @@ Vocabulary::operator=
   this->m_words.clear();
 
   this->m_nodes = voc.m_nodes;
+  // Descriptors that live in voc's pool must point into our own copy of it, not into voc's.
+  this->m_descriptor_pool = voc.m_descriptor_pool;
+  if (!this->m_descriptor_pool.empty()) {
+    const uchar* src_begin = voc.m_descriptor_pool.data();
+    const uchar* src_end = src_begin + voc.m_descriptor_pool.size();
+    for (auto& node : this->m_nodes) {
+      const uchar* data = node.descriptor.data;
+      if (data != nullptr && data >= src_begin && data < src_end) {
+        node.descriptor = cv::Mat(node.descriptor.rows, node.descriptor.cols, node.descriptor.type(),
+                                  this->m_descriptor_pool.data() + (data - src_begin));
+      }
+    }
+  }
   this->createWords();
 
   return *this;
@@ -1336,6 +1351,7 @@ void Vocabulary:: load_fromtxt(const std::string &filename){
     // nodes
        int expected_nodes =
        (int)((pow((double)m_k, (double)m_L + 1) - 1)/(m_k - 1));
+       m_descriptor_pool.clear();
        m_nodes.reserve(expected_nodes);
 
        m_words.reserve(pow((double)m_k, (double)m_L + 1));
@@ -1343,36 +1359,47 @@ void Vocabulary:: load_fromtxt(const std::string &filename){
        m_nodes.resize(1);
        m_nodes[0].id = 0;
 
-       int counter=0;
-       while(!ifile.eof()){
-           std::string snode;
-           getline(ifile,snode);
-           //if (counter++%100==0)std::cerr<<".";
-           // std::cout<<snode<<std::endl;
-           if (snode.size()==0)break;
-           std::stringstream ssnode(snode);
+       // Parse each node line with strtol/strtof into reused buffers: a std::stringstream and a
+       // std::vector per line (about a million lines in ORBvoc.txt) made loading very slow on macOS,
+       // where constructing streams and many small heap allocations are expensive.
+       std::string snode;
+       std::vector<float> data;
+       data.reserve(256);
+       while(std::getline(ifile, snode)){
+           if (snode.empty())break;
+           const char* p = snode.c_str();
+           char* end = nullptr;
 
            int nid = m_nodes.size();
            m_nodes.resize(m_nodes.size()+1);
            m_nodes[nid].id = nid;
 
-           int pid ;
-           ssnode >> pid;
+           const int pid = (int)std::strtol(p, &end, 10); p = end;
            m_nodes[nid].parent = pid;
            m_nodes[pid].children.push_back(nid);
 
-           int nIsLeaf;
-           ssnode >> nIsLeaf;
+           const int nIsLeaf = (int)std::strtol(p, &end, 10); p = end;
 
            //read until the end and add to data
-           std::vector<float> data;data.reserve(100);
-           float d;
-           while( ssnode>>d) data.push_back(d);
+           data.clear();
+           while (true) {
+               const float d = std::strtof(p, &end);
+               if (end == p) break;
+               data.push_back(d);
+               p = end;
+           }
            //the weight is the last
            m_nodes[nid].weight=data.back();
            data.pop_back();//remove
            //the rest, to the descriptor
-           m_nodes[nid].descriptor.create(1,data.size(),CV_8UC1);
+           const size_t desc_len = data.size();
+           if (m_descriptor_pool.empty())  // sized once for the whole tree, so it never reallocates
+               m_descriptor_pool.resize((size_t)expected_nodes * desc_len);
+           if ((size_t)(nid + 1) * desc_len <= m_descriptor_pool.size())
+               m_nodes[nid].descriptor = cv::Mat(1, (int)desc_len, CV_8UC1,
+                                                 m_descriptor_pool.data() + (size_t)nid * desc_len);
+           else  // more nodes than expected: fall back to an own allocation
+               m_nodes[nid].descriptor.create(1, (int)desc_len, CV_8UC1);
            auto ptr=m_nodes[nid].descriptor.ptr<uchar>(0);
            for(auto d:data) *ptr++=d;
 
@@ -1390,6 +1417,7 @@ void Vocabulary:: load_fromtxt(const std::string &filename){
                m_nodes[nid].children.reserve(m_k);
            }
        }
+
 }
 void Vocabulary::fromStream(  std::istream &str ){
 
