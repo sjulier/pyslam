@@ -156,9 +156,10 @@ python main_semantic_image_segmentation.py
   plays twice as fast, and `--speed 0` as fast as possible. Faster than the camera, the mapping thread
   gets less time per frame, and on KITTI 06 tracking is then sometimes lost at the turns. Use the
   default speed when you compare results.
-- **If a download fails** (for example `NETVLAD FAIL ... retrieval incomplete`), run the same task
-  again: what is already installed is skipped. Model weights are fetched by the `models*` tasks and
-  the ORB vocabulary by `build`, not during the first SLAM run.
+- **If a download fails**, run the same task again: what is already installed is skipped, and an
+  interrupted download continues where it stopped. A component that could not be installed does not
+  stop the others; the task lists what is missing at the end (`Not installed: ...`). Model weights
+  are fetched by the `models*` tasks and the ORB vocabulary by `build`, not during the first SLAM run.
 - **A component is skipped, with the reason, when the machine cannot run it** (for example the 3R
   models without an NVIDIA GPU). A skipped component is not a failure.
 - **Gaussian splatting on another GPU.** Its CUDA extensions are built for the GPUs in the machine.
