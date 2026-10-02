@@ -104,8 +104,14 @@ function download_file() {
     if [ ! -s "$2" ]; then
         print_blue "Downloading $(basename "$2") ..."
         mkdir -p "$(dirname "$2")"
-        # resumable: an interrupted download leaves <file>.part, which the next run continues
-        wget -q --show-progress --tries=5 --timeout=60 --continue -O "$2.part" "$1" && mv "$2.part" "$2" \
+        # resumable: an interrupted download leaves <file>.part, which the next run continues.
+        # A connection without data for 60 s is dropped and retried. curl is used where there is no
+        # wget (macOS).
+        if [[ -z "$PYSLAM_DOWNLOAD_WITH_CURL" ]] && command -v wget &>/dev/null; then
+            wget -q --show-progress --tries=5 --timeout=60 --continue -O "$2.part" "$1"
+        else
+            curl -fL --retry 5 --connect-timeout 60 --speed-limit 1 --speed-time 60 -C - -o "$2.part" "$1"
+        fi && mv "$2.part" "$2" \
             || { print_red "ERROR: could not download $1 (run this script again to resume)"; exit 1; }
     fi
 }
