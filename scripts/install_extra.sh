@@ -508,8 +508,7 @@ function install_contextdesc() {
     for name in "contextdesc++:1TQIjijkyd3fNvEivPPpnxHKaSqFxu5TE" "retrieval_model:1_J_aDSdKcUUk0ZXhn9bTqV6zuyzUixLD"; do
         if [ ! -d "$dir/${name%:*}" ]; then
             gdrive_download_file "${name#*:}" "$dir/${name%:*}.tar.xz"
-            ( cd "$dir" && tar -xf "${name%:*}.tar.xz" && rm "${name%:*}.tar.xz" ) \
-                || { print_red "ERROR: could not unpack the ContextDesc model ${name%:*}"; exit 1; }
+            unpack_archive "$dir/${name%:*}.tar.xz" "$dir"
         fi
     done
 }
@@ -519,14 +518,13 @@ function install_lfnet() {
     [ -f thirdparty/lfnet/__init__.py ] || touch thirdparty/lfnet/__init__.py
     if [ ! -d thirdparty/lfnet/pretrained/lfnet-norotaug ]; then
         download_file https://cs.ubc.ca/research/kmyi_data/files/2018/lf-net/lfnet-norotaug.tar.gz thirdparty/lfnet/pretrained/lfnet-norotaug.tar.gz
-        tar -C thirdparty/lfnet/pretrained -xf thirdparty/lfnet/pretrained/lfnet-norotaug.tar.gz \
-            || { print_red "ERROR: could not unpack the LF-Net model"; exit 1; }
+        unpack_archive thirdparty/lfnet/pretrained/lfnet-norotaug.tar.gz thirdparty/lfnet/pretrained
     fi
 }
 
 function install_geodesc() {
     # GeoDesc (its code is part of this repository)
-    download_file https://raw.githubusercontent.com/lzx551402/geodesc/master/model/geodesc.pb thirdparty/geodesc/model/geodesc.pb
+    download_file https://raw.githubusercontent.com/lzx551402/geodesc/master/model/geodesc.pb thirdparty/geodesc/model/geodesc.pb 5343979
 }
 
 function install_delf() {
@@ -544,8 +542,7 @@ function install_delf() {
     fi
     if [ ! -d "$delf_dir/delf/python/examples/parameters/delf_gld_20190411" ]; then
         download_file http://storage.googleapis.com/delf/delf_gld_20190411.tar.gz "$delf_dir/delf/python/examples/parameters/delf_gld_20190411.tar.gz"
-        tar -C "$delf_dir/delf/python/examples/parameters" -xf "$delf_dir/delf/python/examples/parameters/delf_gld_20190411.tar.gz" \
-            || { print_red "ERROR: could not unpack the DELF model"; exit 1; }
+        unpack_archive "$delf_dir/delf/python/examples/parameters/delf_gld_20190411.tar.gz" "$delf_dir/delf/python/examples/parameters"
     fi
 }
 
