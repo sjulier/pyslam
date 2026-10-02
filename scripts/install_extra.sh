@@ -80,6 +80,7 @@ function clone_repo() {
                 if [ -z "$(git -C "$dir" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
                     print_blue "thirdparty/$1 is at ${head:0:7}: checking out ${commit:0:7} ..."
                     { git -C "$dir" checkout -q "$commit" 2>/dev/null \
+                        || { git -C "$dir" fetch -q --depth 1 origin "$commit" && git -C "$dir" checkout -q "$commit"; } \
                         || { git -C "$dir" fetch -q origin && git -C "$dir" checkout -q "$commit"; }; } \
                         || { print_red "ERROR: could not check out $commit in thirdparty/$1"; exit 1; }
                 else
@@ -91,12 +92,32 @@ function clone_repo() {
         echo "thirdparty/$1 already cloned"
         return 0
     fi
+    # Only the needed commit is fetched, without the history (a shallow clone): some of these
+    # repositories are over 100 MB with it. Three attempts, for poor connections.
     print_blue "Cloning $url into thirdparty/$1 ..."
+    local attempt
+    for attempt in 1 2 3; do
+        rm -rf "$dir"
+        if [ -n "$commit" ]; then
+            git init -q "$dir" && git -C "$dir" remote add origin "$url" \
+                && git -C "$dir" fetch -q --depth 1 origin "$commit" && git -C "$dir" checkout -q FETCH_HEAD && return 0
+        else
+            git clone -q --depth 1 "$url" "$dir" && return 0
+        fi
+        print_yellow "could not clone $url: attempt $attempt/3"
+        sleep 5
+    done
     rm -rf "$dir"
-    git clone "$url" "$dir" || { print_red "ERROR: could not clone $url"; exit 1; }
-    if [ -n "$commit" ]; then
-        git -C "$dir" checkout -q "$commit" || { print_red "ERROR: could not check out $commit in thirdparty/$1"; exit 1; }
-    fi
+    print_red "ERROR: could not clone $url"
+    exit 1
+}
+
+# update_submodules <thirdparty dir>: fetch the submodules of a cloned repository (shallow if possible)
+function update_submodules() {
+    local dir="$ROOT_DIR/thirdparty/$1"
+    git -C "$dir" submodule update --init --recursive --depth 1 \
+        || git -C "$dir" submodule update --init --recursive \
+        || { print_red "ERROR: could not fetch the submodules of thirdparty/$1"; exit 1; }
 }
 
 # file_size <file>: its size in bytes (GNU and BSD stat)
@@ -321,10 +342,8 @@ function install_rf_detr() {
 
 function install_detic() {
     # Detic (with its CenterNet2 submodule)
-    if [ ! -d thirdparty/detic/.git ]; then
-        clone_repo detic https://github.com/facebookresearch/Detic.git 436cda2a2347df60a7c66daca0e8c59f93dc5e79
-        git -C thirdparty/detic submodule update --init --recursive || { print_red "ERROR: could not fetch Detic's submodules"; exit 1; }
-    fi
+    clone_repo detic https://github.com/facebookresearch/Detic.git 436cda2a2347df60a7c66daca0e8c59f93dc5e79
+    update_submodules detic
     apply_patch detic detic.patch
     apply_patch detic/third_party/CenterNet2 detic/third_party/centernet2.patch  # created by detic.patch
     download_file https://dl.fbaipublicfiles.com/detic/Detic_LCOCOI21k_CLIP_SwinB_896b32_4x_ft4x_max-size.pth \
@@ -421,10 +440,8 @@ function build_cuda_extension_inplace() {
 
 function install_mast3r() {
     # MASt3R (with DUSt3R and CroCo as submodules)
-    if [ ! -d thirdparty/mast3r/.git ]; then
-        clone_repo mast3r https://github.com/naver/mast3r f5209afc300cec36239a7ac992263f36847bbba0
-        git -C thirdparty/mast3r submodule update --init --recursive || { print_red "ERROR: could not fetch MASt3R's submodules"; exit 1; }
-    fi
+    clone_repo mast3r https://github.com/naver/mast3r f5209afc300cec36239a7ac992263f36847bbba0
+    update_submodules mast3r
     apply_patch mast3r mast3r.patch
     apply_patch mast3r/dust3r mast3r-dust3r.patch
     apply_patch mast3r/dust3r/croco mast3r-dust3r-croco.patch
