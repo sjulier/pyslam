@@ -24,3 +24,26 @@ index 878db3f..14744f5 100644
  huggingface_hub
  imageio
  numpy<2
+diff --git a/src/depth_anything_3/utils/export/colmap.py b/src/depth_anything_3/utils/export/colmap.py
+index e57964c..7cc5bdb 100644
+--- a/src/depth_anything_3/utils/export/colmap.py
++++ b/src/depth_anything_3/utils/export/colmap.py
+@@ -13,7 +13,6 @@
+ # limitations under the License.
+ 
+ import os
+-import pycolmap
+ import cv2 as cv
+ import numpy as np
+ 
+@@ -32,6 +31,10 @@ def export_to_colmap(
+     conf_thresh_percentile: float = 40.0,
+     process_res_method: str = "upper_bound_resize",
+ ) -> None:
++    # pySLAM: imported here, not at the top: only this export needs pycolmap, and its PyPI wheel
++    # for macOS bundles a second OpenMP runtime, which aborts the process once torch is loaded
++    import pycolmap
++
+     # 1. Data preparation
+     conf_thresh = np.percentile(prediction.conf, conf_thresh_percentile)
+     points, colors = _depths_to_world_points_with_colors(

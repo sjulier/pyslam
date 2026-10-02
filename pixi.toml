@@ -204,8 +204,13 @@ huggingface_hub = "*"
 safetensors = "*"
 moviepy = "*"
 
-[feature.depth.pypi-dependencies]
-# conda-forge only has pycolmap 0.4 (colmap 3.8), which forces OpenCV, torch and Open3D back to older versions
+# pycolmap (the COLMAP exports and demos of Depth Anything V3, MASt3R and VGGT).
+# - From PyPI: conda-forge only has pycolmap 0.4 (colmap 3.8), which forces OpenCV, torch and Open3D
+#   back to older versions.
+# - Linux only: the macOS wheel bundles its own OpenMP runtime (libomp), and with a second libomp
+#   next to the environment's one the process aborts ("OMP: Error #15") as soon as torch and pycolmap
+#   are both imported, which LightGlue does. pySLAM itself does not need pycolmap.
+[feature.depth.target.linux-64.pypi-dependencies]
 pycolmap = "*"
 
 # ---------------------------------------------------------------------------
