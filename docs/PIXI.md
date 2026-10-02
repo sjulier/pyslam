@@ -76,7 +76,8 @@ Run all the commands below from this folder.
 ### 3. Build the default level
 
 ```bash
-pixi run build      # downloads the environment, then builds pySLAM's native modules (about 15 min)
+pixi run build      # downloads the environment, builds pySLAM's native modules (about 15 min on a fast
+                    # machine, up to an hour on a laptop) and fetches the ORB vocabulary (about 100 MB)
 pixi run check      # the native modules load and the optimiser tests pass
 pixi run models     # learned features and place recognition: code, model weights, and a check of each
 ```
@@ -126,6 +127,7 @@ python main_semantic_image_segmentation.py
 | task | level | what it does |
 |---|---|---|
 | `build` | default | build the native modules (GTSAM, g2o, Pangolin, DBoW2/3, iBoW, ORB-SLAM2 features, C++ utilities, C++ core), then check that they share one pybind11 ABI |
+| `vocabulary` | default | download the ORB vocabulary of the default loop detector (part of `build`); an interrupted or stalled download is resumed |
 | `check` | default | the ABI check and the GTSAM and g2o optimiser tests |
 | `models` | default | learned features and place recognition: `scripts/install_extra.sh features vpr` |
 | `models-depth` | depth | `scripts/install_extra.sh depth` |
@@ -154,6 +156,9 @@ python main_semantic_image_segmentation.py
   plays twice as fast, and `--speed 0` as fast as possible. Faster than the camera, the mapping thread
   gets less time per frame, and on KITTI 06 tracking is then sometimes lost at the turns. Use the
   default speed when you compare results.
+- **If a download fails** (for example `NETVLAD FAIL ... retrieval incomplete`), run the same task
+  again: what is already installed is skipped. Model weights are fetched by the `models*` tasks and
+  the ORB vocabulary by `build`, not during the first SLAM run.
 - **A component is skipped, with the reason, when the machine cannot run it** (for example the 3R
   models without an NVIDIA GPU). A skipped component is not a failure.
 - **Gaussian splatting on another GPU.** Its CUDA extensions are built for the GPUs in the machine.

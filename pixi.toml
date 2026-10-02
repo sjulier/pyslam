@@ -289,7 +289,10 @@ build-dbow2 = { cmd = "./build.sh", cwd = "thirdparty/pydbow2" }
 build-ibow = { cmd = "./build.sh", cwd = "thirdparty/pyibow" }
 build-cpp-utils = { cmd = "./build.sh", cwd = "cpp" }
 build-cpp-core = { cmd = "./build_cpp_core.sh", depends-on = ["build-gtsam", "build-g2o"] }
-build = { cmd = "python scripts/check_pybind11_abi.py", depends-on = [
+# The ORB vocabulary of the default loop detector (about 100 MB), so that the first SLAM run
+# does not have to download it
+vocabulary = "python scripts/download_vocabulary.py"
+build = { cmd = "python scripts/check_pybind11_abi.py && python scripts/download_vocabulary.py", depends-on = [
   "build-gtsam",
   "build-orbslam2-features",
   "build-pangolin",

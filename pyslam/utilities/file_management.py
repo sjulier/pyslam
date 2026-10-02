@@ -130,9 +130,62 @@ def gdrive_download_lambda(*args, **kwargs):
         os.makedirs(output_folder)
     if not os.path.exists(output):
         print(f"downloading {url} to {output}")
-        gdown.download(url, output)
+        gdrive_download_with_retry(url, output)
     else:
         print(f"file already exists: {output}")
+
+
+def gdrive_download_with_retry(url, output, stall_timeout=60, max_attempts=5):
+    """
+    Download a file from Google Drive into `output`, without leaving a hung or truncated download.
+
+    gdown has no timeout: a stalled connection blocks forever, and an interrupted download leaves a
+    partial file under the final name, which later looks like a complete one. So gdown runs in a child
+    process and writes to `output + ".part"`; if the file stops growing for `stall_timeout` seconds
+    the child is stopped and the download resumed, up to `max_attempts` times. The file gets its
+    final name only when gdown has finished successfully.
+    """
+    import subprocess
+    import sys
+    import time
+
+    part = output + ".part"
+    for attempt in range(1, max_attempts + 1):
+        cmd = [sys.executable, "-m", "gdown", url, "-O", part, "--continue"]
+        if "/file/d/" in url:
+            cmd.append("--fuzzy")
+        proc = subprocess.Popen(cmd)
+        last_size, last_change = -1, time.time()
+        stalled = False
+        while proc.poll() is None:
+            time.sleep(2)
+            # gdown writes to a temporary file next to the output while downloading
+            folder = os.path.dirname(part) or "."
+            prefix = os.path.basename(part)
+            size = sum(
+                os.path.getsize(os.path.join(folder, name))
+                for name in os.listdir(folder)
+                if name.startswith(prefix)
+            )
+            if size != last_size:
+                last_size, last_change = size, time.time()
+            elif time.time() - last_change > stall_timeout:
+                stalled = True
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                break
+        if not stalled and proc.returncode == 0 and os.path.exists(part):
+            os.replace(part, output)
+            return
+        reason = f"no data for {stall_timeout} s" if stalled else f"gdown exited with code {proc.returncode}"
+        print(f"download of {os.path.basename(output)} interrupted ({reason}): attempt {attempt}/{max_attempts}")
+    raise RuntimeError(
+        f"Could not download {url} after {max_attempts} attempts. "
+        f"Download it by hand (in a browser) and save it as {output}"
+    )
 
 
 # Select n_frame images from images_path starting from start_frame_name with delta_frame between each frame
