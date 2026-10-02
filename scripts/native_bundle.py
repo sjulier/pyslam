@@ -65,7 +65,6 @@ BUNDLE_GLOBS = [
 SOURCE_PATHS = [
     "pixi.lock",
     "scripts/install_gtsam.sh",
-    "scripts/native_bundle.py",
     "cpp",
     "pyslam/slam/cpp",
     "thirdparty/gtsam_factors",
@@ -73,7 +72,6 @@ SOURCE_PATHS = [
     "thirdparty/pangolin",
     "thirdparty/pangolin.patch",
     "thirdparty/g2opy.patch",
-    "scripts/check_native_modules.py",
     "thirdparty/pybind11",
     "thirdparty/pydbow2",
     "thirdparty/pydbow3",
@@ -82,6 +80,12 @@ SOURCE_PATHS = [
 ]
 
 MANIFEST = "thirdparty/.native_bundle.json"
+
+# Part of the key: increase it when the layout of the bundles changes
+BUNDLE_FORMAT = 1
+
+# A folder of the bundle that python adds files to (__pycache__): removed as a whole
+BUNDLE_FOLDERS = ["thirdparty/gtsam_local/install/python"]
 
 
 def log(msg):
@@ -133,7 +137,7 @@ def source_key():
         if r.returncode != 0:
             continue  # a path that does not exist in this version
         h.update(f"{path}={r.stdout.strip()}\n".encode())
-    h.update(f"march={BUNDLE_MARCH}\n".encode())
+    h.update(f"march={BUNDLE_MARCH}\nformat={BUNDLE_FORMAT}\n".encode())
     return h.hexdigest()[:16], None
 
 
@@ -145,7 +149,7 @@ def bundle_files():
     files = []
     for pattern in BUNDLE_GLOBS:
         for path in glob.glob(os.path.join(ROOT, pattern), recursive=True):
-            if os.path.isfile(path) or os.path.islink(path):
+            if (os.path.isfile(path) or os.path.islink(path)) and "__pycache__" not in path:
                 files.append(os.path.relpath(path, ROOT))
     return sorted(set(files))
 
@@ -234,9 +238,6 @@ def pack():
             r = subprocess.run(patchelf + ["--force-rpath", "--set-rpath", new, dst], capture_output=True, text=True)
             if r.returncode != 0:
                 sys.exit(f"pack: patchelf failed on {path}: {r.stderr.strip()}")
-            with open(dst, "rb") as f:
-                if ROOT.encode() in f.read():
-                    log(f"note: {path} still contains the build path (not in its RPATH)")
     os.makedirs(os.path.join(stage, os.path.dirname(MANIFEST)), exist_ok=True)
     with open(os.path.join(stage, MANIFEST), "w") as f:
         json.dump(manifest, f, indent=1)
@@ -303,6 +304,8 @@ def remove(quiet=False):
         full = os.path.join(ROOT, path)
         if os.path.lexists(full):
             os.remove(full)
+    for folder in BUNDLE_FOLDERS:
+        shutil.rmtree(os.path.join(ROOT, folder), ignore_errors=True)
     os.remove(manifest_path)
     log(f"removed the {len(manifest.get('files', []))} files of bundle {manifest.get('key')}")
 
