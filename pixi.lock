@@ -9576,7 +9576,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/1a/8e/b4f03a302c071a9f764cc79e450dbab6a97c0034eb662990836e1e0d16fa/rosbags-0.11.5-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1f/7f/13cd798d180af4bf4c0ceddeefba2b864a63c71645abc0308b768d67bb81/hjson-3.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/46/bd/551ee6af426af84ca33e02622be722925c196608e9127d731ef17c47f06e/argcomplete-3.7.2-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/4e/87/0ea99959c82ad918e2f4bd4bc41b2f97d3d061a83b267a2e3b8477171e69/pycolmap-4.2.1-cp311-cp311-macosx_14_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/60/c0/f88532d6d911d7133aecbe36b299f8d30989fd1dd9339d6671ca79cdb39b/evo-1.37.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/7f/cf/f082ad98d4d143b59bdc02027673cfd76280dd23dcd71218c156a4dbc627/fast_pytorch_kmeans-0.2.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/8f/02/4ca3a20f7c8ce01e9ac7f1a4bdcbefeab10579d933829a30741355a75c9c/kornia_moons-0.3.0-py3-none-any.whl
