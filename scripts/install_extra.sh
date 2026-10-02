@@ -99,6 +99,17 @@ function clone_repo() {
     fi
 }
 
+# download_file <url> <file>: download unless the file is already there
+function download_file() {
+    if [ ! -s "$2" ]; then
+        print_blue "Downloading $(basename "$2") ..."
+        mkdir -p "$(dirname "$2")"
+        # resumable: an interrupted download leaves <file>.part, which the next run continues
+        wget -q --show-progress --tries=5 --timeout=60 --continue -O "$2.part" "$1" && mv "$2.part" "$2" \
+            || { print_red "ERROR: could not download $1 (run this script again to resume)"; exit 1; }
+    fi
+}
+
 function install_features() {
     init_submodules thirdparty/superpoint thirdparty/LightGlue thirdparty/accelerated_features \
         thirdparty/disk thirdparty/d2net thirdparty/r2d2 thirdparty/keynet thirdparty/hardnet \
@@ -121,6 +132,11 @@ function install_vpr() {
     init_submodules thirdparty/vpr thirdparty/patch_netvlad
     apply_patch vpr vpr.patch
     apply_patch patch_netvlad patch_netvlad.patch
+    # NetVLAD weights: pySLAM uses configs/netvlad_extract.ini, i.e. the Mapillary model with 512
+    # principal components (92 MB). Without this file Patch-NetVLAD downloads all its seven models
+    # (2.9 GB) at the first use, with a downloader that cannot resume.
+    download_file "https://huggingface.co/TobiasRobotics/Patch-NetVLAD/resolve/main/mapillary_WPCA512.pth.tar?download=true" \
+        thirdparty/patch_netvlad/patchnetvlad/pretrained_models/mapillary_WPCA512.pth.tar
     # torch >= 2.13 asks "Do you trust this repository?" on the first torch.hub.load of a repo, which
     # a loop-detection child process cannot answer: trust the repos used by the VPR detectors.
     "$PYTHON_EXE" - <<'EOF' || exit 1
@@ -181,15 +197,6 @@ function unpack_pypi_package() {
         && "$PYTHON_EXE" -m zipfile -e "$tmp_dir"/*.whl "$dir" \
         || { rm -rf "$tmp_dir"; print_red "ERROR: could not fetch $1 from PyPI"; exit 1; }
     rm -rf "$tmp_dir"
-}
-
-# download_file <url> <file>: download unless the file is already there
-function download_file() {
-    if [ ! -s "$2" ]; then
-        print_blue "Downloading $(basename "$2") ..."
-        mkdir -p "$(dirname "$2")"
-        wget -q --show-progress -O "$2.part" "$1" && mv "$2.part" "$2" || { rm -f "$2.part"; print_red "ERROR: could not download $1"; exit 1; }
-    fi
 }
 
 function install_semantics() {
