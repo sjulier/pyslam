@@ -55,6 +55,7 @@ from .slam_commons import SlamState
 from .initializer import Initializer
 from .slam_dynamic_config import SLAMDynamicConfig
 from .motion_model import MotionModel, MotionModelDamping
+from .playback_throttle import KeyframeDemand
 
 from pyslam.io.dataset_types import SensorType
 
@@ -169,6 +170,8 @@ class Tracking:
         self.reproj_err_frame_map_sigma: float = Parameters.kMaxReprojectionDistanceMap
         if self.sensor_type == SensorType.RGBD:
             self.reproj_err_frame_map_sigma = Parameters.kMaxReprojectionDistanceMapRgbd
+
+        self.kf_demand = KeyframeDemand()  # read by the playback throttle
 
         self.max_frames_between_kfs = int(slam.camera.fps) if slam.camera.fps is not None else 1
         self.max_frames_between_kfs_after_reloc = (
@@ -894,6 +897,13 @@ class Tracking:
 
         # print(f'KF conditions: 1a: {cond1a}, 1b: {cond1b}, 1c: {cond1c}, 1d: {cond1d}, 2: {cond2}, 3: {cond3}')
         condition_checks = ((cond1a or cond1b or cond1c or cond1d) and cond2) or cond3
+
+        # Keyframe demand, for the playback throttle: would a keyframe be requested if local mapping
+        # were idle? cond1b only asks for one when local mapping is idle, so a busy local mapping
+        # shows up as requests that are never raised (and not as rejected requests).
+        cond1b_if_idle = f_cur.id >= (self.kf_last.id + self.min_frames_between_kfs)
+        wanted_if_idle = ((cond1a or cond1b_if_idle or cond1c or cond1d) and cond2) or cond3
+        self.kf_demand.record(wanted_if_idle, is_local_mapping_idle)
         if condition_checks:
             print(
                 f"KF conditions: ( (1a:{cond1a} or 1b:{cond1b} or 1c:{cond1c} or 1d:{cond1d}) and 2: {cond2} ) or 3: {cond3}"

@@ -331,4 +331,12 @@ def force_kill_all_and_exit(code=0, verbose=True):
     # Note: The threads reported above are just warnings - os._exit() will terminate
     # the entire process regardless of any remaining threads. The process will exit
     # immediately even if QueueFeederThread or other threads are still running.
+    # os._exit() skips the interpreter's shutdown, which is what flushes the output buffers: when the
+    # output goes to a file or a pipe (block-buffered), the end of it would be lost
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:
+            pass
+
     os._exit(code)  # Bypass cleanup and exit immediately

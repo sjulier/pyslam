@@ -65,6 +65,18 @@ class Parameters:
     # SLAM tracking-mapping threads
     kLocalMappingOnSeparateThread = True  # True: move local mapping on a separate thread, False: tracking and then local mapping in a single thread
     kTrackingWaitForLocalMappingToGetIdle = False  # True: wait for local mapping to get idle before starting tracking, False: tracking and then local mapping in a single thread in a standard way
+    # Playback throttle: when playing a dataset, slow down if local mapping cannot keep up.
+    # Signal: among the recent frames that wanted a new keyframe, the fraction whose request was
+    # suppressed because local mapping was busy (see pyslam/slam/playback_throttle.py).
+    kPlaybackThrottle = True  # can be disabled with main_slam.py --no-throttle
+    kPlaybackThrottleHighSuppressedFraction = 0.5  # above: reduce the playback speed
+    kPlaybackThrottleLowSuppressedFraction = 0.35  # below: raise it again, up to the requested speed
+    kPlaybackThrottleDecreaseFactor = 0.8
+    kPlaybackThrottleIncreaseFactor = 1.1
+    kPlaybackThrottleMinSpeed = 0.1  # relative to the camera's frame rate
+    kPlaybackThrottleWindow = 40  # number of recent frames that wanted a keyframe (at the current speed)
+    kPlaybackThrottleMinSamples = 20  # do not slow down before this many of them (twice as many to speed up)
+    kPlaybackThrottleUpdatePeriod = 10  # [frames]
     kWaitForLocalMappingTimeout = (
         0.5 if not USE_CPP_CORE else 0.05
     )  # [s]  # Timeout for waiting local mapping to be idle (if kTrackingWaitForLocalMappingToGetIdle is True)   (was previously 1.5)

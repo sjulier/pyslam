@@ -38,6 +38,7 @@ from pyslam.semantics.semantic_eval import evaluate_semantic_mapping
 
 from pyslam.slam.slam import Slam, SlamState
 from pyslam.slam import PinholeCamera, USE_CPP
+from pyslam.slam.playback_throttle import PlaybackThrottle
 
 from pyslam.viz.slam_plot_drawer import SlamPlotDrawerThread
 from pyslam.io.ground_truth import groundtruth_factory, is_valid_groundtruth, need_sim3_alignment
@@ -119,7 +120,13 @@ if __name__ == "__main__":
         help="Playback speed relative to the camera's frame rate, with or without --headless: "
         "1 = the camera's rate (default), 2 = twice as fast, 0 = as fast as possible. "
         "Feeding frames faster than the camera leaves local mapping less time per frame, "
-        "which can make tracking fail.",
+        "which can make tracking fail. This is the maximum speed: see --no-throttle.",
+    )
+    parser.add_argument(
+        "--no-throttle",
+        action="store_true",
+        help="Do not slow down the playback when local mapping cannot keep up with the frames "
+        "(by default the speed is reduced below --speed when it cannot).",
     )
     parser.add_argument(
         "--verbose",
@@ -350,6 +357,16 @@ if __name__ == "__main__":
     do_step = False  # proceed step by step on GUI
     do_reset = False  # reset on GUI
     is_paused = False  # pause/resume on GUI
+
+    # Playback speed: --speed is the maximum; the throttle reduces it when local mapping cannot keep up
+    playback_throttle = PlaybackThrottle(
+        max_speed=args.speed,
+        enabled=(
+            Parameters.kPlaybackThrottle
+            and not args.no_throttle
+            and Parameters.kLocalMappingOnSeparateThread
+        ),
+    )
     is_map_save = False  # save map on GUI
     is_bundle_adjust = False  # bundle adjust on GUI
     is_viewer_closed = False  # viewer GUI was closed
@@ -524,16 +541,25 @@ if __name__ == "__main__":
                 do_reset = viewer3D.reset() and do_reset == False
                 is_viewer_closed = viewer3D.is_closed()
 
-            # Keep the camera's frame period (divided by --speed), also in headless mode: tracking alone
-            # runs several times faster than the camera, and feeding frames at that rate starves local
-            # mapping (e.g. tracking is then lost at the turns of KITTI 06). --speed 0 disables the wait.
-            if img is not None and args.speed > 0 and frame_duration > 0:
+            # Keep the camera's frame period (divided by the playback speed), also in headless mode:
+            # tracking alone runs several times faster than the camera, and feeding frames at that rate
+            # starves local mapping (e.g. tracking is then lost at the turns of KITTI 06).
+            # The speed is --speed (0 = no wait), reduced by the throttle when local mapping cannot
+            # keep up with the frames.
+            if img is not None and frame_duration > 0:
+                if playback_throttle.update(slam.tracking.kf_demand):
+                    Printer.yellow(
+                        f"Playback speed: {playback_throttle.speed_str()} "
+                        f"({100 * slam.tracking.kf_demand.suppressed_fraction():.0f}% of the recent keyframe "
+                        f"requests found local mapping busy)"
+                    )
                 processing_duration = time.time() - time_start
                 delta_time_sleep = (
-                    frame_duration / args.speed - processing_duration - 1e-3
+                    playback_throttle.wait_time(frame_duration, processing_duration) - 1e-3
                 )  # NOTE: 1e-3 is the cv wait time we use below with cv2.waitKey(1)
                 if delta_time_sleep > 1e-3:
                     time.sleep(delta_time_sleep)
+                playback_throttle.observe_frame(frame_duration, time.time() - time_start)
                     # Printer.yellow(f"sleeping for {delta_time_sleep} seconds - frame duration > processing duration")
 
             # press 'q' or ESC for quitting (the viewers' get_key() return the pressed key as a character)
@@ -593,12 +619,27 @@ if __name__ == "__main__":
             f.write(f"num_processed_frames: {num_frames}\n")
             f.write(f"num_lost_frames: {num_tracking_lost}\n")
             f.write(f"percent_lost: {num_tracking_lost/num_total_frames*100:.2f}\n")
+            f.write(f"playback_max_speed: {playback_throttle.speed_str(playback_throttle.max_speed)}\n")
+            f.write(f"playback_lowest_speed: {playback_throttle.speed_str(playback_throttle.lowest_speed)}\n")
+            f.write(f"playback_num_slowdowns: {playback_throttle.num_decreases}\n")
+            f.write(
+                f"percent_suppressed_keyframe_requests: {slam.tracking.kf_demand.total_suppressed_fraction()*100:.2f}\n"
+            )
 
         evaluate_semantic_mapping(slam, dataset, metrics_save_dir)
 
     except Exception as e:
         print("Exception while computing metrics: ", e)
         print(f"traceback: {traceback.format_exc()}")
+
+    Printer.green(
+        f"Playback: max speed {playback_throttle.speed_str(playback_throttle.max_speed)}, "
+        f"lowest speed {playback_throttle.speed_str(playback_throttle.lowest_speed)}, "
+        f"{playback_throttle.num_decreases} slow-downs; "
+        f"{slam.tracking.kf_demand.total_suppressed_fraction()*100:.0f}% of the keyframe requests "
+        f"found local mapping busy",
+        flush=True,
+    )
 
     # Stop SLAM (which stops all processes and shuts down their managers); the viewers are closed above
     slam.quit()
