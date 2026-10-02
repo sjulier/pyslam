@@ -47,13 +47,17 @@ X86_64_V3_FLAGS = {"avx", "avx2", "bmi1", "bmi2", "f16c", "fma", "abm", "movbe",
 # The files of the native modules, relative to the checkout
 BUNDLE_GLOBS = [
     "thirdparty/gtsam_local/install/lib/*.so*",
+    "thirdparty/gtsam_local/install/lib/*.dylib",
     "thirdparty/gtsam_local/install/python/**/*",
     "thirdparty/gtsam_factors/lib/*.so",
     "thirdparty/g2opy/lib/*.so*",
+    "thirdparty/g2opy/lib/*.dylib",
     "thirdparty/pangolin/pypangolin*.so",
     "thirdparty/pangolin/build/src/libpangolin.so*",
+    "thirdparty/pangolin/build/src/libpangolin*.dylib",
     "thirdparty/pydbow2/lib/*.so",
     "thirdparty/pydbow2/modules/dbow2/lib/*.so*",
+    "thirdparty/pydbow2/modules/dbow2/lib/*.dylib",
     "thirdparty/pydbow3/lib/*.so",
     "thirdparty/pyibow/lib/*.so",
     "thirdparty/orbslam2_features/lib/*.so",
@@ -77,6 +81,20 @@ SOURCE_PATHS = [
     "thirdparty/pydbow3",
     "thirdparty/pyibow",
     "thirdparty/orbslam2_features",
+]
+
+# The python extension modules that every build produces (the libraries next to them differ per platform)
+REQUIRED_GLOBS = [
+    "thirdparty/gtsam_local/install/python/gtsam/gtsam*.so",
+    "thirdparty/gtsam_factors/lib/*.so",
+    "thirdparty/g2opy/lib/g2o*.so",
+    "thirdparty/pangolin/pypangolin*.so",
+    "thirdparty/pydbow2/lib/*.so",
+    "thirdparty/pydbow3/lib/*.so",
+    "thirdparty/pyibow/lib/*.so",
+    "thirdparty/orbslam2_features/lib/*.so",
+    "cpp/lib/*.so",
+    "pyslam/slam/cpp/lib/*.so",
 ]
 
 MANIFEST = "thirdparty/.native_bundle.json"
@@ -137,7 +155,8 @@ def source_key():
         if r.returncode != 0:
             continue  # a path that does not exist in this version
         h.update(f"{path}={r.stdout.strip()}\n".encode())
-    h.update(f"march={BUNDLE_MARCH}\nformat={BUNDLE_FORMAT}\n".encode())
+    march = BUNDLE_MARCH if platform_name() == "linux-64" else "default"
+    h.update(f"march={march}\nformat={BUNDLE_FORMAT}\n".encode())
     return h.hexdigest()[:16], None
 
 
@@ -159,6 +178,13 @@ def is_elf(path):
         return False
     with open(path, "rb") as f:
         return f.read(4) == b"\x7fELF"
+
+
+def is_macho(path):
+    if os.path.islink(path):
+        return False
+    with open(path, "rb") as f:
+        return f.read(4) in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe")
 
 
 def sha256_of(path):
@@ -204,23 +230,85 @@ def relative_rpath(path, rpath):
     return ":".join(entries)
 
 
+def run_tool(*args):
+    r = subprocess.run(list(args), capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f"pack: {' '.join(args[:3])} ... failed: {r.stderr.strip()}")
+    return r.stdout
+
+
+def in_checkout(path):
+    """The path relative to the checkout if it is inside it (also through a link such as /tmp), else None."""
+    real, root = os.path.realpath(path), os.path.realpath(ROOT)
+    if real == root or real.startswith(root + os.sep):
+        return os.path.relpath(real, root)
+    return None
+
+
+def relocate_macho(path, staged):
+    """
+    Make a Mach-O file of the bundle independent of the build machine's paths (macOS):
+    absolute search paths (LC_RPATH) and absolute references to libraries inside the checkout become
+    relative to the file (@loader_path), then the file is signed again (ad hoc): on Apple silicon a
+    modified binary without a valid signature is killed when it is loaded.
+    """
+    origin = os.path.dirname(os.path.realpath(os.path.join(ROOT, path)))
+
+    def loader_relative(target_rel):
+        rel = os.path.relpath(os.path.join(os.path.realpath(ROOT), target_rel), origin)
+        return "@loader_path" if rel == "." else "@loader_path/" + rel
+
+    # 1. search paths
+    rpaths, lines = [], run_tool("otool", "-l", staged).splitlines()
+    for i, line in enumerate(lines):
+        if line.strip() == "cmd LC_RPATH":
+            for following in lines[i + 1:i + 4]:
+                if following.strip().startswith("path "):
+                    rpaths.append(following.strip()[5:].rsplit(" (offset", 1)[0])
+    kept = set(r for r in rpaths if r.startswith("@"))
+    for rpath in rpaths:
+        if rpath.startswith("@"):
+            continue
+        rel = in_checkout(rpath)
+        new = loader_relative(rel) if rel is not None and os.path.isdir(rpath) else None
+        if new is None or new in kept:
+            run_tool("install_name_tool", "-delete_rpath", rpath, staged)
+        else:
+            run_tool("install_name_tool", "-rpath", rpath, new, staged)
+            kept.add(new)
+    # 2. the file's own name, and its references to libraries inside the checkout
+    own = run_tool("otool", "-D", staged).splitlines()[1:]
+    if own and not own[0].startswith("@") and in_checkout(own[0]) is not None:
+        run_tool("install_name_tool", "-id", "@rpath/" + os.path.basename(own[0]), staged)
+    for line in run_tool("otool", "-L", staged).splitlines()[1:]:
+        dep = line.strip().rsplit(" (compatibility", 1)[0]
+        if dep.startswith("@") or (own and dep == own[0]):
+            continue
+        rel = in_checkout(dep)
+        if rel is not None:
+            run_tool("install_name_tool", "-change", dep, loader_relative(rel), staged)
+    # 3. sign again
+    run_tool("codesign", "-f", "-s", "-", staged)
+
+
 def pack():
-    if platform_name() != "linux-64":
-        sys.exit("pack: only linux-64 is supported so far")
-    if os.environ.get("PYSLAM_MARCH") != BUNDLE_MARCH:
+    if platform_name() not in ("linux-64", "osx-arm64"):
+        sys.exit("pack: only linux-64 and osx-arm64 are supported")
+    # on macOS (Apple silicon) the modules are not built with -march: every machine has the same baseline
+    if platform_name() == "linux-64" and os.environ.get("PYSLAM_MARCH") != BUNDLE_MARCH:
         sys.exit(f"pack: build the modules with PYSLAM_MARCH={BUNDLE_MARCH} and set it for this command too")
     key, why = source_key()
     if key is None:
         sys.exit(f"pack: no key for this checkout ({why}): commit the changes first")
     files = bundle_files()
-    missing = [g for g in BUNDLE_GLOBS if not glob.glob(os.path.join(ROOT, g), recursive=True)]
+    missing = [g for g in REQUIRED_GLOBS if not glob.glob(os.path.join(ROOT, g), recursive=True)]
     if missing:
         sys.exit("pack: nothing built for " + ", ".join(missing))
 
-    patchelf = find_patchelf()
+    patchelf = find_patchelf() if platform_name() == "linux-64" else None
     stage = os.path.join(ROOT, ".native_bundle_stage")
     shutil.rmtree(stage, ignore_errors=True)
-    manifest = {"key": key, "march": BUNDLE_MARCH, "platform": platform_name(), "ladder": ladder(),
+    manifest = {"key": key, "march": BUNDLE_MARCH if platform_name() == "linux-64" else "default", "platform": platform_name(), "ladder": ladder(),
                 "build_environment": build_environment(), "files": files}
     for path in files:
         src, dst = os.path.join(ROOT, path), os.path.join(stage, path)
@@ -229,7 +317,9 @@ def pack():
             os.symlink(os.readlink(src), dst)
             continue
         shutil.copy2(src, dst)
-        if is_elf(src):
+        if is_macho(src):
+            relocate_macho(path, dst)
+        elif is_elf(src):
             r = subprocess.run(patchelf + ["--print-rpath", dst], capture_output=True, text=True)
             if r.returncode != 0:
                 sys.exit(f"pack: patchelf failed on {path}: {r.stderr.strip()}")
@@ -317,9 +407,9 @@ def no_bundle(reason):
 
 
 def fetch():
-    if platform_name() != "linux-64":
-        return no_bundle(f"no bundles for {platform.system()} {platform.machine()} yet")
-    lacking = cpu_supports_baseline()
+    if platform_name() is None:
+        return no_bundle(f"no bundles for {platform.system()} {platform.machine()}")
+    lacking = cpu_supports_baseline() if platform_name() == "linux-64" else []
     if lacking:
         return no_bundle(f"this CPU lacks {', '.join(lacking)} (the bundles are built for {BUNDLE_MARCH})")
     key, why = source_key()
@@ -337,7 +427,7 @@ def fetch():
             return 0
         remove(quiet=True)  # another version: its files do not match this checkout
 
-    built = [g for g in BUNDLE_GLOBS if glob.glob(os.path.join(ROOT, g), recursive=True)]
+    built = [g for g in REQUIRED_GLOBS if glob.glob(os.path.join(ROOT, g), recursive=True)]
     if built:
         return no_bundle("native modules built from source are already there (run ./clean.sh to replace them)")
 
@@ -372,8 +462,9 @@ def fetch():
     if check.returncode != 0:
         remove(quiet=True)
         return no_bundle("its modules do not load on this machine")
-    log(f"installed the prebuilt native modules (bundle {key}, built for {BUNDLE_MARCH})")
-    log(f"to rebuild a module yourself later, set PYSLAM_MARCH={BUNDLE_MARCH} so that it matches the others")
+    log(f"installed the prebuilt native modules (bundle {key})")
+    if platform_name() == "linux-64":
+        log(f"they are built for {BUNDLE_MARCH}: to rebuild a module yourself later, set PYSLAM_MARCH={BUNDLE_MARCH}")
     return 0
 
 
