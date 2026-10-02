@@ -27,7 +27,7 @@ cd "$ROOT_DIR"
 
 PYTHON_EXE=$(get_python_exe)
 
-EXTRAS_ORDER="features vpr depth semantics scene3d"
+EXTRAS_ORDER="features vpr depth semantics scene3d tf"
 
 # extra_description <extra>: print the description, or nothing for an unknown extra
 # (a function rather than an associative array, which needs bash >= 4; macOS ships bash 3.2)
@@ -38,6 +38,7 @@ function extra_description() {
         depth) echo "Depth and stereo estimation: Depth Anything V2, Depth Pro, RAFT-Stereo, CREStereo (PyTorch), Depth Anything V3 [pixi level: depth]" ;;
         semantics) echo "Semantic segmentation and object detection: DeepLabV3, SegFormer, YOLO, RF-DETR, CLIP, Detic, EOV-Seg, ODISE [pixi level: semantics]" ;;
         scene3d) echo "3D representations: MASt3R, DUSt3R, MV-DUSt3R, VGGT, Robust VGGT, Fast3R, Gaussian splatting (need an NVIDIA GPU) [pixi level: full]" ;;
+        tf) echo "TensorFlow-based features: DELF, LF-Net, ContextDesc, GeoDesc, and the HDC-DELF place recognition [pixi level: tf]" ;;
     esac
 }
 
@@ -357,6 +358,60 @@ function install_scene3d() {
     else
         echo "lietorch already built"
     fi
+}
+
+function install_tf() {
+    if ! "$PYTHON_EXE" -c "import tensorflow" &>/dev/null; then
+        print_yellow "TensorFlow is not installed in this environment: skipping the TensorFlow-based features."
+        print_yellow "  With pixi, use the level 'tf' (pixi run -e tf models-tf)."
+        return 0
+    fi
+
+    init_submodules thirdparty/lfnet thirdparty/tensorflow_models thirdparty/vpr
+
+    # ContextDesc (its code is part of this repository)
+    if [ ! -d thirdparty/contextdesc/pretrained/retrieval_model ] || [ ! -d thirdparty/contextdesc/pretrained/contextdesc++ ]; then
+        print_blue "Downloading the ContextDesc models (about 1 GB) ..."
+        ensure_python_package "$PYTHON_EXE" gdown gdown || exit 1
+        make_dir thirdparty/contextdesc/pretrained
+        ( cd thirdparty/contextdesc/pretrained \
+            && gdrive_download "1TQIjijkyd3fNvEivPPpnxHKaSqFxu5TE" "contextdesc++.tar.xz" && tar -xf contextdesc++.tar.xz && rm contextdesc++.tar.xz \
+            && gdrive_download "1_J_aDSdKcUUk0ZXhn9bTqV6zuyzUixLD" "retrieval_model.tar.xz" && tar -xf retrieval_model.tar.xz && rm retrieval_model.tar.xz ) \
+            || { print_red "ERROR: could not download the ContextDesc models"; exit 1; }
+    fi
+
+    # LF-Net
+    apply_patch lfnet lfnet.patch
+    [ -f thirdparty/lfnet/__init__.py ] || touch thirdparty/lfnet/__init__.py
+    if [ ! -d thirdparty/lfnet/pretrained/lfnet-norotaug ]; then
+        download_file https://cs.ubc.ca/research/kmyi_data/files/2018/lf-net/lfnet-norotaug.tar.gz thirdparty/lfnet/pretrained/lfnet-norotaug.tar.gz
+        tar -C thirdparty/lfnet/pretrained -xf thirdparty/lfnet/pretrained/lfnet-norotaug.tar.gz \
+            || { print_red "ERROR: could not unpack the LF-Net model"; exit 1; }
+    fi
+
+    # GeoDesc (its code is part of this repository)
+    download_file https://raw.githubusercontent.com/lzx551402/geodesc/master/model/geodesc.pb thirdparty/geodesc/model/geodesc.pb
+
+    # DELF (also used by the HDC-DELF place recognition): compile its protocol buffers with the
+    # environment's protoc, so that the generated code matches the installed protobuf
+    local delf_dir=thirdparty/tensorflow_models/research/delf
+    if ! command -v protoc &>/dev/null; then
+        print_red "ERROR: protoc not found (it comes with libprotobuf in a conda/pixi environment)"
+        exit 1
+    fi
+    if [ ! -f "$delf_dir/delf/protos/.protoc_version" ] || [ "$(cat "$delf_dir/delf/protos/.protoc_version")" != "$(protoc --version)" ]; then
+        print_blue "Compiling DELF's protocol buffers with $(protoc --version) ..."
+        ( cd "$delf_dir" && protoc delf/protos/*.proto --python_out=. && protoc --version > delf/protos/.protoc_version ) \
+            || { print_red "ERROR: could not compile DELF's protocol buffers"; exit 1; }
+    fi
+    if [ ! -d "$delf_dir/delf/python/examples/parameters/delf_gld_20190411" ]; then
+        download_file http://storage.googleapis.com/delf/delf_gld_20190411.tar.gz "$delf_dir/delf/python/examples/parameters/delf_gld_20190411.tar.gz"
+        tar -C "$delf_dir/delf/python/examples/parameters" -xf "$delf_dir/delf/python/examples/parameters/delf_gld_20190411.tar.gz" \
+            || { print_red "ERROR: could not unpack the DELF model"; exit 1; }
+    fi
+
+    # HDC-DELF place recognition
+    apply_patch vpr vpr.patch
 }
 
 if [[ $# -eq 0 || "$1" == "--list" || "$1" == "-h" || "$1" == "--help" ]]; then

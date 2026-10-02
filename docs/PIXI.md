@@ -32,12 +32,13 @@ levels below it**.
 | `depth` | `main_depth_prediction.py`; depth prediction inside SLAM and dense reconstruction | Depth Anything V2 and V3, Depth Pro, RAFT-Stereo, CREStereo |
 | `semantics` | `main_semantic_image_segmentation.py`; semantic mapping | DeepLabV3, SegFormer, YOLO, RF-DETR, CLIP, Detic, EOV-Seg, ODISE |
 | `full` | `main_scene_from_views.py`; Gaussian splatting | MASt3R, DUSt3R, MV-DUSt3R, VGGT, Robust VGGT, Fast3R; MonoGS |
+| `tf` | no new script: more features for `main_slam.py` and `main_feature_matching.py` | TensorFlow, for the TensorFlow-based features (DELF, LF-Net, ContextDesc, GeoDesc) and the HDC-DELF place recognition |
 
 Start with `default` and move up when you need a script of a higher level. Moving up downloads only
 the packages that level adds; the native modules do **not** need to be rebuilt.
 
 On **Linux without an NVIDIA GPU**, use the CPU levels instead: `default-cpu`, `depth-cpu`,
-`semantics-cpu`, `full-cpu`.
+`semantics-cpu`, `full-cpu`, `tf-cpu`.
 
 ## Supported systems
 
@@ -95,6 +96,7 @@ installed.
 pixi run -e depth models-depth            # depth and stereo models
 pixi run -e semantics models-semantics    # segmentation and detection models
 pixi run -e full models-scene3d           # 3R models and Gaussian splatting (NVIDIA GPU; builds CUDA extensions)
+pixi run -e tf models-tf                  # TensorFlow-based features
 ```
 
 ## Run
@@ -129,6 +131,7 @@ python main_semantic_image_segmentation.py
 | `models-depth` | depth | `scripts/install_extra.sh depth` |
 | `models-semantics` | semantics | `scripts/install_extra.sh semantics` |
 | `models-scene3d` | full | `scripts/install_extra.sh scene3d` |
+| `models-tf` | tf | `scripts/install_extra.sh tf` |
 | `slam`, `vo`, `feature-matching`, `map-viewer`, `slam-evaluation`, `dense-reconstruction` | default | the main scripts |
 | `depth-prediction` | depth | `main_depth_prediction.py` |
 | `semantic-segmentation` | semantics | `main_semantic_image_segmentation.py` |
@@ -156,9 +159,8 @@ python main_semantic_image_segmentation.py
 - **Gaussian splatting on another GPU.** Its CUDA extensions are built for the GPUs in the machine.
   To build them for other GPUs, set `PYSLAM_CUDA_ARCHS` and `LIETORCH_CUDA_ARCHS` (for example `61`
   for Pascal, `86` for the RTX 30 series) before `pixi run -e full models-scene3d`.
-- **Not available with pixi**: SURF (non-free); the TensorFlow-based features (DELF, LF-Net,
-  ContextDesc, GeoDesc), which need their own environment; CREStereo's original MegEngine version
-  (the PyTorch port is installed); pytorch3d.
+- **Not available with pixi**: SURF (non-free); CREStereo's original MegEngine version (the PyTorch
+  port is installed); pytorch3d.
 - **Do not `pip install` into the environment.** A package that is missing belongs in `pixi.toml`.
 - **`pip check`** reports nothing in the `default` and `depth` levels. In `semantics` and `full` it
   reports that detectron2 requires `black`: detectron2's metadata pins that code formatter, which is
@@ -177,5 +179,7 @@ python main_semantic_image_segmentation.py
   requirements can pull OpenCV, PyTorch or Open3D back to older versions in every level. Then run
   `pixi run check` and the `models*` tasks of the levels you changed.
 - Linux is pinned to CUDA 12.9 (`cuda-version`), whose builds still support Pascal and Volta GPUs.
-- The TensorFlow level (`tf`) only has its packages so far; the features that use it are not
-  connected yet.
+- TensorFlow shares the ladder's solve group, so the whole ladder uses the versions that conda-forge's
+  TensorFlow build allows (at the moment PyTorch 2.12.0 instead of 2.12.1, because of protobuf).
+  If that ever blocks an update, the alternative is a separate environment for TensorFlow with a
+  worker process.

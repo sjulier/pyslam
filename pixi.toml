@@ -263,6 +263,10 @@ tf-keras = "*"
 [feature.tf.pypi-dependencies]
 tf-slim = "==1.1.0"
 
+[feature.tf.tasks]
+# TensorFlow-based features and HDC-DELF: models, DELF's protocol buffers, a check of each one
+models-tf = "bash scripts/install_extra.sh tf"
+
 # ---------------------------------------------------------------------------
 # dev tools
 # ---------------------------------------------------------------------------
@@ -344,4 +348,5 @@ depth-cpu     = { features = ["build", "slam", "torch", "cpu", "depth", "dev"], 
 semantics-cpu = { features = ["build", "slam", "torch", "cpu", "depth", "semantics", "dev"], solve-group = "cpu" }
 full-cpu      = { features = ["build", "slam", "torch", "cpu", "depth", "semantics", "recon3d", "dev"], solve-group = "cpu" }
 # TensorFlow features, used through a worker process
-tf = { features = ["tf"] }
+tf     = { features = ["build", "slam", "torch", "cuda", "depth", "semantics", "recon3d", "tf", "dev"], solve-group = "gpu" }
+tf-cpu = { features = ["build", "slam", "torch", "cpu", "depth", "semantics", "recon3d", "tf", "dev"], solve-group = "cpu" }
