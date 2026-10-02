@@ -10,6 +10,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(SET_RPATH               ON  CACHE BOOL   "Set RPATH instead of the default RUNPATH") # for solving the linking issue with g2o binaries (see the related node in the compiler options section)
 set(WITH_PYTHON_INTERP_CHECK OFF CACHE BOOL  "Checking python interpreter") # to be activated when called within virtual python environment 
+# PYSLAM_MARCH: the CPU the code is compiled for (the value of -march). The default, "native", is
+# this machine's CPU. All of pySLAM's native modules and GTSAM must use the same value: they exchange
+# Eigen objects, whose alignment depends on it. Prebuilt binaries use a common baseline (x86-64-v3).
+if(NOT DEFINED PYSLAM_MARCH)
+    if(DEFINED ENV{PYSLAM_MARCH} AND NOT "$ENV{PYSLAM_MARCH}" STREQUAL "")
+        set(PYSLAM_MARCH "$ENV{PYSLAM_MARCH}")
+    else()
+        set(PYSLAM_MARCH "native")
+    endif()
+endif()
+message(STATUS "PYSLAM_MARCH: ${PYSLAM_MARCH}")
+
 set(WITH_MARCH_NATIVE OFF  CACHE BOOL  "Build with \"-march native\"")
 
 # In order to set RPATH (instead of RUNPATH) for g2o and other libraries linking issue.
@@ -29,8 +41,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -O3 -fPIC -DNDEBUG ${MY_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -DNDEBUG ${MY_FLAGS}")
 
 if (WITH_MARCH_NATIVE)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${PYSLAM_MARCH}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${PYSLAM_MARCH}")
 endif()
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

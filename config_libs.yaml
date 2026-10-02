@@ -7,6 +7,7 @@ CORE_LIB_PATHS:
   orb_features: thirdparty/orbslam2_features/lib
   pyslam_utils: cpp/lib
   thirdparty: thirdparty  # considering the folders in thirdparty as modules
+  gtsam: thirdparty/gtsam_local/install/python  # the gtsam python package, when it is installed in the tree (pixi)
   gtsam_factors: thirdparty/gtsam_factors/lib
   ros2_pybindings: thirdparty/ros2_pybindings/lib
 

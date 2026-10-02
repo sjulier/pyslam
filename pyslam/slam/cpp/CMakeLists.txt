@@ -7,6 +7,18 @@ project(cpp_core)
 set(PYSLAM_CPP_CORE_VERSION_INFO 0.1.0)
 
 
+# PYSLAM_MARCH: the CPU the code is compiled for (the value of -march). The default, "native", is
+# this machine's CPU. All of pySLAM's native modules and GTSAM must use the same value: they exchange
+# Eigen objects, whose alignment depends on it. Prebuilt binaries use a common baseline (x86-64-v3).
+if(NOT DEFINED PYSLAM_MARCH)
+    if(DEFINED ENV{PYSLAM_MARCH} AND NOT "$ENV{PYSLAM_MARCH}" STREQUAL "")
+        set(PYSLAM_MARCH "$ENV{PYSLAM_MARCH}")
+    else()
+        set(PYSLAM_MARCH "native")
+    endif()
+endif()
+message(STATUS "PYSLAM_MARCH: ${PYSLAM_MARCH}")
+
 set(WITH_MARCH_NATIVE ON  CACHE BOOL   "Build with \"-march native\"")
 set(USE_PYTHON        ON CACHE BOOL    "Use Python")
 set(SET_RPATH         ON  CACHE BOOL   "Set RPATH instead of the default RUNPATH") # This is needed for correct linking of the gtsam libraries.
@@ -37,14 +49,14 @@ elseif (CMAKE_BUILD_TYPE MATCHES Debug)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1 -fPIC -pg")
 endif()
 
-# Add -march=native if requested and not on macOS
-# (macOS system clang doesn't properly support -march=native on Apple Silicon)
+# Add -march=${PYSLAM_MARCH} if requested and not on macOS
+# (macOS system clang doesn't properly support -march=${PYSLAM_MARCH} on Apple Silicon)
 if(WITH_MARCH_NATIVE AND NOT APPLE)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
-    message(STATUS "Using -march=native for optimization")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${PYSLAM_MARCH}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${PYSLAM_MARCH}")
+    message(STATUS "Using -march=${PYSLAM_MARCH} for optimization")
 elseif(WITH_MARCH_NATIVE)
-    message(STATUS "Skipping -march=native on macOS (system clang limitation)")
+    message(STATUS "Skipping -march=${PYSLAM_MARCH} on macOS (system clang limitation)")
 endif()
 
 if (USE_PYTHON)

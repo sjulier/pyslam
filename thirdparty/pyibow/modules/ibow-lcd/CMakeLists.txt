@@ -2,7 +2,19 @@ cmake_minimum_required(VERSION 3.5)
 project(ibow-lcd LANGUAGES CXX)
 
 set(OPENCV_VERSION          "4" CACHE STRING "Desired OpenCV version") # this is the first target version that is searched for 
-set(BUILD_WITH_MARCH_NATIVE ON CACHE BOOL "Build with -march=native")
+# PYSLAM_MARCH: the CPU the code is compiled for (the value of -march). The default, "native", is
+# this machine's CPU. All of pySLAM's native modules and GTSAM must use the same value: they exchange
+# Eigen objects, whose alignment depends on it. Prebuilt binaries use a common baseline (x86-64-v3).
+if(NOT DEFINED PYSLAM_MARCH)
+    if(DEFINED ENV{PYSLAM_MARCH} AND NOT "$ENV{PYSLAM_MARCH}" STREQUAL "")
+        set(PYSLAM_MARCH "$ENV{PYSLAM_MARCH}")
+    else()
+        set(PYSLAM_MARCH "native")
+    endif()
+endif()
+message(STATUS "PYSLAM_MARCH: ${PYSLAM_MARCH}")
+
+set(BUILD_WITH_MARCH_NATIVE ON CACHE BOOL "Build with -march=${PYSLAM_MARCH}")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON) # CMake will generate an error if it is unable to compile the code with a compiler that supports C++17.
@@ -29,17 +41,17 @@ endif()
 
 if(BUILD_WITH_MARCH_NATIVE)
     if("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-        message(STATUS "Build with -march=native")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
+        message(STATUS "Build with -march=${PYSLAM_MARCH}")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${PYSLAM_MARCH}")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${PYSLAM_MARCH}")
     else()
         include(CheckCXXCompilerFlag)
         unset(COMPILER_SUPPORTS_MARCH_NATIVE CACHE)
-        CHECK_CXX_COMPILER_FLAG(-march=native COMPILER_SUPPORTS_MARCH_NATIVE)
+        CHECK_CXX_COMPILER_FLAG(-march=${PYSLAM_MARCH} COMPILER_SUPPORTS_MARCH_NATIVE)
         if(COMPILER_SUPPORTS_MARCH_NATIVE AND NOT APPLE)
-            message(STATUS "Build with -march=native")
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
-            set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
+            message(STATUS "Build with -march=${PYSLAM_MARCH}")
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${PYSLAM_MARCH}")
+            set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${PYSLAM_MARCH}")
         endif()
     endif()
 endif() 

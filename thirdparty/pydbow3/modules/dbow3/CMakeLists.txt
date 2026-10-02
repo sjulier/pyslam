@@ -112,7 +112,19 @@ INSTALL(FILES "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake" DESTINATION ${
 # ----------------------------------------------------------------------------
 #   Program Optimization and debug (Extracted from OpenCV)
 # ----------------------------------------------------------------------------
-set(USE_MARCH_NATIVE 	        ON CACHE BOOL "Enable -march=native for GCC")
+# PYSLAM_MARCH: the CPU the code is compiled for (the value of -march). The default, "native", is
+# this machine's CPU. All of pySLAM's native modules and GTSAM must use the same value: they exchange
+# Eigen objects, whose alignment depends on it. Prebuilt binaries use a common baseline (x86-64-v3).
+if(NOT DEFINED PYSLAM_MARCH)
+    if(DEFINED ENV{PYSLAM_MARCH} AND NOT "$ENV{PYSLAM_MARCH}" STREQUAL "")
+        set(PYSLAM_MARCH "$ENV{PYSLAM_MARCH}")
+    else()
+        set(PYSLAM_MARCH "native")
+    endif()
+endif()
+message(STATUS "PYSLAM_MARCH: ${PYSLAM_MARCH}")
+
+set(USE_MARCH_NATIVE 	        ON CACHE BOOL "Enable -march=${PYSLAM_MARCH} for GCC")
 set(WARNINGS_ARE_ERRORS 		OFF CACHE BOOL "Treat warnings as errors")
 set(WHOLE_PROGRAM_OPTIMIZATION 	OFF CACHE BOOL "Flags for whole program optimization.")
 
@@ -135,17 +147,17 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3")
 
 if(USE_MARCH_NATIVE)
     if("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-        message(STATUS "Build with -march=native")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
+        message(STATUS "Build with -march=${PYSLAM_MARCH}")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${PYSLAM_MARCH}")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${PYSLAM_MARCH}")
     else()
         include(CheckCXXCompilerFlag)
         unset(COMPILER_SUPPORTS_MARCH_NATIVE CACHE)
-        CHECK_CXX_COMPILER_FLAG(-march=native COMPILER_SUPPORTS_MARCH_NATIVE)
+        CHECK_CXX_COMPILER_FLAG(-march=${PYSLAM_MARCH} COMPILER_SUPPORTS_MARCH_NATIVE)
         if(COMPILER_SUPPORTS_MARCH_NATIVE AND NOT APPLE)
-            message(STATUS "Build with -march=native")
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
-            set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
+            message(STATUS "Build with -march=${PYSLAM_MARCH}")
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${PYSLAM_MARCH}")
+            set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${PYSLAM_MARCH}")
         endif()
     endif()
 endif() 

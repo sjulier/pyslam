@@ -42,6 +42,9 @@ version = "2.10.7"
 [activation.env]
 # Keep ~/.local/lib/pythonX.Y/site-packages out of the environment
 PYTHONNOUSERSITE = "1"
+# The gtsam python package is installed in the source tree (scripts/install_gtsam.sh), not in one
+# environment, so that every level finds it
+PYTHONPATH = "$PIXI_PROJECT_ROOT/thirdparty/gtsam_local/install/python"
 # conda-forge torch brings LLVM OpenMP (libgomp is a link to libomp). Its idle worker
 # threads spin for 200 ms by default, which starves pySLAM's threads: tracking was 4 to
 # 14 times slower and lost track. pyslam/__init__.py sets this too; here it also covers
