@@ -1,3 +1,69 @@
+diff --git a/fast3r/croco/models/blocks.py b/fast3r/croco/models/blocks.py
+index f41f92b..5999423 100644
+--- a/fast3r/croco/models/blocks.py
++++ b/fast3r/croco/models/blocks.py
+@@ -29,6 +29,10 @@ import torch.nn as nn
+ from torch.nn.functional import scaled_dot_product_attention
+ from torch.nn.attention import SDPBackend
+ 
++# pySLAM: FlashAttention where the GPU has it (sm_80 and later), otherwise fall back; with
++# FLASH_ATTENTION alone, older GPUs (e.g. Pascal) fail with "No available kernel"
++SDP_BACKENDS = [SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]
++
+ 
+ def _ntuple(n):
+     def parse(x):
+@@ -169,7 +173,7 @@ class Attention(nn.Module):
+             x = self.proj(x)
+             x = self.proj_drop(x)  
+         elif self.attn_implementation == "flash_attention":
+-            with torch.nn.attention.sdpa_kernel(SDPBackend.FLASH_ATTENTION):
++            with torch.nn.attention.sdpa_kernel(SDP_BACKENDS):
+                 dtype = k.dtype
+                 with torch.autocast("cuda", dtype=torch.bfloat16):
+                     x = scaled_dot_product_attention(q, k, v, attn_mask=self.attn_mask, dropout_p=self.dropout_p, is_causal=self.is_causal, scale=scale)
+@@ -179,7 +183,7 @@ class Attention(nn.Module):
+                 x = self.proj(x)
+                 x = self.proj_drop(x)
+         elif self.attn_implementation == "pytorch_auto":
+-            with torch.nn.attention.sdpa_kernel([SDPBackend.EFFICIENT_ATTENTION,]):
++            with torch.nn.attention.sdpa_kernel([SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]):
+                 dtype = k.dtype
+                 with torch.autocast("cuda", dtype=torch.bfloat16):
+                     x = scaled_dot_product_attention(q, k, v, attn_mask=self.attn_mask, dropout_p=self.dropout_p, is_causal=self.is_causal, scale=scale)
+@@ -299,7 +303,7 @@ class CrossAttention(nn.Module):
+             x = self.proj(x)
+             x = self.proj_drop(x)
+         elif self.attn_implementation == "flash_attention":
+-            with torch.nn.attention.sdpa_kernel(SDPBackend.FLASH_ATTENTION):
++            with torch.nn.attention.sdpa_kernel(SDP_BACKENDS):
+                 # cast to BF16 to use flash_attention
+                 q = q.to(torch.bfloat16)
+                 k = k.to(torch.bfloat16)
+diff --git a/fast3r/models/components/llama.py b/fast3r/models/components/llama.py
+index a9bf9f6..e086956 100644
+--- a/fast3r/models/components/llama.py
++++ b/fast3r/models/components/llama.py
+@@ -15,6 +15,10 @@ from typing import Optional
+ import torch
+ import torch.nn.functional as F
+ from torch.nn.attention import SDPBackend
++
++# pySLAM: FlashAttention where the GPU has it (sm_80 and later), otherwise fall back; with
++# FLASH_ATTENTION alone, older GPUs (e.g. Pascal) fail with "No available kernel"
++SDP_BACKENDS = [SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]
+ from torch import nn
+ 
+ 
+@@ -235,7 +239,7 @@ class Attention(nn.Module):
+         xv = values.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
+ 
+         # we use casual mask for training
+-        with torch.nn.attention.sdpa_kernel(SDPBackend.FLASH_ATTENTION):
++        with torch.nn.attention.sdpa_kernel(SDP_BACKENDS):
+             dtype = xk.dtype
+             with torch.autocast("cuda", dtype=torch.bfloat16):
+                 output = F.scaled_dot_product_attention(xq, xk, xv, is_causal=self.is_causal)
 diff --git a/fast3r/models/multiview_dust3r_module.py b/fast3r/models/multiview_dust3r_module.py
 index f37459b..6c7613f 100644
 --- a/fast3r/models/multiview_dust3r_module.py
