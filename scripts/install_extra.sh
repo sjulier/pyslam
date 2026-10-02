@@ -62,8 +62,17 @@ function apply_patch() {
         echo "patch $2 already applied"
     elif git -C "$dir" apply --check "$patch" &>/dev/null; then
         git -C "$dir" apply "$patch" && echo "patch $2 applied" || { print_red "ERROR: could not apply $2"; exit 1; }
+    elif [[ -n "$PYSLAM_RESET_CLONES" && -e "$dir/.git" ]]; then
+        # the clone has other changes, typically an older version of pySLAM's patch: discard the changes
+        # to tracked files and the files this patch creates (downloaded weights are left alone)
+        print_yellow "thirdparty/$1 has local changes: discarding them to apply $2 (PYSLAM_RESET_CLONES is set)"
+        git -C "$dir" checkout -q -- . \
+            && git -C "$dir" apply --summary "$patch" | awk '/^ create mode/ {print $4}' | while read -r new_file; do rm -f "$dir/$new_file"; done
+        git -C "$dir" apply "$patch" && echo "patch $2 applied" || { print_red "ERROR: could not apply $2 to thirdparty/$1"; exit 1; }
     else
-        print_red "ERROR: $2 does not apply to thirdparty/$1 (local changes?)"
+        print_red "ERROR: $2 does not apply to thirdparty/$1: the folder has local changes, for example an older version of this patch."
+        print_red "  To discard them and apply the current patch, run this script again with PYSLAM_RESET_CLONES=1"
+        print_red "  (it resets the files tracked by git in the cloned model folders; downloaded weights are kept)."
         exit 1
     fi
 }
@@ -83,9 +92,16 @@ function clone_repo() {
                         || { git -C "$dir" fetch -q --depth 1 origin "$commit" && git -C "$dir" checkout -q "$commit"; } \
                         || { git -C "$dir" fetch -q origin && git -C "$dir" checkout -q "$commit"; }; } \
                         || { print_red "ERROR: could not check out $commit in thirdparty/$1"; exit 1; }
+                elif [[ -n "$PYSLAM_RESET_CLONES" ]]; then
+                    print_yellow "thirdparty/$1 is at ${head:0:7} with local changes: discarding them and checking out ${commit:0:7} (PYSLAM_RESET_CLONES is set)"
+                    git -C "$dir" checkout -q -- . \
+                        && { git -C "$dir" checkout -q "$commit" 2>/dev/null \
+                            || { git -C "$dir" fetch -q --depth 1 origin "$commit" && git -C "$dir" checkout -q "$commit"; } \
+                            || { git -C "$dir" fetch -q origin && git -C "$dir" checkout -q "$commit"; }; } \
+                        || { print_red "ERROR: could not check out $commit in thirdparty/$1"; exit 1; }
                 else
                     print_yellow "thirdparty/$1 is at ${head:0:7} with local changes; pySLAM's patch was made for ${commit:0:7}."
-                    print_yellow "  If the next step fails, remove thirdparty/$1 and re-run this script."
+                    print_yellow "  If the next step fails, run this script again with PYSLAM_RESET_CLONES=1."
                 fi
             fi
         fi
@@ -403,6 +419,25 @@ function cuda_home() {
     fi
 }
 
+# have_nvcc: true if there is a CUDA compiler that the environment's C++ compiler can work with.
+# In a conda or pixi environment that is an nvcc of the environment itself (conda-forge's cuda-nvcc):
+# a system nvcc would be run with the environment's gcc, which does not search /usr/include and is
+# usually too new for the system's CUDA.
+function have_nvcc() {
+    local nvcc
+    nvcc=$(command -v nvcc) || return 1
+    if [[ -n "$CONDA_PREFIX" && "$nvcc" != "$CONDA_PREFIX"/* ]]; then
+        print_yellow "The CUDA compiler found ($nvcc) is outside the environment and cannot be used with its C++ compiler."
+        return 1
+    fi
+}
+
+# print_nvcc_hint: how to get a CUDA compiler
+function print_nvcc_hint() {
+    print_yellow "  The pixi level 'full' provides nvcc. In a conda environment, install the compiler matching torch's CUDA version, e.g.:"
+    print_yellow "  conda install -c conda-forge --override-channels cuda-nvcc cuda-cudart-dev cuda-libraries-dev \"cuda-version=$("$PYTHON_EXE" -c 'import torch; print(torch.version.cuda)' 2>/dev/null)\""
+}
+
 # has_cuda: true if torch can use an NVIDIA GPU
 function has_cuda() {
     "$PYTHON_EXE" -c "import sys, torch; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null
@@ -416,8 +451,9 @@ function build_curope() {
         echo "curope already built in thirdparty/$1"
         return 0
     fi
-    if ! command -v nvcc &>/dev/null; then
+    if ! have_nvcc; then
         print_yellow "No CUDA compiler (nvcc): not building curope in thirdparty/$1. The model still works, with a slower PyTorch implementation of RoPE."
+        print_nvcc_hint
         return 0
     fi
     print_blue "Building curope in thirdparty/$1 ..."
@@ -474,10 +510,9 @@ function install_fast3r() {
 function install_gaussian_splatting() {
     # Gaussian splatting (MonoGS): three CUDA extensions, built in the source tree and found through
     # config_libs.yaml (nothing is installed into the environment, and no sudo is needed)
-    if ! command -v nvcc &>/dev/null; then
+    if ! have_nvcc; then
         print_yellow "No CUDA compiler (nvcc): skipping the Gaussian splatting extensions (simple-knn, diff-gaussian-rasterization, lietorch)."
-        print_yellow "  The pixi level 'full' provides nvcc. In a conda environment, install the compiler matching torch's CUDA version, e.g.:"
-        print_yellow "  conda install -c conda-forge --override-channels cuda-nvcc cuda-cudart-dev cuda-libraries-dev \"cuda-version=$("$PYTHON_EXE" -c 'import torch; print(torch.version.cuda)' 2>/dev/null)\""
+        print_nvcc_hint
         return 0
     fi
     # The MonoGS GUI imports the Python binding of GLFW. The pixi level `full` has it; elsewhere install
