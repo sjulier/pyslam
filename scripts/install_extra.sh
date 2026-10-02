@@ -99,27 +99,64 @@ function clone_repo() {
     fi
 }
 
-# download_file <url> <file>: download unless the file is already there
+# file_size <file>: its size in bytes (GNU and BSD stat)
+function file_size() {
+    stat -c %s "$1" 2>/dev/null || stat -f %z "$1"
+}
+
+# set_aside_incomplete <file> <size>: a file that is present with another size than expected is an
+# interrupted download of an older downloader, which wrote to the final name. Make it <file>.part,
+# so that the download continues from it.
+function set_aside_incomplete() {
+    if [ -n "$2" ] && [ -s "$1" ] && [ "$(file_size "$1")" != "$2" ]; then
+        print_yellow "$(basename "$1") is incomplete ($(file_size "$1") of $2 bytes): continuing its download"
+        if [ "$(file_size "$1")" -lt "$2" ]; then mv "$1" "$1.part"; else rm -f "$1"; fi
+    fi
+}
+
+# check_downloaded_size <file> <size>: fail if the downloaded <file>.part does not have the expected size
+function check_downloaded_size() {
+    if [ -n "$2" ] && [ "$(file_size "$1.part")" != "$2" ]; then
+        print_red "ERROR: $(basename "$1") has $(file_size "$1.part") bytes after the download, expected $2"
+        rm -f "$1.part"
+        return 1
+    fi
+}
+
+# download_file <url> <file> [<size in bytes>]: download unless the file is already there (and, if
+# the size is given, complete)
 function download_file() {
+    set_aside_incomplete "$2" "$3"
     if [ ! -s "$2" ]; then
         print_blue "Downloading $(basename "$2") ..."
         mkdir -p "$(dirname "$2")"
-        # resumable: an interrupted download leaves <file>.part, which the next run continues.
-        # A connection without data for 60 s is dropped and retried. curl is used where there is no
-        # wget (macOS).
-        if [[ -z "$PYSLAM_DOWNLOAD_WITH_CURL" ]] && command -v wget &>/dev/null; then
-            wget -q --show-progress --tries=5 --timeout=60 --continue -O "$2.part" "$1"
-        else
-            curl -fL --retry 5 --connect-timeout 60 --speed-limit 1 --speed-time 60 -C - -o "$2.part" "$1"
-        fi && mv "$2.part" "$2" \
+        # resumable: an interrupted download leaves <file>.part, which the next attempt or the next
+        # run continues. A connection without data for 60 s is dropped and retried. curl is used
+        # where there is no wget (macOS).
+        local attempt ok=""
+        for attempt in 1 2 3 4 5; do
+            if [[ -z "$PYSLAM_DOWNLOAD_WITH_CURL" ]] && command -v wget &>/dev/null; then
+                wget -q --show-progress --tries=1 --timeout=60 --continue -O "$2.part" "$1" && ok=1 && break
+            else
+                curl -fL --connect-timeout 60 --speed-limit 1 --speed-time 60 -C - -o "$2.part" "$1" && ok=1 && break
+            fi
+            print_yellow "download of $(basename "$2") interrupted: attempt $attempt/5"
+            sleep 2
+        done
+        [ -n "$ok" ] && check_downloaded_size "$2" "$3" && mv "$2.part" "$2" \
             || { print_red "ERROR: could not download $1 (run this script again to resume)"; exit 1; }
     fi
 }
 
-# gdrive_download_file <Google Drive file id> <file>: download from Google Drive unless the file is
-# already there. gdown alone has no timeout and writes straight to the final name; this goes through
-# pySLAM's downloader, which restarts (and resumes) a stalled download and renames only on success.
+# gdrive_download_file <Google Drive file id> <file> [<size in bytes>]: download from Google Drive
+# unless the file is already there (and, if the size is given, complete). gdown alone has no timeout
+# and writes straight to the final name; this goes through pySLAM's downloader, which restarts (and
+# resumes) a stalled download and renames only on success.
 function gdrive_download_file() {
+    if [ -n "$3" ] && [ -s "$2" ] && [ "$(file_size "$2")" != "$3" ]; then
+        print_yellow "$(basename "$2") is incomplete ($(file_size "$2") of $3 bytes): downloading it again"
+        rm -f "$2"
+    fi
     if [ ! -s "$2" ]; then
         print_blue "Downloading $(basename "$2") ..."
         ensure_python_package "$PYTHON_EXE" gdown gdown || exit 1
@@ -129,7 +166,24 @@ import sys
 from pyslam.utilities.file_management import gdrive_download_with_retry
 gdrive_download_with_retry("https://drive.google.com/uc?id=" + sys.argv[1], sys.argv[2])' "$1" "$2" \
             || { print_red "ERROR: could not download $(basename "$2") from Google Drive (run this script again to resume)"; exit 1; }
+        if [ -n "$3" ] && [ "$(file_size "$2")" != "$3" ]; then
+            print_red "ERROR: $(basename "$2") has $(file_size "$2") bytes after the download, expected $3"
+            rm -f "$2"
+            exit 1
+        fi
     fi
+}
+
+# unpack_archive <archive> <folder>: unpack and remove the archive. An archive that cannot be unpacked
+# (e.g. truncated by an interrupted download) is removed too, so that the next run downloads it again.
+function unpack_archive() {
+    local rc=0
+    case "$1" in
+        *.zip) unzip -o -q "$1" -d "$2" || rc=1 ;;
+        *) tar -C "$2" -xf "$1" || rc=1 ;;
+    esac
+    rm -f "$1"
+    [ $rc -eq 0 ] || { print_red "ERROR: could not unpack $(basename "$1") (removed: run this script again to download it)"; exit 1; }
 }
 
 # component <name> <function>: install one component in a subshell, so that a failure (a download
@@ -159,8 +213,7 @@ function install_features() {
 function install_d2net_model() {
     if [ ! -f thirdparty/d2net/models/d2_ots.pth ]; then
         gdrive_download_file "12Uk95TjBT7VZSEitvm3B3XNK37Q_uU8T" thirdparty/d2net/models/d2net.tar.xz
-        ( cd thirdparty/d2net/models && tar -xf d2net.tar.xz && rm d2net.tar.xz ) \
-            || { print_red "ERROR: could not unpack the D2-Net model"; exit 1; }
+        unpack_archive thirdparty/d2net/models/d2net.tar.xz thirdparty/d2net/models
     fi
 }
 
@@ -169,7 +222,7 @@ function install_netvlad_model() {
     # principal components (92 MB). Without this file Patch-NetVLAD downloads all its seven models
     # (2.9 GB) at the first use, with a downloader that cannot resume.
     download_file "https://huggingface.co/TobiasRobotics/Patch-NetVLAD/resolve/main/mapillary_WPCA512.pth.tar?download=true" \
-        thirdparty/patch_netvlad/patchnetvlad/pretrained_models/mapillary_WPCA512.pth.tar
+        thirdparty/patch_netvlad/patchnetvlad/pretrained_models/mapillary_WPCA512.pth.tar 92488008
 }
 
 function install_vpr() {
@@ -196,20 +249,21 @@ function install_depth_pro() {
     # Depth Pro (monocular, metric)
     clone_repo ml_depth_pro https://github.com/apple/ml-depth-pro.git
     apply_patch ml_depth_pro ml_depth_pro.patch
-    download_file https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt thirdparty/ml_depth_pro/checkpoints/depth_pro.pt   # 1.9 GB
+    download_file https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt thirdparty/ml_depth_pro/checkpoints/depth_pro.pt 1904446787
 }
 
 function install_depth_anything_v2() {
     # Depth Anything V2 (monocular, metric indoor/outdoor models)
     clone_repo depth_anything_v2 https://github.com/DepthAnything/Depth-Anything-V2.git
     apply_patch depth_anything_v2 depth_anything_v2.patch
-    local dataset size model
-    for dataset in Hypersim VKITTI; do
-        for size in Small:vits Base:vitb Large:vitl; do
-            model="depth_anything_v2_metric_$(echo "$dataset" | tr '[:upper:]' '[:lower:]')_${size#*:}.pth"
-            download_file "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-$dataset-${size%:*}/resolve/main/$model?download=true" \
-                "thirdparty/depth_anything_v2/metric_depth/checkpoints/$model"
-        done
+    # <dataset>:<size>:<encoder>:<bytes>
+    local entry dataset size encoder bytes model
+    for entry in Hypersim:Small:vits:99222290 Hypersim:Base:vitb:389965138 Hypersim:Large:vitl:1341401882 \
+                 VKITTI:Small:vits:99221808 VKITTI:Base:vitb:389964656 VKITTI:Large:vitl:1341401064; do
+        IFS=: read -r dataset size encoder bytes <<< "$entry"
+        model="depth_anything_v2_metric_$(echo "$dataset" | tr '[:upper:]' '[:lower:]')_$encoder.pth"
+        download_file "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-$dataset-$size/resolve/main/$model?download=true" \
+            "thirdparty/depth_anything_v2/metric_depth/checkpoints/$model" "$bytes"
     done
 }
 
@@ -220,8 +274,7 @@ function install_raft_stereo() {
         # the link is the one of RAFT-Stereo's download_models.sh
         download_file "https://www.dropbox.com/scl/fi/5khx1bhz84dapi8vtwapg/models.zip?rlkey=ggddrn1du1iiq6mgc2dsdpmwi&dl=1" \
             thirdparty/raft_stereo/models/models.zip
-        ( cd thirdparty/raft_stereo/models && unzip -o -q models.zip && rm -f models.zip ) \
-            || { print_red "ERROR: could not unpack the RAFT-Stereo models"; exit 1; }
+        unpack_archive thirdparty/raft_stereo/models/models.zip thirdparty/raft_stereo/models
     fi
 }
 
@@ -229,7 +282,7 @@ function install_crestereo_pytorch() {
     # CREStereo, PyTorch port (the original needs MegEngine, which is not supported here)
     clone_repo crestereo_pytorch https://github.com/ibaiGorordo/CREStereo-Pytorch.git
     apply_patch crestereo_pytorch crestereo_pytorch.patch
-    gdrive_download_file "1pNVdaSvkgCK9NuU1i66nZVNg87VsGxox" thirdparty/crestereo_pytorch/models/crestereo_eth3d.pth
+    gdrive_download_file "1pNVdaSvkgCK9NuU1i66nZVNg87VsGxox" thirdparty/crestereo_pytorch/models/crestereo_eth3d.pth 21763979
 }
 
 function install_depth_anything_v3() {
@@ -275,13 +328,13 @@ function install_detic() {
     apply_patch detic detic.patch
     apply_patch detic/third_party/CenterNet2 detic/third_party/centernet2.patch  # created by detic.patch
     download_file https://dl.fbaipublicfiles.com/detic/Detic_LCOCOI21k_CLIP_SwinB_896b32_4x_ft4x_max-size.pth \
-        thirdparty/detic/models/Detic_LCOCOI21k_CLIP_SwinB_896b32_4x_ft4x_max-size.pth
+        thirdparty/detic/models/Detic_LCOCOI21k_CLIP_SwinB_896b32_4x_ft4x_max-size.pth 702411632
 }
 
 function install_eov_seg() {
     clone_repo eov_segmentation https://github.com/nhw649/EOV-Seg.git 6f5e93e9aca6ccae89fe492b24018f8530075fc4
     apply_patch eov_segmentation eov_segmentation.patch
-    gdrive_download_file "1dVfHpzmCOlV6hLfUpd3nHXz62wdB7RY2" thirdparty/eov_segmentation/checkpoints/convnext-l.pth   # 2.1 GB
+    gdrive_download_file "1dVfHpzmCOlV6hLfUpd3nHXz62wdB7RY2" thirdparty/eov_segmentation/checkpoints/convnext-l.pth 2267750855
 }
 
 function install_odise() {
@@ -377,7 +430,7 @@ function install_mast3r() {
     apply_patch mast3r/dust3r/croco mast3r-dust3r-croco.patch
     build_curope mast3r/dust3r/croco/models/curope
     download_file https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth \
-        thirdparty/mast3r/checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth
+        thirdparty/mast3r/checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth 2754910614
 }
 
 function install_mvdust3r() {
@@ -387,7 +440,7 @@ function install_mvdust3r() {
     # pySLAM uses the MV-DUSt3R model MVD.pth (6.6 GB). The other checkpoints of MV-DUSt3R (MV-DUSt3R+
     # stages 1 and 2 and DUSt3R 224, 18 GB more) are not used: for those, see
     # thirdparty/mvdust3r_scripts/download_models.py.
-    download_file https://huggingface.co/Zhenggang/MV-DUSt3R/resolve/main/checkpoints/MVD.pth thirdparty/mvdust3r/checkpoints/MVD.pth
+    download_file https://huggingface.co/Zhenggang/MV-DUSt3R/resolve/main/checkpoints/MVD.pth thirdparty/mvdust3r/checkpoints/MVD.pth 6577062741
 }
 
 function install_vggt() {

@@ -58,6 +58,15 @@ def dbow3_orb_vocabulary_factory(*args, **kwargs):
         return DBow3OrbVocabularyData(*args, **kwargs)
 
 
+# Sizes in bytes of the vocabulary files that pySLAM downloads. A file with another size is an
+# interrupted download (older versions wrote directly to the final name).
+kVocabularyFileSizes = {
+    "ORBvoc.txt": 145250924,
+    "ORBvoc.dbow2": 105381767,
+    "ORBvoc.dbow3": 105381669,
+}
+
+
 @register_class
 class VocabularyData(Serializable):
     def __init__(
@@ -74,7 +83,24 @@ class VocabularyData(Serializable):
         self.url_vocabulary = url_vocabulary
         self.url_type = url_type
 
+    def set_aside_incomplete_file(self):
+        """Rename a downloaded vocabulary file that is incomplete, so that it is downloaded again."""
+        if self.url_vocabulary is None or self.vocab_file_path is None:
+            return
+        expected_size = kVocabularyFileSizes.get(os.path.basename(self.vocab_file_path))
+        if expected_size is None or not os.path.exists(self.vocab_file_path):
+            return
+        size = os.path.getsize(self.vocab_file_path)
+        if size != expected_size:
+            incomplete_path = self.vocab_file_path + ".incomplete"
+            Printer.yellow(
+                f"VocabularyData: {self.vocab_file_path} has {size} bytes instead of {expected_size}: "
+                f"it is an incomplete download. Moving it to {incomplete_path} and downloading it again."
+            )
+            os.replace(self.vocab_file_path, incomplete_path)
+
     def check_download(self):
+        self.set_aside_incomplete_file()
         if self.url_vocabulary is not None and not os.path.exists(self.vocab_file_path):
             if self.url_type == "gdrive":
                 gdrive_url = self.url_vocabulary
