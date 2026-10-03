@@ -32,6 +32,16 @@ from pyslam.slam import Camera
 from pyslam.utilities.logging import Printer
 
 
+# WSL2: the Rerun viewer (spawned as its own process, which inherits this environment) crashes on
+# WSLg with its default graphics back-end ("Invalid surface": EGL for Wayland in an X11 window, and
+# WSLg's Mesa cannot render to the formats Rerun needs). The software Vulkan renderer works. Only under
+# WSL, and only if the user has not chosen a back-end.
+import platform
+
+if "microsoft" in platform.uname().release.lower() and "WGPU_BACKEND" not in os.environ:
+    os.environ["WGPU_BACKEND"] = "vulkan"
+
+
 def check_command_start(command):
     try:
         process = subprocess.Popen(
