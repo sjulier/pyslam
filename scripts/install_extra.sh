@@ -375,7 +375,12 @@ function install_detic() {
 function install_eov_seg() {
     clone_repo eov_segmentation https://github.com/nhw649/EOV-Seg.git 6f5e93e9aca6ccae89fe492b24018f8530075fc4
     apply_patch eov_segmentation eov_segmentation.patch
-    gdrive_download_file "1dVfHpzmCOlV6hLfUpd3nHXz62wdB7RY2" thirdparty/eov_segmentation/checkpoints/convnext-l.pth 2267750855
+    # its weights (2.3 GB) are only of use with an NVIDIA GPU: the check skips EOV-Seg without one
+    if has_cuda; then
+        gdrive_download_file "1dVfHpzmCOlV6hLfUpd3nHXz62wdB7RY2" thirdparty/eov_segmentation/checkpoints/convnext-l.pth 2267750855
+    else
+        print_yellow "EOV-Seg needs an NVIDIA GPU with CUDA: not downloading its model (2.3 GB) on this machine."
+    fi
 }
 
 function install_odise() {

@@ -43,9 +43,12 @@ EXTRA_COMPONENTS = {
 
 # Code run in a child process for one component. It prints one JSON line prefixed by RESULT.
 _CHILD = r'''
-import json, os, sys, time, traceback
+import json, os, socket, sys, time, traceback
 kind, name = sys.argv[1], sys.argv[2]
 out = {"status": "FAIL"}
+# a model download whose connection goes silent (e.g. after a change of network) fails after this
+# many seconds without data, instead of blocking the check for good
+socket.setdefaulttimeout(120)
 try:
     # import pyslam before torch: on macOS pyslam sets PYTORCH_ENABLE_MPS_FALLBACK, which torch only
     # reads when it is first imported (otherwise e.g. ALIKED fails on MPS with NotImplementedError)
@@ -89,6 +92,11 @@ try:
             # its backbone uses detectron2's deformable convolution, which has no CPU implementation
             out["status"] = "SKIP"
             out["result"] = "needs an NVIDIA GPU with CUDA (deformable convolution)"
+            raise SystemExit
+        if name == "ODISE" and not torch.cuda.is_available():
+            # it runs on the CPU, but its diffusion backbone took over an hour for one image on a Mac
+            out["status"] = "SKIP"
+            out["result"] = "needs an NVIDIA GPU with CUDA to run in reasonable time (diffusion backbone)"
             raise SystemExit
         from pyslam.semantics.semantic_segmentation_factory import semantic_segmentation_factory
         from pyslam.semantics.semantic_segmentation_types import SemanticSegmentationType
