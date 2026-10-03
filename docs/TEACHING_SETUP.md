@@ -99,7 +99,12 @@ how to work in a pixi shell instead.
   `PYSLAM_BUILD_JOBS=1` to build one file at a time. On **Windows**, WSL2 gets only half of the
   computer's memory by default: if the build stops with `Killed signal terminated program cc1plus`,
   close other programs, or give WSL more memory (`memory=` and `swap=` in
-  `%UserProfile%\.wslconfig`, then `wsl --shutdown`) and run `pixi run build` again.
+  `%UserProfile%\.wslconfig`, then `wsl --shutdown`) and run `pixi run build` again. One file of
+  GTSAM alone needs about 11 GB, so on a laptop with 16 GB of memory (WSL2 then gets about 8 GB) give
+  WSL more memory or swap **before** a build from source. None of this applies when `build`
+  installs the prebuilt modules.
+- **Compiler warnings** such as `-Wmaybe-uninitialized` from Eigen during a build from source are
+  harmless (they appear on CPUs with AVX-512).
 - **Do not `pip install` into the environment** and do not run `./clean.sh` casually: it deletes the
   build folders, and rebuilding takes up to an hour.
 - **If you change pySLAM's C++ code, rebuild with `pixi run build`**, never with a module's own
