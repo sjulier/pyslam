@@ -37,7 +37,7 @@ platforms = [
   { name = "osx-arm64-14", platform = "osx-arm64", macos = "14.0" },  # Qt 6 (opencv, pyside6, open3d) needs macOS >= 14
   { name = "linux-64-cuda", platform = "linux-64", cuda = "12" },
 ]
-version = "2.10.7"
+version = "2.10.8"
 
 [activation.env]
 # Keep ~/.local/lib/pythonX.Y/site-packages out of the environment

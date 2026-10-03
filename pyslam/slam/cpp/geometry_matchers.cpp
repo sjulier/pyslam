@@ -59,9 +59,7 @@ std::tuple<std::vector<int>, std::vector<int>, int> ProjectionMatcher::search_fr
     const bool check_already_matched_ref_idxs = !already_matched_ref_idxs.empty();
     if (check_already_matched_ref_idxs) {
         already_matched_ref_idxs_flags.resize(f_ref->points.size(), false);
-        for (const int &idx : already_matched_ref_idxs) {
-            // The indices come from Python and can be stale (the reference points may have
-            // changed since they were computed): never write outside the flags.
+        for (const int idx : already_matched_ref_idxs) {
             if (idx >= 0 && idx < static_cast<int>(already_matched_ref_idxs_flags.size())) {
                 already_matched_ref_idxs_flags[idx] = true;
             }
@@ -278,9 +276,9 @@ ProjectionMatcher::search_keyframe_by_projection(
     const bool check_already_matched_ref_idxs = !already_matched_ref_idxs.empty();
     if (check_already_matched_ref_idxs) {
         already_matched_ref_idxs_flags.resize(ref_mps.size(), false);
-        for (const int &idx : already_matched_ref_idxs) {
-            // The indices come from Python and can be stale (the reference points may have
-            // changed since they were computed): never write outside the flags.
+        for (const int idx : already_matched_ref_idxs) {
+            // Indices are into get_matched_points(), not the keypoint array.
+            // vector<bool> does not bounds-check; an out-of-range write corrupts the heap.
             if (idx >= 0 && idx < static_cast<int>(already_matched_ref_idxs_flags.size())) {
                 already_matched_ref_idxs_flags[idx] = true;
             }
@@ -764,8 +762,9 @@ int ProjectionMatcher::search_and_fuse(const std::vector<MapPointPtr> &points,
             const auto kpsu = keyframe->kpsu.row(kd_idx);
             const Eigen::Vector2f err = proj_uv.cast<float>() - kpsu.transpose();
             float chi2 = err.squaredNorm() * invSigma2;
-            const float kp_ur = keyframe->kps_ur[kd_idx];
-            if (do_stereo_check && kp_ur >= 0) {
+            // kps_ur is empty for monocular keyframes
+            const float kp_ur = do_stereo_check ? keyframe->kps_ur[kd_idx] : -1.0f;
+            if (kp_ur >= 0) {
                 const float proj_ur = proj[2];
                 chi2 += (kp_ur - proj_ur) * (kp_ur - proj_ur) * invSigma2;
                 if (chi2 > Parameters::kChi2Stereo) {
@@ -919,9 +918,9 @@ std::vector<MapPointPtr> &ProjectionMatcher::search_and_fuse_for_loop_correction
 //   s12, R12, t12: sim3 transformation that guides the matching
 // out:
 //   - new_matches12: where kf2.points(new_matches12[i]) is matched to i-th map point in kf1
-//   (includes the input matches) if new_matches12[i]>0
+//   (includes the input matches) if new_matches12[i]>=0
 //   - new_matches21: where kf1.points(new_matches21[i]) is matched to i-th map point in kf2
-//   (includes the input matches) if new_matches21[i]>0
+//   (includes the input matches) if new_matches21[i]>=0
 std::tuple<int, std::vector<int>, std::vector<int>>
 ProjectionMatcher::search_by_sim3(const KeyFramePtr &kf1, const KeyFramePtr &kf2,
                                   const std::vector<int> &idxs1, const std::vector<int> &idxs2,
