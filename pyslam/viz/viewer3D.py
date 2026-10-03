@@ -17,7 +17,10 @@
 * along with PYSLAM. If not, see <http://www.gnu.org/licenses/>.
 """
 
+import os
 import platform
+import subprocess
+import sys
 
 import pyslam.config as config
 
@@ -84,6 +87,45 @@ kRefreshDurationTime = 0.03  # [s]
 # ========================================================
 # Viz base classes
 # ========================================================
+
+
+# Prints the OpenGL renderer that Mesa gives on the X display, without opening a window. It runs in a
+# process of its own: when no context can be created, Xlib ends the process.
+kGlRendererProbe = r"""
+import ctypes, sys
+from ctypes import c_char_p, c_int, c_ulong, c_void_p
+x11, gl = ctypes.CDLL("libX11.so.6"), ctypes.CDLL("libGL.so.1")
+x11.XOpenDisplay.restype = c_void_p
+gl.glXChooseFBConfig.restype = ctypes.POINTER(c_void_p)
+gl.glXCreateNewContext.restype = c_void_p
+gl.glXCreatePbuffer.restype = c_ulong
+gl.glGetString.restype = c_char_p
+dpy = c_void_p(x11.XOpenDisplay(None))
+if not dpy:
+    sys.exit(1)
+n = c_int()
+configs = gl.glXChooseFBConfig(dpy, 0, (c_int * 3)(0x8010, 0x4, 0), ctypes.byref(n))  # a pbuffer config
+config = c_void_p(configs[0])
+ctx = c_void_p(gl.glXCreateNewContext(dpy, config, 0x8014, None, 1))  # GLX_RGBA_TYPE, direct
+pbuffer = c_ulong(gl.glXCreatePbuffer(dpy, config, (c_int * 5)(0x8041, 16, 0x8040, 16, 0)))  # 16x16
+gl.glXMakeContextCurrent(dpy, pbuffer, pbuffer, ctx)
+print((gl.glGetString(0x1F01) or b"").decode())  # GL_RENDERER
+"""
+
+
+def wsl_d3d12_renders():
+    """WSL2: True if Mesa's Direct3D 12 driver gives an OpenGL context on this machine."""
+    try:
+        probe = subprocess.run(
+            [sys.executable, "-c", kGlRendererProbe],
+            env={**os.environ, "GALLIUM_DRIVER": "d3d12"},
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return probe.stdout.startswith("D3D12")
 
 
 class VizPointCloud:
@@ -662,7 +704,20 @@ class Viewer3D(object):
     def viewer_init(self, w, h):
         # pangolin.ParseVarsFile('app.cfg')
 
+        # WSL2: WSLg's X server offers no direct rendering, so Mesa renders in software (llvmpipe) and
+        # the viewer takes 5 to 7 CPU cores, unless Mesa is told to use WSL's Direct3D 12 driver (less
+        # than one core). Only under WSL with its GPU device, only if the user has not chosen a driver,
+        # and only if that driver works here: Mesa does not fall back by itself when it does not.
+        if (
+            "microsoft" in platform.uname().release.lower()
+            and os.path.exists("/dev/dxg")
+            and "GALLIUM_DRIVER" not in os.environ
+            and "LIBGL_ALWAYS_SOFTWARE" not in os.environ
+            and wsl_d3d12_renders()
+        ):
+            os.environ["GALLIUM_DRIVER"] = "d3d12"
         pangolin.CreateWindowAndBind("Map Viewer", w, h)
+        print(f"Viewer3D: OpenGL renderer: {gl.glGetString(gl.GL_RENDERER).decode()}", flush=True)
         gl.glEnable(gl.GL_DEPTH_TEST)
 
         viewpoint_x = 0 * self.scale
