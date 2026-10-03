@@ -1,0 +1,48 @@
+{
+    // The default evaluation of main_slam_evaluation.py (pixi run slam-evaluation): the KITTI 06 video
+    // that comes with pySLAM, so it needs no download. The command line of main_slam_evaluation.py
+    // replaces the sequence (--video, --images), the presets (--features) and the number of runs
+    // (--runs): see main_slam_evaluation.py --help.
+
+    "num_threads" : 1, // Number of runs at the same time (results may get worse with more than one)
+
+    "dataset_base_path": "data/videos/kitti06", // Relative to the root folder
+    "dataset_type": "VIDEO_DATASET",
+
+    "number_of_runs_per_dataset": 3,
+
+    "sensor_type": "mono",
+
+    "datasets": [
+      {
+        "name": "video_color.mp4",
+        "settings_path": "settings/KITTI04-12.yaml",  // Relative to the root folder
+        "timestamps": "times.txt",                    // Optional, in the folder of the video
+        "groundtruth_file": "groundtruth.txt"         // Optional, in the folder of the video
+      }
+    ],
+
+    // Each preset configures a SLAM pipeline that is run on each dataset.
+    // Features other than ORB need a loop detector that computes its own descriptors (the vocabulary
+    // of DBOW3 is made of ORB descriptors): DBOW3_INDEPENDENT.
+    "presets": [
+      {
+        "name": "ORB2",
+        "custom_parameters": {
+          "settings": { "FeatureTrackerConfig.name": "ORB2" }
+        }
+      },
+      {
+        "name": "ROOT_SIFT",
+        "custom_parameters": {
+          "settings": {
+            "FeatureTrackerConfig.name": "ROOT_SIFT",
+            "LoopDetectionConfig.name": "DBOW3_INDEPENDENT"
+          }
+        }
+      }
+    ],
+
+    "output_path": "video",
+    "saved_trajectory_format_type": "kitti"
+}

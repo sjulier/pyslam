@@ -284,13 +284,25 @@ class LiveDataset(Dataset):
         return np.ascontiguousarray(image)
 
 
-def timestamp_from_image_filename(image_file):
-    """Parse a timestamp from an image filename stem, or None if not numeric."""
+def timestamp_from_image_filename(image_file, period):
+    """The timestamp [s] that the name of an image stands for, or None if the name is not a number.
+
+    - A number with a decimal point is a timestamp in seconds (TUM: 1305031102.175304.png).
+    - An integer is a frame number (KITTI: 000123.png, or frames extracted from a video): its
+      timestamp is frame number x period, the period being 1/fps. Read as seconds, a numbered folder
+      was played at one frame per second whatever its fps.
+    - An integer of 16 digits or more is a timestamp in nanoseconds (EuRoC: 1403636579763555584.png).
+    """
     img_name = os.path.splitext(os.path.basename(image_file))[0]
     try:
-        return float(img_name)
+        value = float(img_name)
     except ValueError:
         return None
+    if not img_name.strip().lstrip("+-").isdigit():
+        return value  # seconds
+    if value >= 1e15:
+        return value * 1e-9  # nanoseconds
+    return value * period  # frame number
 
 
 def folder_image_timestamps(image_file, next_image_file, period, current_timestamp):
@@ -299,13 +311,13 @@ def folder_image_timestamps(image_file, next_image_file, period, current_timesta
     next_image_file is None on the last frame. current_timestamp is used only
     when the current filename stem is not numeric.
     """
-    timestamp = timestamp_from_image_filename(image_file)
+    timestamp = timestamp_from_image_filename(image_file, period)
     if timestamp is None:
         timestamp = current_timestamp + period
         return timestamp, timestamp + period
     if next_image_file is None:
         return timestamp, timestamp + period
-    next_timestamp = timestamp_from_image_filename(next_image_file)
+    next_timestamp = timestamp_from_image_filename(next_image_file, period)
     if next_timestamp is None:
         return timestamp, timestamp + period
     return timestamp, next_timestamp

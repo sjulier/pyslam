@@ -114,6 +114,36 @@ and the pair with `--test`, e.g. `pixi run feature-matching --features SUPERPOIN
 `pixi run feature-matching --list` lists the features and which `pixi run models...` task installs
 their models. `pixi run vo --features ORB2` chooses the features of visual odometry the same way.
 
+`pixi run slam-evaluation` runs SLAM several times without windows and makes a table of the results:
+by default 3 runs with ORB2 and 3 with ROOT_SIFT features on the bundled KITTI 06 video (about 15
+minutes). It prints the tables at the end (trajectory error `rmse` and `max` in metres, and
+`percent_lost`, the percentage of frames where tracking was lost) and writes them, a `report.html`
+and one folder per run to `results/eval_<date>/`. A run that fails is reported in red with the reason.
+Choose the features, the number of runs and the sequence:
+
+```bash
+pixi run slam-evaluation --features ORB2 SUPERPOINT --runs 5
+pixi run slam-evaluation --video my/video.mp4 --settings settings/MY_CAMERA.yaml
+pixi run slam-evaluation --images my/images --pattern "*.jpg" --fps 30 --settings settings/MY_CAMERA.yaml
+pixi run slam-evaluation --tum my/tum_sequence --settings settings/MY_CAMERA.yaml
+```
+
+- `--features`: the names of `pixi run feature-matching --list`, except the `LK_*` ones.
+- `--video`, `--images` (a folder of images, in the order of their names) and `--tum` need `--settings`,
+  the calibration of your camera: copy a file of `settings/`, e.g. `WEBCAM.yaml`, and set `Camera.fx`,
+  `Camera.fy`, `Camera.cx`, `Camera.cy`, the distortion, and the image size.
+- Without ground truth there is no trajectory error, only `percent_lost`. With `--groundtruth NAME`,
+  a file in the folder of the sequence with one line per frame (`timestamp x y z qx qy qz qw scale`),
+  the trajectory errors are computed too.
+- `--tum` reads a sequence in the layout of the TUM RGB-D datasets as those are read: the images, their
+  timestamps and their order come from the list of the frames (`associations.txt`, or `rgb.txt` for a
+  sequence without depth images: `timestamp rgb/<timestamp>.png` per line), and the ground truth from
+  `groundtruth.txt` (`timestamp tx ty tz qx qy qz qw` per line), which a TUM sequence must have.
+- `--jobs 2` runs two at a time: faster, but the results get worse when the machine cannot keep up.
+- `pixi run slam-evaluation --help` lists all the options. The public datasets (TUM, KITTI, EuRoC)
+  are evaluated with `-c pyslam/evaluation/configs/evaluation_tum.json` (and the like) after
+  downloading them and setting `dataset_base_path` in that file.
+
 `pixi run vo` (visual odometry) shows its results in the Rerun viewer. It stops at the end of the
 sequence, when you close the Rerun window, or with Ctrl+C; `pixi run vo --no-rerun` uses separate
 windows instead, where `q` quits.
@@ -143,6 +173,14 @@ windows instead, where `q` quits.
 - **WSL2 and the Rerun viewer** (`pixi run vo`): under WSL2 pySLAM starts Rerun's viewer with its
   software Vulkan renderer (`WGPU_BACKEND=vulkan`), because the default one crashes on WSLg with
   "Invalid surface". To try another renderer, set `WGPU_BACKEND` yourself before `pixi run vo`.
+- **WSL2 and the 3D viewer** (`pixi run slam`): under WSL2 the 3D viewer draws with the computer's GPU
+  through WSL's Direct3D 12 driver, and prints the renderer it uses (`Viewer3D: OpenGL renderer: D3D12
+  (...)`). Where that driver does not work it draws in software (`llvmpipe`), which takes several CPU
+  cores. Do not install NVIDIA's Linux drivers inside WSL: the GPU comes from the Windows driver. To
+  choose the renderer yourself, set `GALLIUM_DRIVER` (e.g. `llvmpipe`) before `pixi run slam`.
+- **WSL2: only some of the windows open**, or none: Windows' display for Linux programs (WSLg) may have
+  stopped responding. Close the Ubuntu terminals, run `wsl --shutdown` in PowerShell and start again. If
+  it happens again, try `QT_QPA_PLATFORM=xcb pixi run slam`.
 - **Do not `pip install` into the environment** and do not run `./clean.sh` casually: it deletes the
   build folders, and rebuilding takes up to an hour.
 - **If you change pySLAM's C++ code, rebuild with `pixi run build`**, never with a module's own

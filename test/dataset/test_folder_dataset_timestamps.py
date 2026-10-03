@@ -38,28 +38,37 @@ from pyslam.io.dataset_types import DatasetType, SensorType
 
 
 class TestTimestampFromImageFilename(TestCase):
-    def test_integer_stem(self):
-        self.assertEqual(timestamp_from_image_filename("/data/000123.png"), 123.0)
+    def test_integer_stem_is_a_frame_number(self):
+        self.assertAlmostEqual(timestamp_from_image_filename("/data/000123.png", 0.1), 12.3)
+
+    def test_long_integer_stem_is_nanoseconds(self):
+        self.assertAlmostEqual(
+            timestamp_from_image_filename("1403636579763555584.png", 0.05),
+            1403636579.763555584,
+            places=5,
+        )
 
     def test_fractional_tum_stem(self):
         self.assertAlmostEqual(
-            timestamp_from_image_filename("1305031102.175304.png"),
+            timestamp_from_image_filename("1305031102.175304.png", 0.1),
             1305031102.175304,
         )
 
     def test_non_numeric_stem(self):
-        self.assertIsNone(timestamp_from_image_filename("frame_001.png"))
+        self.assertIsNone(timestamp_from_image_filename("frame_001.png", 0.1))
 
     def test_uses_basename_not_parent_digits(self):
-        self.assertIsNone(timestamp_from_image_filename("/run/123/image.png"))
+        self.assertIsNone(timestamp_from_image_filename("/run/123/image.png", 0.1))
 
 
 class TestFolderImageTimestamps(TestCase):
     def test_integer_sequence_and_last_frame(self):
         ts, nxt = folder_image_timestamps("000.png", "001.png", 0.1, 0.0)
-        self.assertEqual((ts, nxt), (0.0, 1.0))
+        self.assertAlmostEqual(ts, 0.0)
+        self.assertAlmostEqual(nxt, 0.1)
         ts, nxt = folder_image_timestamps("002.png", None, 0.1, 1.0)
-        self.assertEqual((ts, nxt), (2.0, 2.1))
+        self.assertAlmostEqual(ts, 0.2)
+        self.assertAlmostEqual(nxt, 0.3)
 
     def test_fractional_stems(self):
         ts, nxt = folder_image_timestamps(
@@ -75,8 +84,8 @@ class TestFolderImageTimestamps(TestCase):
 
     def test_next_name_not_numeric(self):
         ts, nxt = folder_image_timestamps("10.png", "frame_11.png", 0.1, 0.0)
-        self.assertAlmostEqual(ts, 10.0)
-        self.assertAlmostEqual(nxt, 10.1)
+        self.assertAlmostEqual(ts, 1.0)
+        self.assertAlmostEqual(nxt, 1.1)
 
 
 class TestFolderDatasetGetImageTimestamps(TestCase):
@@ -115,7 +124,7 @@ class TestFolderDatasetGetImageTimestamps(TestCase):
         with tempfile.TemporaryDirectory() as folder:
             self._write_images(folder, ["000.png", "001.png", "002.png"])
             got = self._read_all(folder)
-        self._assert_timestamp_pairs(got, [(0.0, 1.0), (1.0, 2.0), (2.0, 2.1)])
+        self._assert_timestamp_pairs(got, [(0.0, 0.1), (0.1, 0.2), (0.2, 0.3)])
 
     def test_fractional_filename_stems(self):
         with tempfile.TemporaryDirectory() as folder:
