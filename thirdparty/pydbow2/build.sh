@@ -10,6 +10,11 @@ if [[ -z "$PIXI_PROJECT_NAME" && -z "$PYSLAM_ALLOW_NON_PIXI" ]]; then
     exit 1
 fi
 
+# Parallel jobs, limited by the available memory (see get_build_jobs in bash_utils.sh)
+NUM_JOBS=$( . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../bash_utils.sh" >/dev/null 2>&1 && get_build_jobs )
+NUM_JOBS=${NUM_JOBS:-4}
+echo "Building with $NUM_JOBS parallel jobs (set PYSLAM_BUILD_JOBS to change)"
+
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 cd ${SCRIPT_DIR}
 
@@ -51,7 +56,7 @@ if [ ! -d build ]; then
 fi
 cd build 
 cmake .. -DCMAKE_BUILD_TYPE=Release $EXTERNAL_OPTIONS $MAC_OPTIONS
-make -j8
+make -j "$NUM_JOBS"
 
 cd ${SCRIPT_DIR}
 if [ ! -d build ]; then
@@ -59,4 +64,4 @@ if [ ! -d build ]; then
 fi
 cd build 
 cmake .. -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE=$PYTHON_EXE $EXTERNAL_OPTIONS $MAC_OPTIONS
-make -j8
+make -j "$NUM_JOBS"

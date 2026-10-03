@@ -10,6 +10,11 @@ if [[ -z "$PIXI_PROJECT_NAME" && -z "$PYSLAM_ALLOW_NON_PIXI" ]]; then
     exit 1
 fi
 
+# Parallel jobs, limited by the available memory (see get_build_jobs in bash_utils.sh)
+NUM_JOBS=$( . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../bash_utils.sh" >/dev/null 2>&1 && get_build_jobs )
+NUM_JOBS=${NUM_JOBS:-4}
+echo "Building with $NUM_JOBS parallel jobs (set PYSLAM_BUILD_JOBS to change)"
+
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd ) # get script dir (this should be the main folder directory of PLVS)
 SCRIPT_DIR=$(readlink -f $SCRIPT_DIR)  # this reads the actual path if a symbolic directory is used
 
@@ -59,7 +64,7 @@ if [ ! -f pypangolin.cpython-*.so ]; then
                 -DBUILD_PANGOLIN_OPENNI=OFF -DBUILD_PANGOLIN_OPENNI2=OFF \
                 -DBUILD_PANGOLIN_FFMPEG=OFF -DBUILD_PANGOLIN_LIBOPENEXR=OFF \
                 $EXTERNAL_OPTIONS $MAC_OPTIONS 
-    make -j8
+    make -j "$NUM_JOBS"
     cd ..
     #python setup.py install
 fi
