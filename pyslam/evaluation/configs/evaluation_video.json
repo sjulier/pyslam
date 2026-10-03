@@ -43,6 +43,10 @@
       }
     ],
 
+    // Options of main_slam.py for every run, e.g. "--throttle" or "--speed 0.5" for features that
+    // cannot keep up with the camera's frame rate (they lose track otherwise)
+    // "main_slam_options": "--throttle",
+
     "output_path": "video",
     "saved_trajectory_format_type": "kitti"
 }

@@ -434,6 +434,9 @@ class SlamEvaluationManager:
             f'"{sys.executable}" -O "{main_slam_path}"'
             f' --headless --no_output_date -c "{current_config_file_path}"'
         )
+        # e.g. "--throttle" or "--speed 0.5", for features that cannot keep up with the camera
+        if self.json_data.get("main_slam_options"):
+            command += " " + self.json_data["main_slam_options"]
 
         print("command: " + command)
 
@@ -566,6 +569,7 @@ class SlamEvaluationManager:
         number_of_runs_per_dataset,
         metrics,
         precision=5,
+        higher_is_better=False,
     ):
         # Before generating the table, let's check if the provided metric is available
         is_metric_available = False
@@ -646,9 +650,9 @@ class SlamEvaluationManager:
         row_best_preset = ["Best (Average) Preset"]
         row_best_average = ["Best (Average) Metric"]
         best_preset_name = ""
-        best_average = float("inf")
+        best_average = float("-inf") if higher_is_better else float("inf")
         for preset_name, average in map_preset_to_average.items():
-            if average < best_average:
+            if (average > best_average) if higher_is_better else (average < best_average):
                 best_preset_name = preset_name
                 best_average = average
         writer.writerow(row_best_preset + [best_preset_name])
@@ -692,10 +696,25 @@ class SlamEvaluationManager:
             self.number_of_runs_per_dataset,
             self.metrics,
         )
+        # the trajectory errors are over the tracked frames only: read them with this table
+        map_preset_to_percent_tracked, out_table_percent_tracked_path = self.write_comparative_table(
+            self.output_path,
+            "percent_tracked",
+            self.presets,
+            self.datasets,
+            self.number_of_runs_per_dataset,
+            self.metrics,
+            higher_is_better=True,
+        )
         # a table is missing when its metric is not available (e.g. no ground truth: no rmse and max)
         table_paths = [
             path
-            for path in (out_table_ATE_path, out_table_max_path, out_table_percent_lost_path)
+            for path in (
+                out_table_ATE_path,
+                out_table_max_path,
+                out_table_percent_tracked_path,
+                out_table_percent_lost_path,
+            )
             if path
         ]
 
