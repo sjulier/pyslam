@@ -27,8 +27,6 @@ thirdparty/opencv
 thirdparty/open3d
 thirdparty/gtsam
 thirdparty/gtsam_local
-thirdparty/.native_bundle.json
-thirdparty/.pyslam_march
 thirdparty/gtsam_factors/lib
 thirdparty/gtsam_factors/build
 thirdparty/gtsam_factors/include
