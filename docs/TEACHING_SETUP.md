@@ -37,9 +37,12 @@ Open a new terminal, and check with `pixi --version` (0.81 or later). You also n
 ## 2. Get the code
 
 ```bash
-git clone https://github.com/sjulier/pyslam.git
+git clone --depth 1 https://github.com/sjulier/pyslam.git
 cd pyslam
 ```
+
+`--depth 1` downloads only the current version, without the project's history: about 0.6 GB
+instead of 1.1 GB. `git pull` still updates it later.
 
 Run all the commands below from this folder. If you already have an older pySLAM checkout (for
 example one set up with conda), make a fresh clone instead of updating it.

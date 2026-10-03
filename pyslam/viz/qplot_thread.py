@@ -41,6 +41,7 @@ QVector3D = QtGui.QVector3D
 import numpy as np
 import time
 import math
+import re
 import os
 import logging
 
@@ -120,6 +121,28 @@ class SharedSingletonLock:
 # pyqtgraph's single-letter colours that have poor contrast on the white plot background ('c', 'g'
 # and 'y' are (0,255,255), (0,255,0) and (255,255,0)): drawn with darker shades instead.
 _COLORS_ON_WHITE = {"c": (0, 150, 190), "g": (0, 160, 0), "y": (200, 150, 0)}
+
+
+# Labels are written in matplotlib's mathtext (e.g. "# $KF_{ref}$ tracked pts", rendered by Mplot2d);
+# pyqtgraph shows them as HTML, so the $...$ parts are converted: X_{ab} -> X<sub>ab</sub>,
+# X^{ab} -> X<sup>ab</sup>, and the usual Greek letters.
+_MATHTEXT_SYMBOLS = {
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε", "theta": "θ",
+    "lambda": "λ", "mu": "μ", "pi": "π", "rho": "ρ", "sigma": "σ", "tau": "τ", "phi": "φ",
+    "chi": "χ", "omega": "ω", "Delta": "Δ", "Sigma": "Σ", "Omega": "Ω", "Phi": "Φ",
+}
+
+
+def mathtext_to_html(text):
+    def convert(expr):
+        expr = re.sub(r"\\([A-Za-z]+)", lambda m: _MATHTEXT_SYMBOLS.get(m.group(1), m.group(1)), expr)
+        expr = re.sub(r"_\{([^}]*)\}|_(\w)", lambda m: f"<sub>{m.group(1) or m.group(2)}</sub>", expr)
+        expr = re.sub(r"\^\{([^}]*)\}|\^(\w)", lambda m: f"<sup>{m.group(1) or m.group(2)}</sup>", expr)
+        return expr
+
+    if not isinstance(text, str) or "$" not in text:
+        return text
+    return re.sub(r"\$([^$]*)\$", lambda m: convert(m.group(1)), text)
 
 
 class Qplot2d:
@@ -238,8 +261,8 @@ class Qplot2d:
             labelTextColor=(20, 20, 20),
         )
         self.legend.setZValue(1000)
-        self.win.setLabel("left", self.ylabel)  # Set the y-axis label
-        self.win.setLabel("bottom", self.xlabel)  # Set the x-axis label
+        self.win.setLabel("left", mathtext_to_html(self.ylabel))  # Set the y-axis label
+        self.win.setLabel("bottom", mathtext_to_html(self.xlabel))  # Set the x-axis label
 
         self.win.showGrid(x=True, y=True, alpha=0.5)  # Show grid
 
@@ -334,10 +357,10 @@ class Qplot2d:
             else:
                 if append:
                     handle_data = ([xy_signal[0]], [xy_signal[1]])  # append the first sample
-                    kwargs = {"x": [xy_signal[0]], "y": [xy_signal[1]], "pen": pg.mkPen(color, width=self.line_width), "name": name}
+                    kwargs = {"x": [xy_signal[0]], "y": [xy_signal[1]], "pen": pg.mkPen(color, width=self.line_width), "name": mathtext_to_html(name)}
                 else:
                     handle_data = (xy_signal[0], xy_signal[1])
-                    kwargs = {"x": xy_signal[0], "y": xy_signal[1], "pen": pg.mkPen(color, width=self.line_width), "name": name}
+                    kwargs = {"x": xy_signal[0], "y": xy_signal[1], "pen": pg.mkPen(color, width=self.line_width), "name": mathtext_to_html(name)}
                     self.updateMinMax(xy_signal[0], xy_signal[1])
                 if linestyle != "":
                     kwargs["style"] = linestyle
