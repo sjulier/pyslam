@@ -15,8 +15,12 @@ Each component runs in its own process on the bundled KITTI 06 test images:
   Gaussian splatting: run its three CUDA extensions (both skipped, with the reason, on a machine
   without an NVIDIA GPU).
 
-usage: python scripts/extras_check.py <features|vpr|depth|semantics|scene3d> [COMPONENT ...]   (run from anywhere)
-Exits with 1 if any component fails.
+usage: python scripts/extras_check.py <extra> [COMPONENT ...]   (run from anywhere)
+       <extra>: features, features-core, vpr, vpr-core, depth, semantics, scene3d (see install_extra.sh)
+
+A component whose model weights could not be downloaded (no network, a server that does not answer,
+a download quota) is reported as UNTRIED, not as failed: run the check again later.
+Exit code: 0 if every component is OK or skipped, 1 if one failed, 3 if some are only untried.
 """
 import json
 import os
@@ -33,6 +37,9 @@ EXTRA_COMPONENTS = {
         "KEYNETAFFNETHARDNET", "BRISK_TFEAT", "ORB2_HARDNET", "ORB2_SOSNET", "ORB2_L2NET", "LOFTR",
     ],
     "vpr": ["ALEXNET", "NETVLAD", "COSPLACE", "EIGENPLACES", "MEGALOC"],
+    # the recommended first steps (pixi tasks models-features and models-vpr)
+    "features-core": ["SUPERPOINT", "LIGHTGLUE"],
+    "vpr-core": ["COSPLACE"],
     "depth": [
         "DEPTH_ANYTHING_V2", "DEPTH_PRO", "DEPTH_RAFT_STEREO", "DEPTH_CRESTEREO_PYTORCH",
         "DEPTH_ANYTHING_V3",
@@ -184,6 +191,23 @@ except SystemExit:
     pass  # the status and the result are already set
 except BaseException as e:  # noqa: BLE001
     out["error"] = f"{type(e).__name__}: {e}".splitlines()[0][:200]
+    # a download that failed (network, server, quota) leaves the component untried, not failed
+    network_errors = {
+        "URLError", "timeout", "TimeoutError", "ConnectionError", "ConnectionResetError",
+        "ConnectionRefusedError", "ConnectTimeout", "ReadTimeout", "IncompleteRead",
+        "RemoteDisconnected", "ChunkedEncodingError", "ContentTooShortError",
+        "LocalEntryNotFoundError", "FileURLRetrievalError", "gaierror",
+    }
+    chain, x = [], e
+    while x is not None and len(chain) < 8:
+        chain.append(x)
+        x = x.__cause__ or x.__context__
+    for x in chain:
+        names = {c.__name__ for c in type(x).__mro__}
+        code = getattr(x, "code", None) or getattr(getattr(x, "response", None), "status_code", None)
+        if names & network_errors or ("HTTPError" in names and code in (429, 500, 502, 503, 504)):
+            out["status"] = "UNTRIED"
+            break
 print("RESULT " + json.dumps(out), flush=True)
 '''
 
@@ -191,8 +215,8 @@ print("RESULT " + json.dumps(out), flush=True)
 def check(kind, name, timeout_s=3600):
     t0 = time.time()
     try:
-        proc = subprocess.run(
-            [sys.executable, "-c", _CHILD, kind, name], cwd=ROOT_DIR, capture_output=True,
+        proc = subprocess.run(  # features-core is checked like features, vpr-core like vpr
+            [sys.executable, "-c", _CHILD, kind.split("-")[0], name], cwd=ROOT_DIR, capture_output=True,
             text=True, errors="replace", timeout=timeout_s,
         )
         lines = [l for l in proc.stdout.splitlines() if "RESULT {" in l]
@@ -210,7 +234,7 @@ def main():
         sys.exit(2)
     kind = sys.argv[1]
     names = sys.argv[2:] or EXTRA_COMPONENTS[kind]
-    failed, skipped = [], []
+    failed, skipped, untried = [], [], []
     tty = sys.stdout.isatty()
     for name in names:
         if tty:  # show what is running (a first run may be downloading model weights)
@@ -221,13 +245,17 @@ def main():
         elif r["status"] == "SKIP":
             skipped.append(name)
             print(f"  {name:22s} SKIP  {r.get('result', '')}", flush=True)
+        elif r["status"] == "UNTRIED":
+            untried.append(name)
+            print(f"  {name:22s} UNTRIED  download failed: {r.get('error', '')}", flush=True)
         else:
             failed.append(name)
             print(f"  {name:22s} FAIL  {r.get('error', '')}", flush=True)
-    print(f"{len(names) - len(failed) - len(skipped)}/{len(names)} components of '{kind}' OK"
+    print(f"{len(names) - len(failed) - len(skipped) - len(untried)}/{len(names)} components of '{kind}' OK"
           + (f"; skipped: {', '.join(skipped)}" if skipped else "")
+          + (f"; untried (download failed, run again to retry): {', '.join(untried)}" if untried else "")
           + (f"; failed: {', '.join(failed)}" if failed else ""))
-    sys.exit(1 if failed else 0)
+    sys.exit(1 if failed else (3 if untried else 0))
 
 
 if __name__ == "__main__":

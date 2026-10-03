@@ -27,14 +27,16 @@ cd "$ROOT_DIR"
 
 PYTHON_EXE=$(get_python_exe)
 
-EXTRAS_ORDER="features vpr depth semantics scene3d"
+EXTRAS_ORDER="features-core features vpr-core vpr depth semantics scene3d"
 
 # extra_description <extra>: print the description, or nothing for an unknown extra
 # (a function rather than an associative array, which needs bash >= 4; macOS ships bash 3.2)
 function extra_description() {
     case "$1" in
-        features) echo "Learned local features and matchers: SuperPoint, LightGlue, XFeat, DISK, ALIKED, D2-Net, R2D2, Key.Net, HardNet, SOSNet, TFeat, L2-Net, LoFTR" ;;
-        vpr) echo "Visual place recognition loop detectors: NetVLAD, CosPlace, EigenPlaces, MegaLoc, AlexNet" ;;
+        features-core) echo "The recommended learned features: SuperPoint, and SuperPoint with the LightGlue matcher" ;;
+        features) echo "All learned local features and matchers: SuperPoint, LightGlue, XFeat, DISK, ALIKED, D2-Net, R2D2, Key.Net, HardNet, SOSNet, TFeat, L2-Net, LoFTR" ;;
+        vpr-core) echo "The recommended visual place recognition loop detector: CosPlace" ;;
+        vpr) echo "All visual place recognition loop detectors: NetVLAD, CosPlace, EigenPlaces, MegaLoc, AlexNet" ;;
         depth) echo "Depth and stereo estimation: Depth Anything V2, Depth Pro, RAFT-Stereo, CREStereo (PyTorch), Depth Anything V3 [pixi level: depth]" ;;
         semantics) echo "Semantic segmentation and object detection: DeepLabV3, SegFormer, YOLO, RF-DETR, CLIP, Detic, EOV-Seg, ODISE [pixi level: semantics]" ;;
         scene3d) echo "3D representations: MASt3R, DUSt3R, MV-DUSt3R, VGGT, Robust VGGT, Fast3R, Gaussian splatting (need an NVIDIA GPU) [pixi level: full]" ;;
@@ -44,14 +46,14 @@ function extra_description() {
 function list_extras() {
     echo "Available extras:"
     for e in $EXTRAS_ORDER; do
-        printf "  %-10s %s\n" "$e" "$(extra_description "$e")"
+        printf "  %-14s %s\n" "$e" "$(extra_description "$e")"
     done
 }
 
 # init_submodules <path> ...: fetch only the given git submodules (recursively)
 function init_submodules() {
     print_blue "Fetching submodules: $*"
-    git submodule update --init --recursive -- "$@" || { print_red "ERROR: could not fetch submodules: $*"; exit 1; }
+    git submodule update --init --recursive -- "$@" || { print_red "ERROR: could not fetch submodules: $*"; exit 3; }
 }
 
 # apply_patch <thirdparty dir> <patch file in thirdparty/>: apply unless it is already applied
@@ -126,7 +128,7 @@ function clone_repo() {
     done
     rm -rf "$dir"
     print_red "ERROR: could not clone $url"
-    exit 1
+    exit 3
 }
 
 # update_submodules <thirdparty dir>: fetch the submodules of a cloned repository (shallow if possible)
@@ -189,7 +191,7 @@ function download_file() {
             sleep 2
         done
         [ -n "$ok" ] && check_downloaded_size "$2" "$3" && mv "$2.part" "$2" \
-            || { print_red "ERROR: could not download $1 (run this script again to resume)"; exit 1; }
+            || { print_red "ERROR: could not download $1 (run this script again to resume)"; exit 3; }
     fi
 }
 
@@ -210,7 +212,7 @@ function gdrive_download_file() {
 import sys
 from pyslam.utilities.file_management import gdrive_download_with_retry
 gdrive_download_with_retry("https://drive.google.com/uc?id=" + sys.argv[1], sys.argv[2])' "$1" "$2" \
-            || { print_red "ERROR: could not download $(basename "$2") from Google Drive (run this script again to resume)"; exit 1; }
+            || { print_red "ERROR: could not download $(basename "$2") from Google Drive (run this script again to resume)"; exit 3; }
         if [ -n "$3" ] && [ "$(file_size "$2")" != "$3" ]; then
             print_red "ERROR: $(basename "$2") has $(file_size "$2") bytes after the download, expected $3"
             rm -f "$2"
@@ -233,11 +235,19 @@ function unpack_archive() {
 
 # component <name> <function>: install one component in a subshell, so that a failure (a download
 # that breaks, a build error) is reported and the other components of the extra are still installed
+# Exit code 3 of a component (or of the checks) means that a download failed: the component is
+# "untried" (run the script again later), not broken.
 COMPONENT_FAILURES=""
+COMPONENT_UNTRIED=""
 function component() {
-    local name="$1"
+    local name="$1" rc
     shift
-    if ! ( "$@" ); then
+    ( "$@" )
+    rc=$?
+    if [[ $rc -eq 3 ]]; then
+        print_yellow "$name was not installed: a download failed; continuing with the other components"
+        COMPONENT_UNTRIED="$COMPONENT_UNTRIED${COMPONENT_UNTRIED:+, }$name"
+    elif [[ $rc -ne 0 ]]; then
         print_red "ERROR: $name was not installed (see above); continuing with the other components"
         COMPONENT_FAILURES="$COMPONENT_FAILURES${COMPONENT_FAILURES:+, }$name"
     fi
@@ -270,13 +280,31 @@ function install_netvlad_model() {
         thirdparty/patch_netvlad/patchnetvlad/pretrained_models/mapillary_WPCA512.pth.tar 92488008
 }
 
+# The recommended learned features (pixi task models-features): SuperPoint, and SuperPoint with the
+# LightGlue matcher. Their weights are downloaded by the check, on first creation.
+function install_features_core() {
+    init_submodules thirdparty/superpoint thirdparty/LightGlue
+    apply_patch LightGlue lightglue.patch
+}
+
+# The recommended place recognition (pixi task models-vpr): CosPlace, from torch.hub
+function install_vpr_core() {
+    init_submodules thirdparty/vpr
+    apply_patch vpr vpr.patch
+    trust_vpr_hub_repos
+}
+
 function install_vpr() {
     init_submodules thirdparty/vpr thirdparty/patch_netvlad
     apply_patch vpr vpr.patch
     apply_patch patch_netvlad patch_netvlad.patch
     component "NetVLAD" install_netvlad_model
-    # torch >= 2.13 asks "Do you trust this repository?" on the first torch.hub.load of a repo, which
-    # a loop-detection child process cannot answer: trust the repos used by the VPR detectors.
+    trust_vpr_hub_repos
+}
+
+# torch >= 2.13 asks "Do you trust this repository?" on the first torch.hub.load of a repo, which
+# a loop-detection child process cannot answer: trust the repos used by the VPR detectors.
+function trust_vpr_hub_repos() {
     "$PYTHON_EXE" - <<'EOF' || exit 1
 import os, torch
 path = os.path.join(torch.hub.get_dir(), "trusted_list")
@@ -355,7 +383,7 @@ function unpack_pypi_package() {
     "$PYTHON_EXE" -m pip download --no-deps --only-binary :all: -q -d "$tmp_dir" "$1" \
         && rm -rf "$dir" && mkdir -p "$dir" \
         && "$PYTHON_EXE" -m zipfile -e "$tmp_dir"/*.whl "$dir" \
-        || { rm -rf "$tmp_dir"; print_red "ERROR: could not fetch $1 from PyPI"; exit 1; }
+        || { rm -rf "$tmp_dir"; print_red "ERROR: could not fetch $1 from PyPI"; exit 3; }
     rm -rf "$tmp_dir"
 }
 
@@ -583,24 +611,38 @@ for extra in "$@"; do
 done
 
 FAILED=""
+UNTRIED=""
 for extra in "$@"; do
     print_blue '================================================'
     print_blue "Installing extra '$extra': $(extra_description "$extra")"
     print_blue '================================================'
-    install_$extra
+    install_${extra//-/_}
     print_blue "Checking '$extra' and downloading its model weights (first run can take a while) ..."
-    "$PYTHON_EXE" "$SCRIPTS_DIR/extras_check.py" "$extra" || FAILED="$FAILED $extra"
+    "$PYTHON_EXE" "$SCRIPTS_DIR/extras_check.py" "$extra"
+    case $? in
+        0) ;;
+        3) UNTRIED="$UNTRIED $extra" ;;
+        *) FAILED="$FAILED $extra" ;;
+    esac
 done
 
 cd "$STARTING_DIR"
 if [[ -n "$COMPONENT_FAILURES" ]]; then
-    print_red "Not installed: $COMPONENT_FAILURES (see the errors above). Run this script again: it skips what is"
-    print_red "already installed and resumes interrupted downloads."
+    print_red "Not installed: $COMPONENT_FAILURES (see the errors above)."
 fi
 if [[ -n "$FAILED" ]]; then
     print_red "Some components failed the check in:$FAILED (see above)"
 fi
+if [[ -n "$COMPONENT_UNTRIED$UNTRIED" ]]; then
+    [[ -n "$COMPONENT_UNTRIED" ]] && print_yellow "Not installed because a download failed: $COMPONENT_UNTRIED."
+    [[ -n "$UNTRIED" ]] && print_yellow "Some components could not be checked because a download failed, in:$UNTRIED (see above)."
+    print_yellow "This is a network or server problem, not a broken installation: run the same command again"
+    print_yellow "later. It skips what is already installed and resumes interrupted downloads."
+fi
 if [[ -n "$COMPONENT_FAILURES$FAILED" ]]; then
     exit 1
+fi
+if [[ -n "$COMPONENT_UNTRIED$UNTRIED" ]]; then
+    exit 3
 fi
 print_green "Installed: $*"

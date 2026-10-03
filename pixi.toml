@@ -305,7 +305,13 @@ build = { cmd = "python scripts/check_pybind11_abi.py && python scripts/download
   "build-cpp-core",
 ] }
 # Learned features and place recognition (group i): submodules, patches, model weights, check
-models = "bash scripts/install_extra.sh features vpr"
+models = "bash scripts/install_extra.sh features-core vpr-core"  # = models-features + models-vpr
+# The recommended learned features (SuperPoint, SuperPoint + LightGlue) and place recognition (CosPlace)
+models-features = "bash scripts/install_extra.sh features-core"
+models-vpr = "bash scripts/install_extra.sh vpr-core"
+# All 19 learned features and matchers, and all 5 place recognition models (about 3.4 GB)
+models-all-features = "bash scripts/install_extra.sh features"
+models-all-vpr = "bash scripts/install_extra.sh vpr"
 # Check the installation
 check-abi = "python scripts/check_pybind11_abi.py"
 check-gtsam = "python -m pytest -q test/gtsam/test_gtsam_factors_jacobians.py test/gtsam/test_optimize_pose.py test/gtsam/test_optimize_sim3.py"
