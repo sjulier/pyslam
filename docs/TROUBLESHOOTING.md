@@ -60,6 +60,7 @@ For faster support when opening a new git issue, please provide the following in
   * OS, CUDA version, etc.
   * Is your OS native, or are you using it within Windows, VirtualBox, or a similar virtualization tool?
   * Python enviornment: pyenv, conda, pixi?
+  * The output of `pixi run doctor` (or `python scripts/doctor.py` in a conda or venv setup): OS, memory, environment, GPU, native modules and vocabulary in one go.
 - Full console log of your test (including the error messages). In the case of missing libraries, a full console log of the install process is paramount. 
 - Pictures of plots and 3D viewer
 

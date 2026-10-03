@@ -317,6 +317,9 @@ check-abi = "python scripts/check_pybind11_abi.py"
 check-gtsam = "python -m pytest -q test/gtsam/test_gtsam_factors_jacobians.py test/gtsam/test_optimize_pose.py test/gtsam/test_optimize_sim3.py"
 check-g2o = "python -m pytest -q test/g2o/test_optimize_pose.py test/g2o/test_optimize_sim3.py"
 check = { depends-on = ["check-abi", "check-gtsam", "check-g2o"] }
+# One line per check: machine, memory, environment, GPU, every native module, vocabulary. Include its
+# output when asking for help; `pixi run doctor --run` also runs SLAM on KITTI 06 without windows.
+doctor = "python scripts/doctor.py"
 
 # default level: the main scripts (extra arguments are passed on, e.g. `pixi run slam --headless`)
 vo = "python main_vo.py"
