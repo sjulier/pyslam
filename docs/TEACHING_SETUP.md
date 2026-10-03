@@ -83,6 +83,10 @@ The other main scripts have tasks too (`pixi run vo`, `pixi run feature-matching
 `pixi run map-viewer`, ...); `pixi task list` shows them all, and [PIXI.md](./PIXI.md#run) explains
 how to work in a pixi shell instead.
 
+`pixi run vo` (visual odometry) shows its results in the Rerun viewer. It stops at the end of the
+sequence, when you close the Rerun window, or with Ctrl+C; `pixi run vo --no-rerun` uses separate
+windows instead, where `q` quits.
+
 ## Good to know
 
 - **Results vary from run to run.** SLAM runs several threads, so two runs on the same video differ.
