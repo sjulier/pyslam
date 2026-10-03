@@ -903,7 +903,12 @@ class Tracking:
         # shows up as requests that are never raised (and not as rejected requests).
         cond1b_if_idle = f_cur.id >= (self.kf_last.id + self.min_frames_between_kfs)
         wanted_if_idle = ((cond1a or cond1b_if_idle or cond1c or cond1d) and cond2) or cond3
-        self.kf_demand.record(wanted_if_idle, is_local_mapping_idle)
+        self.kf_demand.record(
+            wanted_if_idle,
+            is_local_mapping_idle,
+            num_tracked_points=num_f_cur_tracked_points,
+            num_ref_tracked_points=num_kf_ref_tracked_points,
+        )
         if condition_checks:
             print(
                 f"KF conditions: ( (1a:{cond1a} or 1b:{cond1b} or 1c:{cond1c} or 1d:{cond1d}) and 2: {cond2} ) or 3: {cond3}"

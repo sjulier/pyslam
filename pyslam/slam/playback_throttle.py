@@ -25,37 +25,58 @@ from pyslam.config_parameters import Parameters
 
 class KeyframeDemand:
     """
-    Recent keyframe demand, recorded by tracking at each keyframe decision.
+    What tracking records at each keyframe decision, for the playback throttle.
 
-    Tracking only asks for a new keyframe when local mapping is idle. When local mapping is busy, the
-    request is not raised at all: a "suppressed" request. The fraction of suppressed requests among
-    the recent frames that wanted a keyframe tells how far local mapping is behind the frame rate.
+    - Weak tracking: the frame matched fewer than weak_ratio of the map points that its reference
+      keyframe tracks. When local mapping cannot keep up, new keyframes and map points arrive too
+      late and this happens in a growing share of the frames, until tracking is lost. The fraction
+      of weak frames among the recent ones is the throttle's signal.
+    - Suppressed keyframe requests: tracking only asks for a new keyframe when local mapping is idle;
+      when it is busy the request is not raised at all. Their share is reported at the end of a run,
+      but it is not used as a signal: local mapping is busy for about half of the requests on a
+      machine that tracks every frame, too.
     """
 
-    def __init__(self, window=None):
+    def __init__(self, window=None, weak_ratio=None):
         window = Parameters.kPlaybackThrottleWindow if window is None else window
-        self._wanted = deque(maxlen=window)  # for each frame that wanted a keyframe: True if suppressed
+        self.weak_ratio = (
+            Parameters.kPlaybackThrottleWeakTrackingRatio if weak_ratio is None else weak_ratio
+        )
+        self._weak = deque(maxlen=window)  # for each recent frame: True if tracking was weak
+        self.num_frames = 0
+        self.num_weak = 0
         self.num_wanted = 0
         self.num_suppressed = 0
 
-    def record(self, wanted_if_idle: bool, is_local_mapping_idle: bool):
-        if not wanted_if_idle:
-            return
-        suppressed = not is_local_mapping_idle
-        self._wanted.append(suppressed)
-        self.num_wanted += 1
-        self.num_suppressed += int(suppressed)
+    def record(
+        self,
+        wanted_if_idle: bool,
+        is_local_mapping_idle: bool,
+        num_tracked_points=None,
+        num_ref_tracked_points=None,
+    ):
+        if wanted_if_idle:
+            self.num_wanted += 1
+            self.num_suppressed += int(not is_local_mapping_idle)
+        if num_tracked_points is not None and num_ref_tracked_points:
+            weak = num_tracked_points < self.weak_ratio * num_ref_tracked_points
+            self._weak.append(weak)
+            self.num_frames += 1
+            self.num_weak += int(weak)
 
     def num_samples(self):
-        return len(self._wanted)
+        return len(self._weak)
 
     def reset_window(self):
         """Forget the recent samples (the totals are kept): they were taken at another playback speed."""
-        self._wanted.clear()
+        self._weak.clear()
 
-    def suppressed_fraction(self):
-        """Fraction of suppressed requests in the window (0 with no samples)."""
-        return sum(self._wanted) / len(self._wanted) if self._wanted else 0.0
+    def weak_fraction(self):
+        """Fraction of the frames in the window in which tracking was weak (0 with no samples)."""
+        return sum(self._weak) / len(self._weak) if self._weak else 0.0
+
+    def total_weak_fraction(self):
+        return self.num_weak / self.num_frames if self.num_frames > 0 else 0.0
 
     def total_suppressed_fraction(self):
         return self.num_suppressed / self.num_wanted if self.num_wanted > 0 else 0.0
@@ -66,8 +87,8 @@ class PlaybackThrottle:
     Adapts the playback speed of a dataset to what local mapping can keep up with.
 
     The speed is relative to the camera's frame rate. It never exceeds max_speed (the speed the user
-    asked for; 0 or inf = no limit). When the suppressed fraction of the recent keyframe requests is
-    above the high threshold, the speed is reduced; when it is below the low threshold, the speed
+    asked for; 0 or inf = no limit). When tracking was weak in more than the high fraction of the
+    recent frames, the speed is reduced; when it was weak in less than the low fraction, the speed
     goes back up towards max_speed.
     """
 
@@ -85,8 +106,8 @@ class PlaybackThrottle:
     ):
         self.max_speed = math.inf if (max_speed is None or max_speed <= 0) else float(max_speed)
         self.enabled = enabled
-        self.high = Parameters.kPlaybackThrottleHighSuppressedFraction if high is None else high
-        self.low = Parameters.kPlaybackThrottleLowSuppressedFraction if low is None else low
+        self.high = Parameters.kPlaybackThrottleHighWeakFraction if high is None else high
+        self.low = Parameters.kPlaybackThrottleLowWeakFraction if low is None else low
         self.decrease = Parameters.kPlaybackThrottleDecreaseFactor if decrease is None else decrease
         self.increase = Parameters.kPlaybackThrottleIncreaseFactor if increase is None else increase
         self.min_speed = Parameters.kPlaybackThrottleMinSpeed if min_speed is None else min_speed
@@ -100,6 +121,7 @@ class PlaybackThrottle:
         self.num_frames = 0
         self.num_decreases = 0
         self.lowest_speed = self.max_speed
+        self.last_fraction = 0.0  # the weak-tracking fraction that the last decision used
 
     def observe_frame(self, frame_duration, elapsed):
         """Record the actual duration of one loop iteration (processing + wait) for a frame of the given duration."""
@@ -117,13 +139,14 @@ class PlaybackThrottle:
             return False
         if self.num_frames % self.update_period != 0:
             return False
-        # The window only holds requests made at the current speed (it is emptied at each change):
+        # The window only holds frames played at the current speed (it is emptied at each change):
         # wait until there are enough of them. Slowing down needs less evidence than speeding up.
         num_samples = demand.num_samples()
         if num_samples < self.min_samples:
             return False
 
-        fraction = demand.suppressed_fraction()
+        fraction = demand.weak_fraction()
+        self.last_fraction = fraction
         old_speed = self.speed
         if fraction > self.high:
             # start from the speed actually reached: the limit may be far above it (e.g. no limit)

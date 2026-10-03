@@ -152,8 +152,9 @@ python main_semantic_image_segmentation.py
 - **`main_slam.py` feeds frames at the camera's rate**, with or without `--headless`. `--speed 2`
   plays twice as fast, and `--speed 0` as fast as possible. Faster than the camera, the mapping thread
   gets less time per frame, and on KITTI 06 tracking is then sometimes lost at the turns. Use the
-  default speed when you compare results. On a slow machine playback slows down by itself when the
-  mapping thread cannot keep up (it prints `Playback speed: ...`); `--no-throttle` turns that off.
+  default speed when you compare results. If tracking is lost at the same places in every run, the
+  machine may be too slow for the camera's frame rate: `--throttle` slows the playback down whenever
+  tracking gets weak (it prints `Playback speed: ...`).
 - **If a download fails**, run the same task again: what is already installed is skipped, and an
   interrupted download continues where it stopped. A component that could not be installed does not
   stop the others; the task lists what is missing at the end (`Not installed: ...`). Model weights

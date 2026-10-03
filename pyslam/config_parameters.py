@@ -66,16 +66,20 @@ class Parameters:
     kLocalMappingOnSeparateThread = True  # True: move local mapping on a separate thread, False: tracking and then local mapping in a single thread
     kTrackingWaitForLocalMappingToGetIdle = False  # True: wait for local mapping to get idle before starting tracking, False: tracking and then local mapping in a single thread in a standard way
     # Playback throttle: when playing a dataset, slow down if local mapping cannot keep up.
-    # Signal: among the recent frames that wanted a new keyframe, the fraction whose request was
-    # suppressed because local mapping was busy (see pyslam/slam/playback_throttle.py).
-    kPlaybackThrottle = True  # can be disabled with main_slam.py --no-throttle
-    kPlaybackThrottleHighSuppressedFraction = 0.5  # above: reduce the playback speed
-    kPlaybackThrottleLowSuppressedFraction = 0.35  # below: raise it again, up to the requested speed
+    # Signal: the fraction of the recent frames in which tracking was weak, i.e. the frame matched
+    # fewer than kPlaybackThrottleWeakTrackingRatio of the map points its reference keyframe tracks:
+    # new keyframes and map points are then not arriving fast enough (see pyslam/slam/playback_throttle.py).
+    # How often local mapping is busy does NOT separate the two cases: on KITTI 06 it was busy for
+    # 52% of the keyframe requests in a run that tracked every frame, and for 59% in one that lost track.
+    kPlaybackThrottle = False  # off by default: main_slam.py --throttle turns it on
+    kPlaybackThrottleWeakTrackingRatio = 0.5  # weak: tracked points < this ratio x the reference keyframe's
+    kPlaybackThrottleHighWeakFraction = 0.25  # above: reduce the playback speed
+    kPlaybackThrottleLowWeakFraction = 0.10  # below: raise it again, up to the requested speed
     kPlaybackThrottleDecreaseFactor = 0.8
     kPlaybackThrottleIncreaseFactor = 1.1
     kPlaybackThrottleMinSpeed = 0.1  # relative to the camera's frame rate
-    kPlaybackThrottleWindow = 40  # number of recent frames that wanted a keyframe (at the current speed)
-    kPlaybackThrottleMinSamples = 20  # do not slow down before this many of them (twice as many to speed up)
+    kPlaybackThrottleWindow = 30  # number of recent frames (at the current speed)
+    kPlaybackThrottleMinSamples = 15  # do not slow down before this many of them (twice as many to speed up)
     kPlaybackThrottleUpdatePeriod = 10  # [frames]
     kWaitForLocalMappingTimeout = (
         0.5 if not USE_CPP_CORE else 0.05

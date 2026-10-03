@@ -120,13 +120,18 @@ if __name__ == "__main__":
         help="Playback speed relative to the camera's frame rate, with or without --headless: "
         "1 = the camera's rate (default), 2 = twice as fast, 0 = as fast as possible. "
         "Feeding frames faster than the camera leaves local mapping less time per frame, "
-        "which can make tracking fail. This is the maximum speed: see --no-throttle.",
+        "which can make tracking fail. This is the maximum speed: see --throttle.",
+    )
+    parser.add_argument(
+        "--throttle",
+        action="store_true",
+        help="Slow the playback down below --speed when tracking gets weak because local mapping "
+        "cannot keep up with the frames. Off by default: try it if tracking is lost on your machine.",
     )
     parser.add_argument(
         "--no-throttle",
         action="store_true",
-        help="Do not slow down the playback when local mapping cannot keep up with the frames "
-        "(by default the speed is reduced below --speed when it cannot).",
+        help="Never slow the playback down (the default, unless kPlaybackThrottle is set).",
     )
     parser.add_argument(
         "--verbose",
@@ -362,11 +367,12 @@ if __name__ == "__main__":
     playback_throttle = PlaybackThrottle(
         max_speed=args.speed,
         enabled=(
-            Parameters.kPlaybackThrottle
+            (args.throttle or Parameters.kPlaybackThrottle)
             and not args.no_throttle
             and Parameters.kLocalMappingOnSeparateThread
         ),
     )
+    is_throttle_hint_shown = False  # the hint about --throttle when tracking is lost
     is_map_save = False  # save map on GUI
     is_bundle_adjust = False  # bundle adjust on GUI
     is_viewer_closed = False  # viewer GUI was closed
@@ -498,6 +504,19 @@ if __name__ == "__main__":
 
             if slam.tracking.state == SlamState.LOST:
                 num_tracking_lost += 1
+                if (
+                    not is_throttle_hint_shown
+                    and not playback_throttle.enabled
+                    and img is not None
+                    and frame_duration > 0
+                    and Parameters.kLocalMappingOnSeparateThread
+                ):
+                    is_throttle_hint_shown = True
+                    Printer.yellow(
+                        "Tracking is lost. If this happens at the same places in every run, the "
+                        "machine may be too slow for the camera's frame rate: try --throttle (it "
+                        "slows the playback down when tracking gets weak) or a lower --speed."
+                    )
 
             # manage interface infos
             if is_map_save:
@@ -550,8 +569,7 @@ if __name__ == "__main__":
                 if playback_throttle.update(slam.tracking.kf_demand):
                     Printer.yellow(
                         f"Playback speed: {playback_throttle.speed_str()} "
-                        f"({100 * slam.tracking.kf_demand.suppressed_fraction():.0f}% of the recent keyframe "
-                        f"requests found local mapping busy)"
+                        f"(tracking was weak in {100 * playback_throttle.last_fraction:.0f}% of the recent frames)"
                     )
                 processing_duration = time.time() - time_start
                 delta_time_sleep = (
@@ -623,6 +641,9 @@ if __name__ == "__main__":
             f.write(f"playback_lowest_speed: {playback_throttle.speed_str(playback_throttle.lowest_speed)}\n")
             f.write(f"playback_num_slowdowns: {playback_throttle.num_decreases}\n")
             f.write(
+                f"percent_weak_tracking_frames: {slam.tracking.kf_demand.total_weak_fraction()*100:.2f}\n"
+            )
+            f.write(
                 f"percent_suppressed_keyframe_requests: {slam.tracking.kf_demand.total_suppressed_fraction()*100:.2f}\n"
             )
 
@@ -636,6 +657,7 @@ if __name__ == "__main__":
         f"Playback: max speed {playback_throttle.speed_str(playback_throttle.max_speed)}, "
         f"lowest speed {playback_throttle.speed_str(playback_throttle.lowest_speed)}, "
         f"{playback_throttle.num_decreases} slow-downs; "
+        f"tracking was weak in {slam.tracking.kf_demand.total_weak_fraction()*100:.0f}% of the frames; "
         f"{slam.tracking.kf_demand.total_suppressed_fraction()*100:.0f}% of the keyframe requests "
         f"found local mapping busy",
         flush=True,
