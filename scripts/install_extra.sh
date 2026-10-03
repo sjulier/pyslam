@@ -55,19 +55,21 @@ function init_submodules() {
 }
 
 # apply_patch <thirdparty dir> <patch file in thirdparty/>: apply unless it is already applied
+# (--whitespace=nowarn: several patches add lines with trailing spaces; git's warnings about them are
+# harmless but look like errors)
 function apply_patch() {
     local dir="$ROOT_DIR/thirdparty/$1" patch="$ROOT_DIR/thirdparty/$2"
     if git -C "$dir" apply --reverse --check "$patch" &>/dev/null; then
         echo "patch $2 already applied"
     elif git -C "$dir" apply --check "$patch" &>/dev/null; then
-        git -C "$dir" apply "$patch" && echo "patch $2 applied" || { print_red "ERROR: could not apply $2"; exit 1; }
+        git -C "$dir" apply --whitespace=nowarn "$patch" && echo "patch $2 applied" || { print_red "ERROR: could not apply $2"; exit 1; }
     elif [[ -n "$PYSLAM_RESET_CLONES" && -e "$dir/.git" ]]; then
         # the clone has other changes, typically an older version of pySLAM's patch: discard the changes
         # to tracked files and the files this patch creates (downloaded weights are left alone)
         print_yellow "thirdparty/$1 has local changes: discarding them to apply $2 (PYSLAM_RESET_CLONES is set)"
         git -C "$dir" checkout -q -- . \
             && git -C "$dir" apply --summary "$patch" | awk '/^ create mode/ {print $4}' | while read -r new_file; do rm -f "$dir/$new_file"; done
-        git -C "$dir" apply "$patch" && echo "patch $2 applied" || { print_red "ERROR: could not apply $2 to thirdparty/$1"; exit 1; }
+        git -C "$dir" apply --whitespace=nowarn "$patch" && echo "patch $2 applied" || { print_red "ERROR: could not apply $2 to thirdparty/$1"; exit 1; }
     else
         print_red "ERROR: $2 does not apply to thirdparty/$1: the folder has local changes, for example an older version of this patch."
         print_red "  To discard them and apply the current patch, run this script again with PYSLAM_RESET_CLONES=1"
