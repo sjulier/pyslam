@@ -21,10 +21,30 @@ need to install CUDA or a compiler.
 | **Linux** (x86-64), with an NVIDIA GPU | tested, from older GPUs (Pascal, e.g. Titan Xp) to the RTX 50 series |
 | **Linux** (x86-64), without an NVIDIA GPU | tested: add `-e default-cpu` to every `pixi run` command below |
 | **macOS** (Apple silicon, macOS 14 or later) | tested. Learned features use the Apple GPU |
-| **Windows** | via **WSL2** only (Ubuntu inside Windows), then as Linux: being tested |
+| **Windows** | via **WSL2** only (Ubuntu inside Windows), then as Linux: tested (Windows 11, WSL2, Titan Xp), including the GPU and the windows of `pixi run slam` |
 
 You need about **30 GB of free disk space** (less without an NVIDIA GPU), an internet connection and,
 for the build, about **12 GB of free memory** (see [Good to know](#good-to-know)).
+
+### With an NVIDIA GPU: `default` or `default-cpu`?
+
+On Linux and WSL2 with an NVIDIA GPU you can still choose the CPU-only environment
+(`-e default-cpu`). The choice depends on the labs, not on the machine:
+
+| | `default` (NVIDIA GPU) | `default-cpu` |
+|---|---|---|
+| download | about 6 GB | about 1.6 GB |
+| on disk | about 17 GB | about 7 GB |
+| ORB features (`pixi run slam` as it comes) | 32 ms per frame | 29 ms per frame |
+| SuperPoint | 52 ms per frame | 340 ms per frame |
+| SuperPoint + LightGlue | 91 ms per frame | 446 ms per frame |
+
+Feature extraction and matching per frame on KITTI images (1226×370, 2000 features), measured on
+one machine (Titan Xp; i9-7960X with 16 threads for the CPU). ORB-based SLAM runs at the same speed
+either way, so for labs with ORB features `default-cpu` saves about 4 GB of download and 10 GB of
+disk. The learned features cannot keep up with the camera on the CPU (KITTI runs at 10 frames per
+second): with `default-cpu` they need `--speed 0.2` or `--throttle`, and runs take about five times
+longer. On a laptop with 4 to 8 cores they will be slower still.
 
 ## 1. Install pixi
 
