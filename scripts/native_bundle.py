@@ -38,7 +38,7 @@ import urllib.request
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-DEFAULT_URL = "https://github.com/sjulier/pyslam/releases/download/native-bundles-test"
+DEFAULT_URL = "https://github.com/sjulier/pyslam/releases/download/native-bundles"
 
 # The CPU baseline of the bundles, and the CPU flags (/proc/cpuinfo) a machine needs for it
 BUNDLE_MARCH = "x86-64-v3"
