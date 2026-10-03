@@ -503,7 +503,9 @@ if __name__ == "__main__":
                     # key_cv = cv2.waitKey(1) & 0xFF
                     key_cv = cv_image_viewer.get_key() if cv_image_viewer else None
 
-            if slam.tracking.state == SlamState.LOST:
+            # frames without a pose: tracking is lost, or relocalization is tried after a loss (when
+            # it keeps failing, the rest of the sequence is in this state)
+            if slam.tracking.state in (SlamState.LOST, SlamState.RELOCALIZE):
                 num_tracking_lost += 1
                 if (
                     not is_throttle_hint_shown
@@ -640,6 +642,9 @@ if __name__ == "__main__":
             f.write(f"num_processed_frames: {num_frames}\n")
             f.write(f"num_lost_frames: {num_tracking_lost}\n")
             f.write(f"percent_lost: {num_tracking_lost/num_total_frames*100:.2f}\n")
+            # the frames with a pose in the final trajectory: the trajectory errors are over these only
+            f.write(f"num_tracked_frames: {len(est_poses)}\n")
+            f.write(f"percent_tracked: {len(est_poses)/num_total_frames*100:.2f}\n")
             f.write(f"playback_max_speed: {playback_throttle.speed_str(playback_throttle.max_speed)}\n")
             f.write(f"playback_lowest_speed: {playback_throttle.speed_str(playback_throttle.lowest_speed)}\n")
             f.write(f"playback_num_slowdowns: {playback_throttle.num_decreases}\n")

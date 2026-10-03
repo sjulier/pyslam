@@ -162,6 +162,13 @@ def config_overrides_from_args(args, argparser):
         overrides["number_of_runs_per_dataset"] = args.runs
     if args.jobs is not None:
         overrides["num_threads"] = args.jobs
+    main_slam_options = []
+    if args.throttle:
+        main_slam_options.append("--throttle")
+    if args.speed is not None:
+        main_slam_options.append(f"--speed {args.speed}")
+    if main_slam_options:
+        overrides["main_slam_options"] = " ".join(main_slam_options)
     return overrides
 
 
@@ -252,6 +259,17 @@ if __name__ == "__main__":
         type=int,
         help="number of runs at the same time (results may get worse with more than one)",
     )
+    runs.add_argument(
+        "--throttle",
+        action="store_true",
+        help="slow the playback down when tracking gets weak (main_slam.py --throttle): for features "
+        "that cannot keep up with the camera's frame rate, which otherwise lose track",
+    )
+    runs.add_argument(
+        "--speed",
+        type=float,
+        help="playback speed relative to the camera's frame rate (main_slam.py --speed), e.g. 0.5",
+    )
     #
     argparser.add_argument(
         "--just-create-report", action="store_true", help="Create a report from the results folder"
@@ -291,7 +309,8 @@ if __name__ == "__main__":
     evaluation_manager.create_final_table()
 
     # the tables (the mean over the runs per dataset and preset; in the rows below it, the average
-    # and the standard deviation over all the runs of a preset)
+    # and the standard deviation over all the runs of a preset). The trajectory errors (rmse, max)
+    # are over the tracked frames only: percent_tracked says how much of the sequence that is.
     for table_path in sorted(Path(evaluation_manager.output_path).glob("table_*.csv")):
         print(f"\n{table_path.name[len('table_'):-len('.csv')]}:")
         print(table_path.read_text().strip())
