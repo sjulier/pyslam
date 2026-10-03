@@ -79,12 +79,14 @@ cd pyslam
 pixi run build      # downloads the environment, builds pySLAM's native modules (about 15 min on a fast
                     # machine, up to an hour on a laptop) and fetches the ORB vocabulary (about 100 MB)
 pixi run check      # the native modules load and the optimiser tests pass
-pixi run models     # learned features and place recognition: code, model weights, and a check of each
+pixi run models     # the recommended learned models: SuperPoint, LightGlue, CosPlace (about 0.3 GB)
 ```
 
 `pixi run build` is safe to re-run: it skips what is already built. `pixi run models` prints one line
-per component, `OK` with the device it ran on (`cuda`, `mps` or `cpu`), and ends with a summary such
-as `19/19 components of 'features' OK`.
+per component, `OK` with the device it ran on (`cuda`, `mps` or `cpu`), and ends with summaries such
+as `2/2 components of 'features-core' OK`. A component marked `UNTRIED` could not be downloaded: run
+the command again later. `pixi run models-all-features` and `pixi run models-all-vpr` install all 19
+learned features and all 5 place recognition models (about 3.4 GB).
 
 On Linux without an NVIDIA GPU, add `-e default-cpu` to each command (`pixi run -e default-cpu build`).
 
@@ -128,7 +130,11 @@ python main_semantic_image_segmentation.py
 | `build` | default | build the native modules (GTSAM, g2o, Pangolin, DBoW2/3, iBoW, ORB-SLAM2 features, C++ utilities, C++ core), then check that they share one pybind11 ABI |
 | `vocabulary` | default | download the ORB vocabulary of the default loop detector (part of `build`); an interrupted or stalled download is resumed |
 | `check` | default | the ABI check and the GTSAM and g2o optimiser tests |
-| `models` | default | learned features and place recognition: `scripts/install_extra.sh features vpr` |
+| `models` | default | the recommended learned models: `models-features` + `models-vpr` |
+| `models-features` | default | SuperPoint, and SuperPoint with LightGlue: `scripts/install_extra.sh features-core` |
+| `models-vpr` | default | CosPlace place recognition: `scripts/install_extra.sh vpr-core` |
+| `models-all-features` | default | all 19 learned features and matchers: `scripts/install_extra.sh features` |
+| `models-all-vpr` | default | all 5 place recognition models: `scripts/install_extra.sh vpr` |
 | `models-depth` | depth | `scripts/install_extra.sh depth` |
 | `models-semantics` | semantics | `scripts/install_extra.sh semantics` |
 | `models-scene3d` | full | `scripts/install_extra.sh scene3d` |
