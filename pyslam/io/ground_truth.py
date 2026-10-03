@@ -100,7 +100,13 @@ def groundtruth_factory(settings, cam_settings=None):
     if type == "tum":
         if "associations" in settings:
             associations = settings["associations"]
-        return TumGroundTruth(path, name, associations, start_frame_id, type=GroundTruthType.TUM)
+        groundtruth_file = settings.get("groundtruth_file")
+        if groundtruth_file in (None, "", "auto"):
+            groundtruth_file = None
+        return TumGroundTruth(
+            path, name, associations, start_frame_id, type=GroundTruthType.TUM,
+            groundtruth_file=groundtruth_file,
+        )
     if type == "icl_nuim":
         if "associations" in settings:
             associations = settings["associations"]
@@ -680,13 +686,21 @@ class KittiGroundTruth(GroundTruth):
 
 
 class TumGroundTruth(GroundTruth):
-    def __init__(self, path, name, associations=None, start_frame_id=0, type=GroundTruthType.TUM):
+    def __init__(
+        self,
+        path,
+        name,
+        associations=None,
+        start_frame_id=0,
+        type=GroundTruthType.TUM,
+        groundtruth_file=None,
+    ):
         super().__init__(path, name, associations, start_frame_id, type)
         self.scale = kScaleTum
-        self.filename = (
-            path + "/" + name + "/" + "groundtruth.txt"
-        )  # N.B.: this may depend on how you deployed the groundtruth files
-        if not os.path.isfile(self.filename):
+        # groundtruth.txt by default; another name (e.g. groundtruth.tum) with `groundtruth_file` in
+        # the dataset's section of config.yaml
+        self.filename = path + "/" + name + "/" + (groundtruth_file or "groundtruth.txt")
+        if groundtruth_file is None and not os.path.isfile(self.filename):
             self.filename = path + "/" + name + "/" + "gt.freiburg"  # For ICL-NUIM support
         self.associations_path = (
             path + "/" + name + "/" + associations
@@ -701,14 +715,17 @@ class TumGroundTruth(GroundTruth):
         print("[TumGroundTruth] base_path: ", base_path)
 
         with open(self.filename) as f:
-            self.data = f.readlines()[3:]  # skip the first three rows, which are only comments
+            # skip the comment lines (3 in TUM's own files, more in others)
+            self.data = [l for l in f.readlines() if l.strip() and not l.lstrip().startswith("#")]
             self.data = [line.strip().split() for line in self.data]
             self.data = np.ascontiguousarray(self.data)
         if self.data is None:
             sys.exit("ERROR [TumGroundTruth] while reading groundtruth file!")
         if self.associations_path is not None:
             with open(self.associations_path) as f:
-                self.associations_data = f.readlines()
+                self.associations_data = [
+                    l for l in f.readlines() if l.strip() and not l.lstrip().startswith("#")
+                ]
                 self.associations_data = [line.strip().split() for line in self.associations_data]
             if self.associations_data is None:
                 sys.exit("ERROR [TumGroundTruth] while reading associations file!")
