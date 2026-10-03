@@ -5,6 +5,16 @@
 
 #set -e
 
+# pySLAM is built inside its pixi environment: run `pixi run build` (or a build-* task) in the
+# repository's root folder. Outside pixi this script would use another compiler and other libraries
+# than the rest of the build. PYSLAM_ALLOW_NON_PIXI=1 lets it run anyway (e.g. the legacy conda setup).
+if [[ -z "$PIXI_PROJECT_NAME" && -z "$PYSLAM_ALLOW_NON_PIXI" ]]; then
+    echo "ERROR: $(basename "$(dirname "$(readlink -f "$0")")")/$(basename "$0") must run inside pySLAM's pixi environment:" >&2
+    echo "       run 'pixi run build' in the pySLAM folder (or start 'pixi shell' there first)." >&2
+    echo "       To build in another environment anyway, set PYSLAM_ALLOW_NON_PIXI=1." >&2
+    exit 1
+fi
+
 SCRIPT_DIR_=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd ) # get script dir
 SCRIPT_DIR_=$(readlink -f $SCRIPT_DIR_)  # this reads the actual path if a symbolic directory is used
 
@@ -121,7 +131,13 @@ if [[ "$OSTYPE" == darwin* ]]; then
 fi
 # PYSLAM_MARCH: the CPU to compile for (the value of -march; default: native, this machine's CPU).
 # GTSAM and all of pySLAM's native modules must use the same value (see the CMakeLists.txt of the
-# modules). With another value than native, GTSAM gets it through the compiler flags.
+# modules). With another value than native, GTSAM gets it through the compiler flags. Unset, it is
+# the value recorded for the modules already in the checkout (thirdparty/.pyslam_march, written
+# e.g. when prebuilt modules are installed), so that a rebuild matches them.
+if [[ -z "$PYSLAM_MARCH" && -s "$ROOT_DIR/thirdparty/.pyslam_march" ]]; then
+    PYSLAM_MARCH=$(head -n 1 "$ROOT_DIR/thirdparty/.pyslam_march")
+    export PYSLAM_MARCH  # gtsam_factors, built at the end of this script, uses it too
+fi
 if [[ -n "$PYSLAM_MARCH" && "$PYSLAM_MARCH" != "native" && "$OSTYPE" != darwin* ]]; then
     WITH_MARCH_NATIVE=OFF
     export CFLAGS="$CFLAGS -march=$PYSLAM_MARCH"
@@ -216,7 +232,7 @@ GTSAM_OPTIONS+=" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH=$GTSA
 # The effective GTSAM configuration is recorded next to the installed library: rebuild (from a fresh
 # build dir) when it differs, e.g. after pulling changed GTSAM_OPTIONS onto an existing install.
 GTSAM_CONFIG_STAMP_FILE="$GTSAM_INSTALL_DIR/.pyslam_gtsam_options"
-GTSAM_CONFIG_STAMP=$(echo "$GTSAM_TAG -DCMAKE_BUILD_TYPE=Release $GTSAM_OPTIONS $EXTERNAL_OPTIONS $MAC_OPTIONS" | xargs)
+GTSAM_CONFIG_STAMP=$(echo "$GTSAM_TAG -DCMAKE_BUILD_TYPE=Release $GTSAM_OPTIONS $EXTERNAL_OPTIONS $MAC_OPTIONS march=${PYSLAM_MARCH:-native}" | xargs)
 
 # The gtsam python module must load the *installed* libgtsam, the same one that gtsam_factors
 # and the C++ core link. The module is pip-installed from the build tree (see below), so the build must

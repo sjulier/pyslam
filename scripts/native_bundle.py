@@ -99,6 +99,10 @@ REQUIRED_GLOBS = [
 
 MANIFEST = "thirdparty/.native_bundle.json"
 
+# The -march value of the native modules in the checkout: the build scripts use it when PYSLAM_MARCH
+# is not set, so that a module rebuilt after a bundle was installed matches the bundle's
+MARCH_FILE = "thirdparty/.pyslam_march"
+
 # Part of the key: increase it when the layout of the bundles changes
 BUNDLE_FORMAT = 1
 
@@ -396,7 +400,9 @@ def remove(quiet=False):
             os.remove(full)
     for folder in BUNDLE_FOLDERS:
         shutil.rmtree(os.path.join(ROOT, folder), ignore_errors=True)
-    os.remove(manifest_path)
+    for path in (manifest_path, os.path.join(ROOT, MARCH_FILE)):
+        if os.path.exists(path):
+            os.remove(path)
     log(f"removed the {len(manifest.get('files', []))} files of bundle {manifest.get('key')}")
 
 
@@ -423,6 +429,9 @@ def fetch():
         if installed.get("key") == key and installed.get("ladder") == ladder() and all(
             os.path.lexists(os.path.join(ROOT, p)) for p in installed.get("files", [])
         ):
+            if platform_name() == "linux-64" and not os.path.exists(os.path.join(ROOT, MARCH_FILE)):
+                with open(os.path.join(ROOT, MARCH_FILE), "w") as f:  # installed by an older version
+                    f.write(BUNDLE_MARCH + "\n")
             log(f"bundle {key} is already installed")
             return 0
         remove(quiet=True)  # another version: its files do not match this checkout
@@ -462,9 +471,10 @@ def fetch():
     if check.returncode != 0:
         remove(quiet=True)
         return no_bundle("its modules do not load on this machine")
-    log(f"installed the prebuilt native modules (bundle {key})")
     if platform_name() == "linux-64":
-        log(f"they are built for {BUNDLE_MARCH}: to rebuild a module yourself later, set PYSLAM_MARCH={BUNDLE_MARCH}")
+        with open(os.path.join(ROOT, MARCH_FILE), "w") as f:
+            f.write(BUNDLE_MARCH + "\n")
+    log(f"installed the prebuilt native modules (bundle {key})")
     return 0
 
 
