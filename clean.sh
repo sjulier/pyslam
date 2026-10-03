@@ -103,7 +103,7 @@ cd thirdparty/pyibow
 cd "$ROOT_DIR"
 
 # prebuilt native modules (scripts/native_bundle.py): what was installed, and the -march it was built for
-rm -f thirdparty/.native_bundle.json thirdparty/.pyslam_march
+rm -f thirdparty/.native_bundle.json thirdparty/.native_bundle_prereq.json thirdparty/.native_bundle_pyslam.json thirdparty/.pyslam_march
 
 if [ -d "thirdparty/gtsam_local" ]; then
     rm -Rf thirdparty/gtsam_local

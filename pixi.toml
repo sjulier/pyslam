@@ -284,31 +284,30 @@ rich = "*"
 # ---------------------------------------------------------------------------
 [tasks]
 # Build the native modules in the source tree. One build serves every level of a ladder.
+# Two parts (see scripts/native_bundle.py): the prerequisites (GTSAM, g2o, ...), which rarely change and
+# take almost all of the build time, and pySLAM's own C++ code, built against them in a few minutes.
 build-gtsam = "bash scripts/install_gtsam.sh"  # GTSAM 4.3.0 + gtsam_factors
-build-orbslam2-features = { cmd = "./build.sh", cwd = "thirdparty/orbslam2_features" }
 build-pangolin = { cmd = "./build.sh", cwd = "thirdparty/pangolin" }
 build-g2o = { cmd = "./build.sh", cwd = "thirdparty/g2opy" }
 build-dbow3 = { cmd = "./build.sh", cwd = "thirdparty/pydbow3" }
 build-dbow2 = { cmd = "./build.sh", cwd = "thirdparty/pydbow2" }
 build-ibow = { cmd = "./build.sh", cwd = "thirdparty/pyibow" }
+build-prerequisites = { depends-on = ["build-gtsam", "build-g2o", "build-pangolin", "build-dbow3", "build-dbow2", "build-ibow"] }
+# pySLAM's own C++ code: needs the prerequisites (built, or installed by `pixi run build`)
+build-orbslam2-features = { cmd = "./build.sh", cwd = "thirdparty/orbslam2_features" }
 build-cpp-utils = { cmd = "./build.sh", cwd = "cpp" }
-build-cpp-core = { cmd = "./build_cpp_core.sh", depends-on = ["build-gtsam", "build-g2o"] }
+build-cpp-core = "./build_cpp_core.sh"
+build-pyslam = { depends-on = ["build-orbslam2-features", "build-cpp-utils", "build-cpp-core"] }
 # The ORB vocabulary of the default loop detector (about 100 MB), so that the first SLAM run
 # does not have to download it
 vocabulary = "python scripts/download_vocabulary.py"
-# `build` installs the prebuilt native modules when there is a bundle for this checkout and machine
-# (scripts/native_bundle.py), and builds them from source otherwise
+# `build` installs the prebuilt modules of each part when there is a bundle for this checkout and
+# machine (scripts/native_bundle.py), and builds that part from source otherwise. After a change to
+# pySLAM's C++ code it rebuilds only that code.
 build = "bash scripts/pixi_build.sh"
 build-from-source = { cmd = "python scripts/check_pybind11_abi.py && python scripts/download_vocabulary.py", depends-on = [
-  "build-gtsam",
-  "build-orbslam2-features",
-  "build-pangolin",
-  "build-g2o",
-  "build-dbow3",
-  "build-dbow2",
-  "build-ibow",
-  "build-cpp-utils",
-  "build-cpp-core",
+  "build-prerequisites",
+  "build-pyslam",
 ] }
 # Learned features and place recognition (group i): submodules, patches, model weights, check
 models = "bash scripts/install_extra.sh features-core vpr-core"  # = models-features + models-vpr
