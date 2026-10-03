@@ -1,45 +1,60 @@
 [submodule "thirdparty/superpoint"]
 	path = thirdparty/superpoint
 	url = https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork.git
+	ignore = dirty
 [submodule "thirdparty/tfeat"]
 	path = thirdparty/tfeat
 	url = https://github.com/vbalnt/tfeat.git
+	ignore = dirty
 [submodule "thirdparty/hardnet"]
 	path = thirdparty/hardnet
 	url = https://github.com/DagnyT/hardnet
+	ignore = dirty
 [submodule "thirdparty/SOSNet"]
 	path = thirdparty/SOSNet
 	url = https://github.com/yuruntian/SOSNet.git
+	ignore = dirty
 [submodule "thirdparty/logpolar"]
 	path = thirdparty/logpolar
 	url = https://github.com/cvlab-epfl/log-polar-descriptors.git
+	ignore = dirty
 [submodule "thirdparty/d2net"]
 	path = thirdparty/d2net
 	url = https://github.com/mihaidusmanu/d2-net.git
+	ignore = dirty
 [submodule "thirdparty/tensorflow_models"]
 	path = thirdparty/tensorflow_models
 	url = https://github.com/tensorflow/models
+	ignore = dirty
 [submodule "thirdparty/lfnet"]
 	path = thirdparty/lfnet
 	url = https://github.com/vcg-uvic/lf-net-release.git
+	ignore = dirty
 [submodule "thirdparty/r2d2"]
 	path = thirdparty/r2d2
 	url = https://github.com/naver/r2d2.git
+	ignore = dirty
 [submodule "thirdparty/keynet"]
 	path = thirdparty/keynet
 	url = https://github.com/axelBarroso/Key.Net.git
+	ignore = dirty
 [submodule "thirdparty/disk"]
 	path = thirdparty/disk
 	url = https://github.com/cvlab-epfl/disk.git
+	ignore = dirty
 [submodule "thirdparty/accelerated_features"]
 	path = thirdparty/accelerated_features
 	url = https://github.com/verlab/accelerated_features.git
+	ignore = dirty
 [submodule "thirdparty/LightGlue"]
 	path = thirdparty/LightGlue
 	url = https://github.com/cvg/LightGlue.git
+	ignore = dirty
 [submodule "thirdparty/vpr"]
 	path = thirdparty/vpr
 	url = https://github.com/stschubert/VPR_Tutorial.git
+	ignore = dirty
 [submodule "thirdparty/patch_netvlad"]
 	path = thirdparty/patch_netvlad
 	url = https://github.com/QVPR/Patch-NetVLAD.git
+	ignore = dirty
