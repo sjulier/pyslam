@@ -337,6 +337,8 @@ class QimageViewer:
         print(f"QimageViewer: run: closed")
 
     def draw(self, image, name, format=QImage.Format_BGR888):
+        if self.is_running.value == 0:
+            return  # closed: an image left in the queue could hold up the exit of the process
         format = check_image_format(image)
         if image is not None:
             self.queue.put((image, name, format))

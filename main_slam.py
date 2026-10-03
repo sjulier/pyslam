@@ -56,6 +56,7 @@ from pyslam.utilities.colors import GlColors
 from pyslam.utilities.serialization import SerializableEnumEncoder
 from pyslam.utilities.timer import TimerFps
 from pyslam.viz.cvimage_thread import CvImageViewer
+from pyslam.viz.qimage_thread import QimageViewer
 
 from pyslam.local_features.feature_tracker_configs import FeatureTrackerConfigs
 
@@ -596,6 +597,8 @@ if __name__ == "__main__":
     # Close the viewers first, all at once, so that the windows go as soon as the user has asked to
     # quit (they were closed one after the other at the very end, a few seconds later).
     viewers = [v for v in (cv_image_viewer, plot_drawer, viewer3D) if v]
+    if QimageViewer.is_running():  # loop closing's debug window (similarity matrix, consistency checks)
+        viewers.append(QimageViewer.get_instance())
     viewer_threads = [threading.Thread(target=v.quit, daemon=True) for v in viewers]
     for t in viewer_threads:
         t.start()
