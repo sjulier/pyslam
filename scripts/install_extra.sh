@@ -50,10 +50,15 @@ function list_extras() {
     done
 }
 
-# init_submodules <path> ...: fetch only the given git submodules (recursively)
+# init_submodules <path> ...: fetch only the given git submodules (recursively), each at its recorded
+# commit and without its history (--depth 1; git fetches the commit directly when it is not at the tip
+# of a branch). If that fails, e.g. with a server that does not allow fetching a commit directly, the
+# whole history is fetched.
 function init_submodules() {
     print_blue "Fetching submodules: $*"
-    git submodule update --init --recursive -- "$@" || { print_red "ERROR: could not fetch submodules: $*"; exit 3; }
+    git submodule update --init --recursive --depth 1 -- "$@" \
+        || git submodule update --init --recursive -- "$@" \
+        || { print_red "ERROR: could not fetch submodules: $*"; exit 3; }
 }
 
 # apply_patch <thirdparty dir> <patch file in thirdparty/>: apply unless it is already applied
