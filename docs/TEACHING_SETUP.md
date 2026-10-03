@@ -24,8 +24,7 @@ need to install CUDA or a compiler.
 | **Windows** | via **WSL2** only (Ubuntu inside Windows), then as Linux: being tested |
 
 You need about **30 GB of free disk space** (less without an NVIDIA GPU), an internet connection and,
-for the build, about
-**12 GB of free memory** (see [Good to know](#good-to-know)).
+for the build, about **12 GB of free memory** (see [Good to know](#good-to-know)).
 
 ## 1. Install pixi
 
@@ -83,8 +82,9 @@ how to work in a pixi shell instead.
   [non-determinism](./TROUBLESHOOTING.md#non-determinism-and-run-to-run-variability).
 - **SLAM runs at the camera's frame rate**, also with `--headless`. `--speed 2` plays twice as fast and
   `--speed 0` as fast as possible; faster than the camera, tracking is sometimes lost at the turns.
-  If your machine cannot keep up, pySLAM slows the playback down by itself and prints
-  `Playback speed: ...`. Use the default speed when you compare results.
+  Use the default speed when you compare results. If tracking is lost at the same places in every
+  run, your machine may be too slow for the camera's frame rate: add `--throttle`, which slows the
+  playback down when tracking gets weak (it prints `Playback speed: ...`).
 - **Memory for the build.** Compiling GTSAM needs about 12 GB of free memory: a few files of its Python
   wrapper need up to 12 GB each. The build runs as many compiler jobs as the free memory allows; set
   `PYSLAM_BUILD_JOBS=1` to build one file at a time. On **Windows**, WSL2 gets only half of the
