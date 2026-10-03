@@ -99,8 +99,24 @@ class VocabularyData(Serializable):
             )
             os.replace(self.vocab_file_path, incomplete_path)
 
+    def copy_from_mirror(self):
+        """With PYSLAM_MODEL_MIRROR (a local copy of the model files, see scripts/install_extra.sh),
+        take the vocabulary from <mirror>/checkout/data/ instead of downloading it."""
+        mirror = os.environ.get("PYSLAM_MODEL_MIRROR")
+        if not mirror or self.vocab_file_path is None or os.path.exists(self.vocab_file_path):
+            return
+        src = os.path.join(mirror, "checkout", "data", os.path.basename(self.vocab_file_path))
+        if os.path.isfile(src):
+            import shutil
+
+            Printer.blue(f"VocabularyData: copying {os.path.basename(src)} from the local model mirror")
+            os.makedirs(os.path.dirname(self.vocab_file_path), exist_ok=True)
+            shutil.copyfile(src, self.vocab_file_path + ".part")
+            os.replace(self.vocab_file_path + ".part", self.vocab_file_path)
+
     def check_download(self):
         self.set_aside_incomplete_file()
+        self.copy_from_mirror()
         if self.url_vocabulary is not None and not os.path.exists(self.vocab_file_path):
             if self.url_type == "gdrive":
                 gdrive_url = self.url_vocabulary
