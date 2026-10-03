@@ -143,6 +143,14 @@ windows instead, where `q` quits.
 - **WSL2 and the Rerun viewer** (`pixi run vo`): under WSL2 pySLAM starts Rerun's viewer with its
   software Vulkan renderer (`WGPU_BACKEND=vulkan`), because the default one crashes on WSLg with
   "Invalid surface". To try another renderer, set `WGPU_BACKEND` yourself before `pixi run vo`.
+- **WSL2 and the 3D viewer** (`pixi run slam`): under WSL2 the 3D viewer draws with the computer's GPU
+  through WSL's Direct3D 12 driver, and prints the renderer it uses (`Viewer3D: OpenGL renderer: D3D12
+  (...)`). Where that driver does not work it draws in software (`llvmpipe`), which takes several CPU
+  cores. Do not install NVIDIA's Linux drivers inside WSL: the GPU comes from the Windows driver. To
+  choose the renderer yourself, set `GALLIUM_DRIVER` (e.g. `llvmpipe`) before `pixi run slam`.
+- **WSL2: only some of the windows open**, or none: Windows' display for Linux programs (WSLg) may have
+  stopped responding. Close the Ubuntu terminals, run `wsl --shutdown` in PowerShell and start again. If
+  it happens again, try `QT_QPA_PLATFORM=xcb pixi run slam`.
 - **Do not `pip install` into the environment** and do not run `./clean.sh` casually: it deletes the
   build folders, and rebuilding takes up to an hour.
 - **If you change pySLAM's C++ code, rebuild with `pixi run build`**, never with a module's own
