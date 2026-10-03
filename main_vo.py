@@ -118,6 +118,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="pySLAM visual odometry on the dataset of config.yaml")
     parser.add_argument(
+        "--features",
+        default="LK_SHI_TOMASI",
+        help="the feature tracker: a FeatureTrackerConfigs entry (default LK_SHI_TOMASI; others: e.g. "
+        "LK_FAST, ORB2, SIFT, or learned ones such as SUPERPOINT; see pixi run feature-matching --list)",
+    )
+    parser.add_argument(
         "--no-rerun",
         action="store_true",
         help="Show the results in separate windows (camera, trajectory, 3D viewer, plots) instead of "
@@ -144,7 +150,10 @@ if __name__ == "__main__":
     # select your tracker configuration (see the file feature_tracker_configs.py)
     # LK_SHI_TOMASI, LK_FAST
     # SHI_TOMASI_ORB, FAST_ORB, ORB, BRISK, AKAZE, FAST_FREAK, SIFT, ROOT_SIFT, SURF, SUPERPOINT, LIGHTGLUE, XFEAT, XFEAT_XFEAT, LOFTR
-    tracker_config = FeatureTrackerConfigs.LK_SHI_TOMASI
+    tracker_config = FeatureTrackerConfigs.get_config_from_name(args.features)
+    if tracker_config is None:
+        sys.exit(2)
+    tracker_config = dict(tracker_config)
     tracker_config["num_features"] = num_features
 
     feature_tracker = feature_tracker_factory(**tracker_config)

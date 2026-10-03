@@ -103,6 +103,11 @@ The other main scripts have tasks too (`pixi run vo`, `pixi run feature-matching
 `pixi run map-viewer`, ...); `pixi task list` shows them all, and [PIXI.md](./PIXI.md#run) explains
 how to work in a pixi shell instead.
 
+`pixi run feature-matching` matches the features of an image pair: choose them with `--features`
+and the pair with `--test`, e.g. `pixi run feature-matching --features SUPERPOINT --test mars`;
+`pixi run feature-matching --list` lists the features and which `pixi run models...` task installs
+their models. `pixi run vo --features ORB2` chooses the features of visual odometry the same way.
+
 `pixi run vo` (visual odometry) shows its results in the Rerun viewer. It stops at the end of the
 sequence, when you close the Rerun window, or with Ctrl+C; `pixi run vo --no-rerun` uses separate
 windows instead, where `q` quits.

@@ -1,5 +1,7 @@
 #!/usr/bin/env -S python3 -O
 import pyslam  # first: sets the OpenMP thread settings before numpy/torch are imported
+import argparse
+import importlib.util
 import sys
 import os
 import numpy as np
@@ -33,6 +35,70 @@ from pyslam.utilities.timer import TimerFps
 kScriptPath = os.path.realpath(__file__)
 kScriptFolder = os.path.dirname(kScriptPath)
 
+# The image pairs of --test: (image 1, image 2, model fitted to the matches, horizontal layout)
+kTests = {
+    "box": ("box.png", "box_in_scene.png", "homography", True),
+    "graf": ("graf/img1.ppm", "graf/img3.ppm", "homography", True),
+    "kitti_LR": ("kitti06-12-color.png", "kitti06-12-R-color.png", "fundamental", False),
+    "kitti_step": ("kitti06-12-color.png", "kitti06-17-color.png", "fundamental", False),
+    "churchill": ("churchill/1.ppm", "churchill/6.ppm", "homography", True),
+    "mars": ("mars1.png", "mars2.png", "homography", True),  # very hard: ROOT_SIFT, SUPERPOINT, KEYNET, LOFTR, ...
+}
+
+
+def feature_config_names():
+    """The FeatureTrackerConfigs entries that can match an image pair (the LK trackers cannot)."""
+    return sorted(
+        n
+        for n in dir(FeatureTrackerConfigs)
+        if n.isupper() and isinstance(getattr(FeatureTrackerConfigs, n), dict)
+        and not n.startswith("LK_") and n != "TEST"
+    )
+
+
+def config_groups():
+    """The configs grouped by the pixi task that installs their models (from scripts/extras_check.py)."""
+    spec = importlib.util.spec_from_file_location(
+        "extras_check", os.path.join(kScriptFolder, "scripts", "extras_check.py")
+    )
+    extras = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(extras)
+    core = set(extras.EXTRA_COMPONENTS.get("features-core", []))
+    all_features = set(extras.EXTRA_COMPONENTS.get("features", []))
+    tf = set(extras.EXTRA_COMPONENTS.get("tf", ["DELF", "LFNET", "CONTEXTDESC", "GEODESC"]))
+    names = feature_config_names()
+    scene3d = {n for n in names if "MAST3R" in n}
+    nonfree = {"SURF"}  # patented: not in the conda-forge OpenCV
+    return [
+        ("pixi run models", [n for n in names if n in core]),
+        ("pixi run models-all-features", [n for n in names if n in all_features - core]),
+        ("pixi run -e tf models-tf (the tf level)", [n for n in names if n in tf]),
+        ("pixi run -e full models-scene3d (the full level, NVIDIA GPU)", [n for n in names if n in scene3d]),
+        ("no models to install", [n for n in names if n not in all_features | tf | scene3d | nonfree]),
+        ("not available (non-free OpenCV)", [n for n in names if n in nonfree]),
+    ]
+
+
+parser = argparse.ArgumentParser(
+    description="Match the features of an image pair with one of pySLAM's feature configurations",
+    epilog="example: pixi run feature-matching --features SUPERPOINT --test mars",
+)
+parser.add_argument("--features", default="ROOT_SIFT", help="a FeatureTrackerConfigs entry (default ROOT_SIFT; see --list)")
+parser.add_argument("--test", default="graf", choices=sorted(kTests), help="the image pair (default graf)")
+parser.add_argument("--num-features", type=int, default=2000, help="number of features per image (default 2000)")
+parser.add_argument("--list", action="store_true", help="list the feature configurations, grouped by what installs their models")
+args = parser.parse_args()
+
+if args.list:
+    for title, names in config_groups():
+        print(f"{title}:")
+        print("    " + " ".join(names) if names else "    (none)")
+    sys.exit(0)
+if args.features not in feature_config_names():
+    print(f"Unknown feature configuration '{args.features}'. Valid names (see --list):", file=sys.stderr)
+    print("    " + " ".join(feature_config_names()), file=sys.stderr)
+    sys.exit(2)
+
 # ==================================================================================================
 # N.B.: test the feature tracker and its feature matching capability
 # ==================================================================================================
@@ -55,52 +121,13 @@ model_fitting_type = (
 )
 draw_horizontal_layout = True  # draw matches with the two images in an horizontal or vertical layout (automatically set below, this is an initialization)
 
-test_type = "graf"  # select the test type (there's a template below to add your test)
-#
-if test_type == "box":
-    img1 = cv2.imread(kScriptFolder + "/test/data/box.png")  # queryImage
-    img2 = cv2.imread(kScriptFolder + "/test/data/box_in_scene.png")  # trainImage
-    model_fitting_type = "homography"
-    draw_horizontal_layout = True
-#
+test_type = args.test  # select the image pair with --test (add yours to kTests above)
+img1_file, img2_file, model_fitting_type, draw_horizontal_layout = kTests[test_type]
+img1 = cv2.imread(kScriptFolder + "/test/data/" + img1_file)  # queryImage
+img2 = cv2.imread(kScriptFolder + "/test/data/" + img2_file)  # trainImage
 if test_type == "graf":
-    img1 = cv2.imread(kScriptFolder + "/test/data/graf/img1.ppm")  # queryImage
-    img2 = cv2.imread(kScriptFolder + "/test/data/graf/img3.ppm")  # trainImage   img2, img3, img4
     img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2RGB)
     img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
-    model_fitting_type = "homography"
-    draw_horizontal_layout = True
-#
-if test_type == "kitti_LR":
-    img1 = cv2.imread(kScriptFolder + "/test/data/kitti06-12-color.png")
-    img2 = cv2.imread(kScriptFolder + "/test/data/kitti06-12-R-color.png")
-    model_fitting_type = "fundamental"
-    draw_horizontal_layout = False
-#
-if test_type == "kitti_step":
-    img1 = cv2.imread(kScriptFolder + "/test/data/kitti06-12-color.png")
-    img2 = cv2.imread(kScriptFolder + "/test/data/kitti06-17-color.png")
-    model_fitting_type = "fundamental"
-    draw_horizontal_layout = False
-#
-if test_type == "churchill":
-    img1 = cv2.imread(kScriptFolder + "/test/data/churchill/1.ppm")
-    img2 = cv2.imread(kScriptFolder + "/test/data/churchill/6.ppm")
-    model_fitting_type = "homography"
-    draw_horizontal_layout = True
-#
-if test_type == "mars":
-    # Very hard. This works with ROOT_SIFT, SUPERPOINT, CONTEXTDESC, LFNET, KEYNET, LOFTR ...
-    img1 = cv2.imread(kScriptFolder + "/test/data/mars1.png")  # queryImage
-    img2 = cv2.imread(kScriptFolder + "/test/data/mars2.png")  # trainImage
-    model_fitting_type = "homography"
-    draw_horizontal_layout = True
-#
-# if test_type == 'your test':   # add your test here
-#     img1 = cv2.imread('...')
-#     img2 = cv2.imread('...')
-#     model_fitting_type='...'
-#     draw_horizontal_layout = True
 
 if img1 is None:
     raise IOError("Cannot find img1")
@@ -138,7 +165,7 @@ if False:
 # Init Feature Tracker
 # ============================================
 
-num_features = 2000
+num_features = args.num_features
 
 tracker_type = None
 # Force a tracker type if you prefer. First, you need to check if that's possible though.
@@ -149,14 +176,21 @@ tracker_type = None
 
 # Select your tracker configuration (see the file feature_tracker_configs.py). Some examples:
 # FeatureTrackerConfigs: SHI_TOMASI_ORB, FAST_ORB, ORB, ORB2, ORB2_FREAK, ORB2_BEBLID, BRISK, AKAZE, FAST_FREAK, SIFT, ROOT_SIFT, SURF, SUPERPOINT, CONTEXTDESC, LIGHTGLUE, XFEAT_XFEAT, LOFTR, DISK, ALIKED, KEYNETAFFNETHARDNET, XFEAT, XFEAT_XFEAT, ...
-tracker_config = FeatureTrackerConfigs.ROOT_SIFT
+tracker_config = dict(FeatureTrackerConfigs.get_config_from_name(args.features))  # --features
 tracker_config["num_features"] = num_features
 # tracker_config['match_ratio_test'] = 0.7        # 0.7 is the default in feature_tracker_configs.py
 if tracker_type is not None:
     tracker_config["tracker_type"] = tracker_type
 print("feature_manager_config: ", tracker_config)
 
-feature_tracker = feature_tracker_factory(**tracker_config)
+try:
+    feature_tracker = feature_tracker_factory(**tracker_config)
+except Exception as e:  # noqa: BLE001  (e.g. a learned model whose code or weights are not installed)
+    print(f"Cannot create the feature configuration {args.features}: {type(e).__name__}: {e}", file=sys.stderr)
+    for title, names in config_groups():
+        if args.features in names and title.startswith("pixi run"):
+            print(f"Its models are installed by: {title}", file=sys.stderr)
+    sys.exit(1)
 
 # ============================================
 # Compute keypoints and descriptors
