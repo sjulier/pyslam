@@ -159,4 +159,5 @@ windows instead, where `q` quits.
 
 See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) and the
 [good-to-know section of PIXI.md](./PIXI.md#good-to-know). When asking for help, include the full
-error message, the command you ran, and the output of `pixi info`.
+error message, the command you ran, and the output of `pixi info` and of `pixi run doctor` (one
+line per check: machine, memory, environment, GPU, every native module, vocabulary).
