@@ -18,8 +18,8 @@ TUM_DATASET:
   base_path: %dataset_base_path%
   name: %dataset_name%
   settings: %settings_path% # do not forget to correctly set the corresponding camera settings file 
-  associations: associations.txt
-  groundtruth_file: auto
+  associations: %associations%         # associations.txt, or rgb.txt for a monocular sequence
+  groundtruth_file: %groundtruth_file% # auto: groundtruth.txt
   start_frame_id: %start_frame_id%
 
 
@@ -74,8 +74,8 @@ VIDEO_DATASET:
   base_path: %dataset_base_path%
   name: %dataset_name%
   settings: %settings_path% # do not forget to correctly set the corresponding camera settings file 
-  groundtruth_file: groundtruth.txt
-  timestamps: %timestamps_path% # to be intended as the frame timestamps
+  groundtruth_file: %groundtruth_file% # optional
+  timestamps: %timestamps_path% # optional: to be intended as the frame timestamps
   start_frame_id: %start_frame_id%
 
 
@@ -86,9 +86,9 @@ FOLDER_DATASET:
   # 'name' is used for specifying a glob pattern, e.g. *png, *jpeg, etc...
   name: %dataset_images_glob_pattern%  
   settings: %settings_path% # do not forget to correctly set the corresponding camera settings file 
-  groundtruth_file: groundtruth.txt
-  fps: %dataset_fps%
-  #timestamps: times.txt # can be used here and to be intended as the frame timestamps 
+  groundtruth_file: %groundtruth_file% # optional
+  fps: %dataset_fps%                   # optional
+  timestamps: %timestamps_path%        # optional: to be intended as the frame timestamps
 
 
 ROS1BAG_DATASET:

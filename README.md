@@ -761,6 +761,8 @@ The `main_slam_evaluation.py` script enables automated SLAM evaluation by execut
 
 For each evaluation run, results are stored in a dedicated subfolder within the `results` directory, containing all the computed metrics. These metrics are then processed and compared. The final output is a report, available in `PDF`, `LaTeX`, and `HTML` formats, that includes comparison tables summarizing the *Absolute Trajectory Error* (ATE), the maximum deviation from the ground truth trajectory and other metrics. 
 
+Without options, the script evaluates the KITTI 06 video that comes with pySLAM ([evaluation_video.json](./pyslam/evaluation/configs/evaluation_video.json)), so it needs no download. The command line replaces parts of the configuration: `--features ORB2 SUPERPOINT` (one preset per feature configuration), `--runs N`, and a sequence of your own with `--video`, `--images` or `--tum` (the layout of the TUM RGB-D datasets) plus its camera `--settings` (see `./main_slam_evaluation.py --help`). The other configuration files need their datasets: the script checks that they exist before it starts any run.
+
 You can find some obtained evaluation results [here](./docs/evaluations/evaluations.md).
 
 #### pySLAM performances and comparative evaluations 
