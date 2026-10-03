@@ -103,6 +103,10 @@ The other main scripts have tasks too (`pixi run vo`, `pixi run feature-matching
 `pixi run map-viewer`, ...); `pixi task list` shows them all, and [PIXI.md](./PIXI.md#run) explains
 how to work in a pixi shell instead.
 
+`pixi run vo` (visual odometry) shows its results in the Rerun viewer. It stops at the end of the
+sequence, when you close the Rerun window, or with Ctrl+C; `pixi run vo --no-rerun` uses separate
+windows instead, where `q` quits.
+
 ## Good to know
 
 - **Results vary from run to run.** SLAM runs several threads, so two runs on the same video differ.
@@ -120,6 +124,9 @@ how to work in a pixi shell instead.
   computer's memory by default: if the build stops with `Killed signal terminated program cc1plus`,
   close other programs, or give WSL more memory (`memory=` and `swap=` in
   `%UserProfile%\.wslconfig`, then `wsl --shutdown`) and run `pixi run build` again.
+- **WSL2 and the Rerun viewer** (`pixi run vo`): under WSL2 pySLAM starts Rerun's viewer with its
+  software Vulkan renderer (`WGPU_BACKEND=vulkan`), because the default one crashes on WSLg with
+  "Invalid surface". To try another renderer, set `WGPU_BACKEND` yourself before `pixi run vo`.
 - **Do not `pip install` into the environment** and do not run `./clean.sh` casually: it deletes the
   build folders, and rebuilding takes up to an hour.
 - **Error messages tell you what to do.** If a component is not installed or not built, pySLAM says

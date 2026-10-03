@@ -619,7 +619,8 @@ class TumDataset(Dataset):
         self.base_path = self.path + "/" + self.name + "/"
         self.associations_path = self.path + "/" + self.name + "/" + associations
         with open(self.associations_path) as f:
-            self.associations_data = f.readlines()
+            # one frame per line; lines starting with # are comments (as in TUM's rgb.txt)
+            self.associations_data = [l for l in f.readlines() if l.strip() and not l.lstrip().startswith("#")]
             self.max_frame_id = len(self.associations_data)
             self.num_frames = self.max_frame_id
         if self.associations_data is None:
