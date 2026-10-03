@@ -158,6 +158,7 @@ fi
 "$SCRIPTS_DIR"/install_pip3_torch.sh || { print_red "ERROR: torch installation failed"; exit 1; }
 # googleapis-common-protos (wandb -> opentelemetry) >= 1.75 needs protobuf >= 6.33.5, newer than the
 # conda-forge protobuf that onnxruntime and the rest of this environment resolve to.
+ensure_pyqt5 "$PYTHON_EXE"  # ARM Linux: no PyQt5 wheel, build it (upstream #240)
 "$PYTHON_EXE" -m pip install -e . "googleapis-common-protos<1.75" || { print_red "ERROR: pip install -e . failed"; exit 1; }
 # Fail early on conflicting native runtimes (e.g. two OpenMP libraries) rather than at the first run.
 "$PYTHON_EXE" -c "import numpy, cv2, torch" || { print_red "ERROR: 'import numpy, cv2, torch' fails in the new environment"; exit 1; }

@@ -111,6 +111,9 @@ how to work in a pixi shell instead.
   installs the prebuilt modules.
 - **Compiler warnings** such as `-Wmaybe-uninitialized` from Eigen during a build from source are
   harmless (they appear on CPUs with AVX-512).
+- **WSL2 and the Rerun viewer** (`pixi run vo`): under WSL2 pySLAM starts Rerun's viewer with its
+  software Vulkan renderer (`WGPU_BACKEND=vulkan`), because the default one crashes on WSLg with
+  "Invalid surface". To try another renderer, set `WGPU_BACKEND` yourself before `pixi run vo`.
 - **Do not `pip install` into the environment** and do not run `./clean.sh` casually: it deletes the
   build folders, and rebuilding takes up to an hour.
 - **If you change pySLAM's C++ code, rebuild with `pixi run build`**, never with a module's own
