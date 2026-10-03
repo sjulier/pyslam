@@ -102,6 +102,9 @@ cd thirdparty/pyibow
 ./clean.sh
 cd "$ROOT_DIR"
 
+# prebuilt native modules (scripts/native_bundle.py): what was installed, and the -march it was built for
+rm -f thirdparty/.native_bundle.json thirdparty/.pyslam_march
+
 if [ -d "thirdparty/gtsam_local" ]; then
     rm -Rf thirdparty/gtsam_local
 fi

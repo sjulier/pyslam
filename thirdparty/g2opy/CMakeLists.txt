@@ -172,13 +172,35 @@ OPTION(G2O_NO_IMPLICIT_OWNERSHIP_OF_OBJECTS "Disables memory management in the g
 
 # Compiler specific options for gcc
 IF(CMAKE_COMPILER_IS_GNUCXX)
+# PYSLAM_MARCH: the CPU the code is compiled for (the value of -march). The default, "native", is
+# this machine's CPU. All of pySLAM's native modules and GTSAM must use the same value: they exchange
+# Eigen objects, whose alignment depends on it. Prebuilt binaries use a common baseline (x86-64-v3).
+if(NOT DEFINED PYSLAM_MARCH)
+    if(DEFINED ENV{PYSLAM_MARCH} AND NOT "$ENV{PYSLAM_MARCH}" STREQUAL "")
+        set(PYSLAM_MARCH "$ENV{PYSLAM_MARCH}")
+    else()
+        # the value recorded for the native modules already in this checkout (thirdparty/.pyslam_march,
+        # written e.g. when prebuilt modules are installed), so that a module rebuilt later matches them
+        set(PYSLAM_MARCH "native")
+        set(_pyslam_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+        foreach(_pyslam_level RANGE 8)
+            if(EXISTS "${_pyslam_dir}/thirdparty/.pyslam_march")
+                file(STRINGS "${_pyslam_dir}/thirdparty/.pyslam_march" PYSLAM_MARCH LIMIT_COUNT 1)
+                break()
+            endif()
+            get_filename_component(_pyslam_dir "${_pyslam_dir}" DIRECTORY)
+        endforeach()
+    endif()
+endif()
+message(STATUS "PYSLAM_MARCH: ${PYSLAM_MARCH}")
+
   OPTION (BUILD_WITH_MARCH_NATIVE "Build with \"-march native\"" ON)
   MESSAGE(STATUS "Compiling with GCC")
   
   IF(NOT "${ARCH}" MATCHES "arm")
     # Generic settings for optimisation
-    SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -DNDEBUG")
-    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -march=native -DNDEBUG")
+    SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=${PYSLAM_MARCH} -DNDEBUG")
+    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -march=${PYSLAM_MARCH} -DNDEBUG")
   ENDIF()
 
   IF(G2O_FAST_MATH)
@@ -196,11 +218,11 @@ IF(CMAKE_COMPILER_IS_GNUCXX)
   #ENDIF(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   # Linux
   IF(BUILD_WITH_MARCH_NATIVE AND NOT "${ARCH}" MATCHES "arm" AND "${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-    message(STATUS "Build with -march=native")
-    SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -DNDEBUG")
-    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native -DNDEBUG")
+    message(STATUS "Build with -march=${PYSLAM_MARCH}")
+    SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=${PYSLAM_MARCH} -DNDEBUG")
+    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=${PYSLAM_MARCH} -DNDEBUG")
   ELSE()
-    message(STATUS "Build without -march=native")
+    message(STATUS "Build without -march=${PYSLAM_MARCH}")
   ENDIF()
   # activate warnings !!!
   SET(g2o_C_FLAGS "${g2o_C_FLAGS} -Wall -W")

@@ -42,6 +42,9 @@ version = "2.10.7"
 [activation.env]
 # Keep ~/.local/lib/pythonX.Y/site-packages out of the environment
 PYTHONNOUSERSITE = "1"
+# The gtsam python package is installed in the source tree (scripts/install_gtsam.sh), not in one
+# environment, so that every level finds it
+PYTHONPATH = "$PIXI_PROJECT_ROOT/thirdparty/gtsam_local/install/python"
 # conda-forge torch brings LLVM OpenMP (libgomp is a link to libomp). Its idle worker
 # threads spin for 200 ms by default, which starves pySLAM's threads: tracking was 4 to
 # 14 times slower and lost track. pyslam/__init__.py sets this too; here it also covers
@@ -293,7 +296,10 @@ build-cpp-core = { cmd = "./build_cpp_core.sh", depends-on = ["build-gtsam", "bu
 # The ORB vocabulary of the default loop detector (about 100 MB), so that the first SLAM run
 # does not have to download it
 vocabulary = "python scripts/download_vocabulary.py"
-build = { cmd = "python scripts/check_pybind11_abi.py && python scripts/download_vocabulary.py", depends-on = [
+# `build` installs the prebuilt native modules when there is a bundle for this checkout and machine
+# (scripts/native_bundle.py), and builds them from source otherwise
+build = "bash scripts/pixi_build.sh"
+build-from-source = { cmd = "python scripts/check_pybind11_abi.py && python scripts/download_vocabulary.py", depends-on = [
   "build-gtsam",
   "build-orbslam2-features",
   "build-pangolin",
@@ -308,6 +314,7 @@ build = { cmd = "python scripts/check_pybind11_abi.py && python scripts/download
 models = "bash scripts/install_extra.sh features vpr"
 # Check the installation
 check-abi = "python scripts/check_pybind11_abi.py"
+check-native = "python scripts/check_native_modules.py"  # every native module loads (works in every level)
 check-gtsam = "python -m pytest -q test/gtsam/test_gtsam_factors_jacobians.py test/gtsam/test_optimize_pose.py test/gtsam/test_optimize_sim3.py"
 check-g2o = "python -m pytest -q test/g2o/test_optimize_pose.py test/g2o/test_optimize_sim3.py"
 check = { depends-on = ["check-abi", "check-gtsam", "check-g2o"] }
