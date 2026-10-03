@@ -46,6 +46,31 @@ kDefaultConfigLibsPath = os.path.join(kRootFolder, "config_libs.yaml")
 # Input:
 #   config_path: path to config yaml file where dataset, system, and camera settings are stored
 #   config_libs_path: path to config libs yaml file where lib paths are stored
+def load_settings_yaml(path):
+    """
+    Read a camera/system settings file. Besides plain YAML, this accepts the OpenCV/ORB-SLAM flavour
+    of YAML (settings written for ORB-SLAM, or by tools that copy its templates): a first line
+    `%YAML:1.0`, which YAML parsers reject, and `key:value` without a space after the colon (e.g.
+    `Viewer.PointSize:2`), which makes YAML parsers reject the whole file. A file that still cannot be
+    read stops pySLAM with an error that names the file and the line.
+    """
+    import re
+
+    with open(path, "r") as f:
+        text = f.read()
+    text = re.sub(r"\A\s*%YAML[: ]?[0-9.]*[^\n]*\n", "", text)  # the OpenCV header line
+    text = re.sub(r"(?m)^([A-Za-z_][\w.]*):(?=[^\s:])", r"\1: ", text)  # `key:value` -> `key: value`
+    try:
+        settings = yaml.load(text, Loader=yaml.FullLoader)
+    except yaml.YAMLError as exc:
+        Printer.red(f"[Config] Cannot read the settings file {path}:\n{exc}")
+        sys.exit(1)
+    if not isinstance(settings, dict):
+        Printer.red(f"[Config] The settings file {path} does not contain `key: value` settings")
+        sys.exit(1)
+    return settings
+
+
 class Config:
     def __init__(
         self,
@@ -171,11 +196,7 @@ class Config:
             Printer.orange("[Config] Using stereo settings file: " + self.general_settings_filepath)
             print("------------------------------------")
         if self.general_settings_filepath is not None:
-            with open(self.general_settings_filepath, "r") as stream:
-                try:
-                    self.system_settings = yaml.load(stream, Loader=yaml.FullLoader)
-                except yaml.YAMLError as exc:
-                    print(exc)
+            self.system_settings = load_settings_yaml(self.general_settings_filepath)
         self.cam_settings = self.system_settings
 
     def get_system_state_settings(self):
