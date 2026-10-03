@@ -187,7 +187,37 @@ function check_downloaded_size() {
 
 # download_file <url> <file> [<size in bytes>]: download unless the file is already there (and, if
 # the size is given, complete)
+# A local model mirror (for testing, or a lab without internet): PYSLAM_MODEL_MIRROR=<folder> with
+#   <folder>/checkout/  model files at their place in a pySLAM checkout (data/..., thirdparty/...)
+#   <folder>/home/      the caches of PyTorch, Hugging Face, CLIP, ... at their place in a home folder
+# Files found there are copied instead of downloaded. Code (git repositories) still comes from GitHub.
+# from_mirror <path>: copy <path> (a file or a folder, relative to the checkout) from the mirror if it
+# is there and missing here
+function from_mirror() {
+    local src="${PYSLAM_MODEL_MIRROR:-}/checkout/$1"
+    [[ -n "$PYSLAM_MODEL_MIRROR" && -e "$src" ]] || return 1
+    if [[ -d "$src" ]]; then
+        [[ -n "$(ls -A "$1" 2>/dev/null)" ]] && return 1
+    elif [[ -s "$1" ]]; then
+        return 1
+    fi
+    print_blue "Copying $1 from the local model mirror ..."
+    mkdir -p "$(dirname "$1")"
+    cp -a "$src" "$(dirname "$1")/" || { print_red "ERROR: could not copy $src"; exit 1; }
+}
+
+# with a mirror: its caches go into the home folder once (what is already there is kept)
+function caches_from_mirror() {
+    if [[ -n "$PYSLAM_MODEL_MIRROR" && -d "$PYSLAM_MODEL_MIRROR/home" ]]; then
+        print_blue "Copying the model caches from the local model mirror into $HOME (existing files are kept) ..."
+        rsync -a --ignore-existing "$PYSLAM_MODEL_MIRROR/home/" "$HOME/" \
+            || { print_red "ERROR: could not copy the caches of $PYSLAM_MODEL_MIRROR"; exit 1; }
+    fi
+}
+
 function download_file() {
+    set_aside_incomplete "$2" "$3"
+    [ -s "$2" ] || from_mirror "$2" || true
     set_aside_incomplete "$2" "$3"
     if [ ! -s "$2" ]; then
         print_blue "Downloading $(basename "$2") ..."
@@ -215,6 +245,7 @@ function download_file() {
 # and writes straight to the final name; this goes through pySLAM's downloader, which restarts (and
 # resumes) a stalled download and renames only on success.
 function gdrive_download_file() {
+    [ -s "$2" ] || from_mirror "$2" || true
     if [ -n "$3" ] && [ -s "$2" ] && [ "$(file_size "$2")" != "$3" ]; then
         print_yellow "$(basename "$2") is incomplete ($(file_size "$2") of $3 bytes): downloading it again"
         rm -f "$2"
@@ -281,6 +312,7 @@ function install_features() {
 }
 
 function install_d2net_model() {
+    [ -f thirdparty/d2net/models/d2_ots.pth ] || from_mirror thirdparty/d2net/models || true
     if [ ! -f thirdparty/d2net/models/d2_ots.pth ]; then
         gdrive_download_file "12Uk95TjBT7VZSEitvm3B3XNK37Q_uU8T" thirdparty/d2net/models/d2net.tar.xz
         unpack_archive thirdparty/d2net/models/d2net.tar.xz thirdparty/d2net/models
@@ -358,6 +390,7 @@ function install_depth_anything_v2() {
 function install_raft_stereo() {
     # (thirdparty/raft_stereo.patch only fixed the model links, which upstream has fixed since)
     clone_repo raft_stereo https://github.com/princeton-vl/RAFT-Stereo.git 6e93ed2169bd858dbb43033988563f3b0bb49506
+    [ -f thirdparty/raft_stereo/models/raftstereo-middlebury.pth ] || from_mirror thirdparty/raft_stereo/models || true
     if [ ! -f thirdparty/raft_stereo/models/raftstereo-middlebury.pth ]; then
         # the link is the one of RAFT-Stereo's download_models.sh
         download_file "https://www.dropbox.com/scl/fi/5khx1bhz84dapi8vtwapg/models.zip?rlkey=ggddrn1du1iiq6mgc2dsdpmwi&dl=1" \
@@ -625,6 +658,7 @@ for extra in "$@"; do
     fi
 done
 
+caches_from_mirror
 FAILED=""
 UNTRIED=""
 for extra in "$@"; do
