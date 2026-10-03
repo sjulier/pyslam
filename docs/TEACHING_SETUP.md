@@ -10,8 +10,8 @@ pixi installs everything pySLAM needs into the repository folder (`.pixi/`), fro
 everybody gets the same versions. It does not touch conda or the rest of your system, and you do not
 need to install CUDA or a compiler.
 
-> **Do the installation before the lab.** It downloads about 9 GB with an NVIDIA GPU (the environment
-> and the model weights; about 4 GB without one) and compiles pySLAM's C++ modules, which takes from
+> **Do the installation before the lab.** It downloads about 6 GB with an NVIDIA GPU (the environment,
+> 17 GB once unpacked; about 2 GB without one) and compiles pySLAM's C++ modules, which takes from
 > 15 minutes to over an hour.
 
 ## Supported systems
@@ -52,16 +52,22 @@ example one set up with conda), make a fresh clone instead of updating it.
 ```bash
 pixi run build      # the environment, pySLAM's C++ modules and the ORB vocabulary
 pixi run check      # the C++ modules load and the optimiser tests pass
-pixi run models     # learned features and place recognition: code and model weights, each one checked
+pixi run models     # the recommended learned models: SuperPoint, LightGlue and CosPlace (about 0.3 GB)
 ```
 
 - `build` ends by checking that all native modules share one pybind11 ABI (`OK: ... module(s) share ...`).
 - `check` ends with the GTSAM and g2o tests passing.
 - `models` prints one line per component, `OK` with the device it ran on (`cuda`, `mps` or `cpu`),
-  and summaries such as `19/19 components of 'features' OK` and `5/5 components of 'vpr' OK`.
+  and the summaries `2/2 components of 'features-core' OK` and `1/1 components of 'vpr-core' OK`.
+  `models` is the same as `pixi run models-features` (SuperPoint, and SuperPoint with the LightGlue
+  matcher) plus `pixi run models-vpr` (CosPlace place recognition). All 19 learned features and all
+  5 place recognition models come with `pixi run models-all-features` and `pixi run models-all-vpr`
+  (about 3.4 GB together).
 
 If a command stops (for example a download breaks), **run the same command again**: what is already
-done is skipped, and interrupted downloads continue where they stopped.
+done is skipped, and interrupted downloads continue where they stopped. A component reported as
+`UNTRIED` could not be downloaded (no network, or its server did not answer): it is not broken, run
+the same command again later.
 
 ## 4. Run SLAM
 
