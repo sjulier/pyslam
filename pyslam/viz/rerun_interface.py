@@ -69,6 +69,7 @@ class Rerun:
     camera_poses_view_size = 0.5
     is_initialized = False
     is_z_up = False
+    viewer_pids = []  # the viewer processes started by init() (empty if an existing viewer was reused)
 
     def __init__(self) -> None:
         self.init()
@@ -91,12 +92,45 @@ class Rerun:
     def init(img_compress=False) -> None:
         Rerun.img_compress = img_compress
 
+        existing = set(Rerun._find_viewer_pids())
         if Rerun.blueprint:
             rr.init("pyslam", spawn=True, default_blueprint=Rerun.blueprint)
         else:
             rr.init("pyslam", spawn=True)
         # rr.connect()  # Connect to a remote viewer
         Rerun.is_initialized = True
+        # remember the viewer process that was spawned, to notice when its window is closed
+        for _ in range(20):
+            Rerun.viewer_pids = [p for p in Rerun._find_viewer_pids() if p not in existing]
+            if Rerun.viewer_pids:
+                break
+            time.sleep(0.1)
+
+    @staticmethod
+    def _find_viewer_pids():
+        pids = []
+        for proc in psutil.process_iter(attrs=["pid", "name"]):
+            try:
+                if proc.info["name"] == "rerun":
+                    pids.append(proc.info["pid"])
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        return pids
+
+    @staticmethod
+    def is_viewer_alive() -> bool:
+        """False once the viewer started by init() has exited (its window was closed). True if
+        there is no such process to watch (e.g. an already running viewer was reused)."""
+        if not Rerun.viewer_pids:
+            return True
+        for pid in Rerun.viewer_pids:
+            try:
+                proc = psutil.Process(pid)
+                if proc.is_running() and proc.status() != psutil.STATUS_ZOMBIE:
+                    return True
+            except psutil.NoSuchProcess:
+                pass
+        return False
 
     @staticmethod
     def init3d(img_compress=False) -> None:
