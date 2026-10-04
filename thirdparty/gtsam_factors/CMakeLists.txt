@@ -10,6 +10,28 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(SET_RPATH               ON  CACHE BOOL   "Set RPATH instead of the default RUNPATH") # for solving the linking issue with g2o binaries (see the related node in the compiler options section)
 set(WITH_PYTHON_INTERP_CHECK OFF CACHE BOOL  "Checking python interpreter") # to be activated when called within virtual python environment 
+# PYSLAM_MARCH: the CPU the code is compiled for (the value of -march). The default, "native", is
+# this machine's CPU. All of pySLAM's native modules and GTSAM must use the same value: they exchange
+# Eigen objects, whose alignment depends on it. Prebuilt binaries use a common baseline (x86-64-v3).
+if(NOT DEFINED PYSLAM_MARCH)
+    if(DEFINED ENV{PYSLAM_MARCH} AND NOT "$ENV{PYSLAM_MARCH}" STREQUAL "")
+        set(PYSLAM_MARCH "$ENV{PYSLAM_MARCH}")
+    else()
+        # the value recorded for the native modules already in this checkout (thirdparty/.pyslam_march,
+        # written e.g. when prebuilt modules are installed), so that a module rebuilt later matches them
+        set(PYSLAM_MARCH "native")
+        set(_pyslam_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+        foreach(_pyslam_level RANGE 8)
+            if(EXISTS "${_pyslam_dir}/thirdparty/.pyslam_march")
+                file(STRINGS "${_pyslam_dir}/thirdparty/.pyslam_march" PYSLAM_MARCH LIMIT_COUNT 1)
+                break()
+            endif()
+            get_filename_component(_pyslam_dir "${_pyslam_dir}" DIRECTORY)
+        endforeach()
+    endif()
+endif()
+message(STATUS "PYSLAM_MARCH: ${PYSLAM_MARCH}")
+
 set(WITH_MARCH_NATIVE OFF  CACHE BOOL  "Build with \"-march native\"")
 
 # In order to set RPATH (instead of RUNPATH) for g2o and other libraries linking issue.
@@ -29,8 +51,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -O3 -fPIC -DNDEBUG ${MY_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -DNDEBUG ${MY_FLAGS}")
 
 if (WITH_MARCH_NATIVE)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${PYSLAM_MARCH}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${PYSLAM_MARCH}")
 endif()
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

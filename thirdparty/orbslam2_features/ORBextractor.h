@@ -69,7 +69,11 @@ template <bool IsDeterministic = false> class ORBextractor {
 
     // Compute the ORB features and descriptors on an image.
     // ORB are dispersed on the image using an octree.
-    // Mask is ignored in the current implementation.
+    // Mask: an optional quality map (feature quality), a single-channel image of any size (it is
+    // scaled to the image): the weight of each pixel. CV_32F/CV_64F: non-negative weights; CV_8U: a
+    // standard mask (0 = excluded, any other value = weight 1). When the octree keeps the best
+    // keypoint of a node it compares FAST response x weight; keypoints with weight 0 are dropped.
+    // The returned keypoints keep their FAST response. Empty: the original ORB-SLAM2 behaviour.
     void detectAndCompute(cv::InputArray image, cv::InputArray mask,
                           std::vector<cv::KeyPoint> &keypoints, cv::OutputArray descriptors,
                           bool bComputeDescriptors = true, bool bComputeOrientation = true);
@@ -105,6 +109,14 @@ template <bool IsDeterministic = false> class ORBextractor {
     void ComputePyramid(cv::Mat image);
     void ComputeKeyPointsOctTree(std::vector<std::vector<cv::KeyPoint>> &allKeypoints,
                                  bool bComputeOrientation = true);
+    void SetQuality(cv::InputArray quality, const cv::Size &imageSize);
+    // Weight the keypoints of a level by the quality map (see detectAndCompute): drops those with
+    // weight 0, multiplies the responses of the others, and returns their original responses
+    std::vector<float> WeightByQuality(std::vector<cv::KeyPoint> &keys, int level, int offsetX,
+                                       int offsetY) const;
+
+    cv::Mat mQuality;     // CV_32F, empty if none
+    cv::Size mImageSize;  // size of the image at level 0
 
     std::vector<cv::Point> pattern;
 

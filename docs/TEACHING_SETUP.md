@@ -23,8 +23,9 @@ need to install CUDA or a compiler.
 | **macOS** (Apple silicon, macOS 14 or later) | tested. Learned features use the Apple GPU |
 | **Windows** | via **WSL2** only (Ubuntu inside Windows), then as Linux: tested (Windows 11, WSL2, Titan Xp), including the GPU and the windows of `pixi run slam` |
 
-You need about **30 GB of free disk space** (less without an NVIDIA GPU), an internet connection and,
-for the build, about **12 GB of free memory** (see [Good to know](#good-to-know)).
+You need about **30 GB of free disk space** (less without an NVIDIA GPU) and an internet connection.
+If pySLAM's C++ modules have to be compiled on your machine (see step 3), that also needs about
+**12 GB of free memory** (see [Good to know](#good-to-know)).
 
 ### With an NVIDIA GPU: `default` or `default-cpu`?
 
@@ -75,6 +76,11 @@ pixi run check      # the C++ modules load and the optimiser tests pass
 pixi run models     # the recommended learned models: SuperPoint, LightGlue and CosPlace (about 0.3 GB)
 ```
 
+- The first `build` downloads the environment (about 6 GB with an NVIDIA GPU): this takes 20 minutes
+  or more, mostly **without any output**, which is normal.
+- `build` then installs pySLAM's C++ modules ready-made when there is a prebuilt copy for your system
+  (`[native bundle] installed the prebuilt prereq modules` and `... pyslam modules`, about 30 MB of
+  downloads), and otherwise compiles them, which takes from 15 minutes to over an hour.
 - `build` ends by checking that all native modules share one pybind11 ABI (`OK: ... module(s) share ...`).
 - `check` ends with the GTSAM and g2o tests passing.
 - `models` prints one line per component, `OK` with the device it ran on (`cuda`, `mps` or `cpu`),
@@ -154,7 +160,7 @@ windows instead, where `q` quits.
 ## Good to know
 
 - **Results vary from run to run.** SLAM runs several threads, so two runs on the same video differ.
-  On KITTI 06 the trajectory error (ATE) of monocular SLAM was about 13-18 m in our tests. Compare
+  On KITTI 06 the trajectory error (ATE) of monocular SLAM ranged from 11 to 21 m in our tests (several machines). Compare
   methods over several runs. See
   [non-determinism](./TROUBLESHOOTING.md#non-determinism-and-run-to-run-variability).
 - **SLAM runs at the camera's frame rate**, also with `--headless`. `--speed 2` plays twice as fast and
@@ -167,7 +173,12 @@ windows instead, where `q` quits.
   `PYSLAM_BUILD_JOBS=1` to build one file at a time. On **Windows**, WSL2 gets only half of the
   computer's memory by default: if the build stops with `Killed signal terminated program cc1plus`,
   close other programs, or give WSL more memory (`memory=` and `swap=` in
-  `%UserProfile%\.wslconfig`, then `wsl --shutdown`) and run `pixi run build` again.
+  `%UserProfile%\.wslconfig`, then `wsl --shutdown`) and run `pixi run build` again. Single files of
+  GTSAM and of pySLAM's C++ code need up to 12 GB, so on a laptop with 16 GB of memory (WSL2 then gets about 8 GB) give
+  WSL more memory or swap **before** a build from source. None of this applies when `build`
+  installs the prebuilt modules.
+- **Compiler warnings** such as `-Wmaybe-uninitialized` from Eigen during a build from source are
+  harmless (they appear on CPUs with AVX-512).
 - **WSL2 and the Rerun viewer** (`pixi run vo`): under WSL2 pySLAM starts Rerun's viewer with its
   software Vulkan renderer (`WGPU_BACKEND=vulkan`), because the default one crashes on WSLg with
   "Invalid surface". To try another renderer, set `WGPU_BACKEND` yourself before `pixi run vo`.
@@ -181,6 +192,12 @@ windows instead, where `q` quits.
   it happens again, try `QT_QPA_PLATFORM=xcb pixi run slam`.
 - **Do not `pip install` into the environment** and do not run `./clean.sh` casually: it deletes the
   build folders, and rebuilding takes up to an hour.
+- **If you change pySLAM's C++ code, rebuild with `pixi run build`**, never with a module's own
+  `build.sh` outside pixi (the scripts stop with an error there). After a change to pySLAM's own C++
+  code (`pyslam/slam/cpp`, `cpp/`, `thirdparty/orbslam2_features`), `build` keeps the prebuilt
+  libraries it is built on (GTSAM, g2o, ...) and compiles only that code (about 10 minutes on a laptop). A change
+  to those libraries themselves means compiling everything, from 30 minutes to over an hour. If a
+  build fails or is interrupted, run `./clean.sh` and then `pixi run build`.
 - **Error messages tell you what to do.** If a component is not installed or not built, pySLAM says
   which one and which command installs or builds it.
 - **Not available**: SURF (non-free). The TensorFlow-based features (DELF, LF-Net, ContextDesc,

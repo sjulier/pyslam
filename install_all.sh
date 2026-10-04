@@ -47,6 +47,11 @@ print_blue "Installing pySLAM"
 print_blue '================================================'
 
 # An active pixi environment takes precedence: conda can be installed on the same machine
+if [ "$PIXI_ACTIVATED" != true ]; then
+    # The build scripts stop outside pixi (the supported setup): the legacy conda and venv setups
+    # let them run
+    export PYSLAM_ALLOW_NON_PIXI=1
+fi
 if [ "$PIXI_ACTIVATED" = true ]; then
     print_blue "Installing pySLAM by using pixi"
     . "$SCRIPTS_DIR"/install_all_pixi.sh

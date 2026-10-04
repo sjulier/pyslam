@@ -12,7 +12,29 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(WITH_PYTHON_INTERP_CHECK OFF CACHE BOOL "Checking python interpreter") # to be activated when called within virtual python environment 
-set(WITH_MARCH_NATIVE ON CACHE BOOL "Build with -march=native")
+# PYSLAM_MARCH: the CPU the code is compiled for (the value of -march). The default, "native", is
+# this machine's CPU. All of pySLAM's native modules and GTSAM must use the same value: they exchange
+# Eigen objects, whose alignment depends on it. Prebuilt binaries use a common baseline (x86-64-v3).
+if(NOT DEFINED PYSLAM_MARCH)
+    if(DEFINED ENV{PYSLAM_MARCH} AND NOT "$ENV{PYSLAM_MARCH}" STREQUAL "")
+        set(PYSLAM_MARCH "$ENV{PYSLAM_MARCH}")
+    else()
+        # the value recorded for the native modules already in this checkout (thirdparty/.pyslam_march,
+        # written e.g. when prebuilt modules are installed), so that a module rebuilt later matches them
+        set(PYSLAM_MARCH "native")
+        set(_pyslam_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+        foreach(_pyslam_level RANGE 8)
+            if(EXISTS "${_pyslam_dir}/thirdparty/.pyslam_march")
+                file(STRINGS "${_pyslam_dir}/thirdparty/.pyslam_march" PYSLAM_MARCH LIMIT_COUNT 1)
+                break()
+            endif()
+            get_filename_component(_pyslam_dir "${_pyslam_dir}" DIRECTORY)
+        endforeach()
+    endif()
+endif()
+message(STATUS "PYSLAM_MARCH: ${PYSLAM_MARCH}")
+
+set(WITH_MARCH_NATIVE ON CACHE BOOL "Build with -march=${PYSLAM_MARCH}")
 
 set(PYSLAM_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(PYSLAM_SLAM_CPP_SRC ${PYSLAM_ROOT}/pyslam/slam/cpp)
@@ -26,14 +48,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fconcepts")
 endif()
 
-# Add -march=native if requested and not on macOS
-# (macOS system clang doesn't properly support -march=native on Apple Silicon)
+# Add -march=${PYSLAM_MARCH} if requested and not on macOS
+# (macOS system clang doesn't properly support -march=${PYSLAM_MARCH} on Apple Silicon)
 if(WITH_MARCH_NATIVE AND NOT APPLE)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
-    message(STATUS "Using -march=native for optimization")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${PYSLAM_MARCH}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${PYSLAM_MARCH}")
+    message(STATUS "Using -march=${PYSLAM_MARCH} for optimization")
 elseif(WITH_MARCH_NATIVE)
-    message(STATUS "Skipping -march=native on macOS (system clang limitation)")
+    message(STATUS "Skipping -march=${PYSLAM_MARCH} on macOS (system clang limitation)")
 endif()
 
 # Find Eigen3 - try CONFIG mode first, fallback to MODULE mode

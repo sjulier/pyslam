@@ -5,6 +5,16 @@
 
 #set -e
 
+# pySLAM is built inside its pixi environment: run `pixi run build` (or a build-* task) in the
+# repository's root folder. Outside pixi this script would use another compiler and other libraries
+# than the rest of the build. PYSLAM_ALLOW_NON_PIXI=1 lets it run anyway (e.g. the legacy conda setup).
+if [[ -z "$PIXI_PROJECT_NAME" && -z "$PYSLAM_ALLOW_NON_PIXI" ]]; then
+    echo "ERROR: $(basename "$(dirname "$(readlink -f "$0")")")/$(basename "$0") must run inside pySLAM's pixi environment:" >&2
+    echo "       run 'pixi run build' in the pySLAM folder (or start 'pixi shell' there first)." >&2
+    echo "       To build in another environment anyway, set PYSLAM_ALLOW_NON_PIXI=1." >&2
+    exit 1
+fi
+
 SCRIPT_DIR_=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd ) # get script dir
 SCRIPT_DIR_=$(readlink -f $SCRIPT_DIR_)  # this reads the actual path if a symbolic directory is used
 
@@ -119,6 +129,21 @@ WITH_MARCH_NATIVE=ON
 if [[ "$OSTYPE" == darwin* ]]; then
     WITH_MARCH_NATIVE=OFF
 fi
+# PYSLAM_MARCH: the CPU to compile for (the value of -march; default: native, this machine's CPU).
+# GTSAM and all of pySLAM's native modules must use the same value (see the CMakeLists.txt of the
+# modules). With another value than native, GTSAM gets it through the compiler flags. Unset, it is
+# the value recorded for the modules already in the checkout (thirdparty/.pyslam_march, written
+# e.g. when prebuilt modules are installed), so that a rebuild matches them.
+if [[ -z "$PYSLAM_MARCH" && -s "$ROOT_DIR/thirdparty/.pyslam_march" ]]; then
+    PYSLAM_MARCH=$(head -n 1 "$ROOT_DIR/thirdparty/.pyslam_march")
+    export PYSLAM_MARCH  # gtsam_factors, built at the end of this script, uses it too
+fi
+if [[ -n "$PYSLAM_MARCH" && "$PYSLAM_MARCH" != "native" && "$OSTYPE" != darwin* ]]; then
+    WITH_MARCH_NATIVE=OFF
+    export CFLAGS="$CFLAGS -march=$PYSLAM_MARCH"
+    export CXXFLAGS="$CXXFLAGS -march=$PYSLAM_MARCH"
+    echo "PYSLAM_MARCH: $PYSLAM_MARCH"
+fi
 echo "WITH_MARCH_NATIVE: $WITH_MARCH_NATIVE"
 
 # gtwrap (GTSAM Python bindings) needs pyparsing at build time, and the python install generates
@@ -207,7 +232,7 @@ GTSAM_OPTIONS+=" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH=$GTSA
 # The effective GTSAM configuration is recorded next to the installed library: rebuild (from a fresh
 # build dir) when it differs, e.g. after pulling changed GTSAM_OPTIONS onto an existing install.
 GTSAM_CONFIG_STAMP_FILE="$GTSAM_INSTALL_DIR/.pyslam_gtsam_options"
-GTSAM_CONFIG_STAMP=$(echo "$GTSAM_TAG -DCMAKE_BUILD_TYPE=Release $GTSAM_OPTIONS $EXTERNAL_OPTIONS $MAC_OPTIONS" | xargs)
+GTSAM_CONFIG_STAMP=$(echo "$GTSAM_TAG -DCMAKE_BUILD_TYPE=Release $GTSAM_OPTIONS $EXTERNAL_OPTIONS $MAC_OPTIONS march=${PYSLAM_MARCH:-native}" | xargs)
 
 # The gtsam python module must load the *installed* libgtsam, the same one that gtsam_factors
 # and the C++ core link. The module is pip-installed from the build tree (see below), so the build must
@@ -238,9 +263,23 @@ if [[ "$NEED_GTSAM_BUILD" == true ]]; then
     cd ..
 fi
 
-# Install the gtsam python package into $PYTHON_EXE unless it already has this version and
-# loads the installed libgtsam. This runs even when the C++ library is already built, so that a
-# recreated python environment gets the package back. A different gtsam (e.g. a pip wheel) is replaced.
+# Install the gtsam python package unless this version is already there and loads the installed
+# libgtsam. This runs even when the C++ library is already built, so that a recreated python
+# environment gets the package back. A different gtsam (e.g. a pip wheel) is replaced.
+# - Under pixi it is installed in the source tree ($GTSAM_INSTALL_DIR/python), which pixi.toml puts on
+#   PYTHONPATH and config_libs.yaml on pySLAM's path: every level's environment then finds it, not
+#   only the one the build ran in.
+# - Otherwise it is installed into $PYTHON_EXE's environment.
+GTSAM_PY_TARGET_DIR=""
+if [[ -n "$PIXI_PROJECT_NAME" ]]; then
+    GTSAM_PY_TARGET_DIR="$GTSAM_INSTALL_DIR/python"
+    export PYTHONPATH="$GTSAM_PY_TARGET_DIR${PYTHONPATH:+:$PYTHONPATH}"
+    # a copy in the environment (from an older build) would shadow or duplicate the one in the tree
+    if PYTHONPATH= $PYTHON_EXE -c "import importlib.metadata as m; m.version('gtsam')" &>/dev/null; then
+        echo "Removing the gtsam python package from the environment (it is installed in the source tree now)"
+        PYTHONPATH= $PYTHON_EXE -m pip uninstall -y gtsam || { print_red "Error: could not remove gtsam from the environment"; exit 1; }
+    fi
+fi
 function installed_gtsam_py_module(){
     $PYTHON_EXE -c "import gtsam, glob, os; print(glob.glob(os.path.join(os.path.dirname(gtsam.__file__), 'gtsam*.so'))[0])" 2>/dev/null
 }
@@ -251,7 +290,12 @@ if [[ "$NEED_GTSAM_BUILD" == true || "$INSTALLED_GTSAM_PY_VERSION" != "$GTSAM_TA
     # Build the module (and type stubs), then pip-install it into $PYTHON_EXE. `make python-install`
     # is not used: it adds `pip install --user` outside a virtualenv (e.g. in a conda env), which
     # installs into ~/.local and shadows gtsam for every python of the same version.
-    ( cd build && make -j $NUM_CORES python-stubs && cd python && $PYTHON_EXE -m pip install . ) || { print_red "Error: GTSAM python install failed"; exit 1; }
+    if [[ -n "$GTSAM_PY_TARGET_DIR" ]]; then
+        ( cd build && make -j $NUM_CORES python-stubs && cd python && rm -rf "$GTSAM_PY_TARGET_DIR" \
+            && $PYTHON_EXE -m pip install --no-deps --target "$GTSAM_PY_TARGET_DIR" . ) || { print_red "Error: GTSAM python install failed"; exit 1; }
+    else
+        ( cd build && make -j $NUM_CORES python-stubs && cd python && $PYTHON_EXE -m pip install . ) || { print_red "Error: GTSAM python install failed"; exit 1; }
+    fi
 fi
 if ! $PYTHON_EXE -c "import gtsam" ; then
     print_red "Error: 'import gtsam' fails with $PYTHON_EXE"

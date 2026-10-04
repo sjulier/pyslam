@@ -1,5 +1,20 @@
 #!/usr/bin/env bash
 
+# pySLAM is built inside its pixi environment: run `pixi run build` (or a build-* task) in the
+# repository's root folder. Outside pixi this script would use another compiler and other libraries
+# than the rest of the build. PYSLAM_ALLOW_NON_PIXI=1 lets it run anyway (e.g. the legacy conda setup).
+if [[ -z "$PIXI_PROJECT_NAME" && -z "$PYSLAM_ALLOW_NON_PIXI" ]]; then
+    echo "ERROR: $(basename "$(dirname "$(readlink -f "$0")")")/$(basename "$0") must run inside pySLAM's pixi environment:" >&2
+    echo "       run 'pixi run build' in the pySLAM folder (or start 'pixi shell' there first)." >&2
+    echo "       To build in another environment anyway, set PYSLAM_ALLOW_NON_PIXI=1." >&2
+    exit 1
+fi
+
+# Parallel jobs, limited by the available memory (see get_build_jobs in bash_utils.sh)
+NUM_JOBS=$( . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../bash_utils.sh" >/dev/null 2>&1 && get_build_jobs )
+NUM_JOBS=${NUM_JOBS:-4}
+echo "Building with $NUM_JOBS parallel jobs (set PYSLAM_BUILD_JOBS to change)"
+
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd ) # get script dir (this should be the main folder directory of PLVS)
 SCRIPT_DIR=$(readlink -f $SCRIPT_DIR)  # this reads the actual path if a symbolic directory is used
 
@@ -49,7 +64,7 @@ if [ ! -f pypangolin.cpython-*.so ]; then
                 -DBUILD_PANGOLIN_OPENNI=OFF -DBUILD_PANGOLIN_OPENNI2=OFF \
                 -DBUILD_PANGOLIN_FFMPEG=OFF -DBUILD_PANGOLIN_LIBOPENEXR=OFF \
                 $EXTERNAL_OPTIONS $MAC_OPTIONS 
-    make -j8
+    make -j "$NUM_JOBS"
     cd ..
     #python setup.py install
 fi

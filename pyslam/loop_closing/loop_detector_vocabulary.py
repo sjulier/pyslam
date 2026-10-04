@@ -67,6 +67,13 @@ kVocabularyFileSizes = {
 }
 
 
+# The ORB vocabularies are also published, xz-compressed (about 35 MB each), with pySLAM's prebuilt
+# native modules: downloaded from there first, from Google Drive if that fails
+kVocabularyReleaseUrl = os.environ.get(
+    "PYSLAM_VOCABULARY_URL", "https://github.com/sjulier/pyslam/releases/download/native-bundles"
+)
+
+
 @register_class
 class VocabularyData(Serializable):
     def __init__(
@@ -114,9 +121,40 @@ class VocabularyData(Serializable):
             shutil.copyfile(src, self.vocab_file_path + ".part")
             os.replace(self.vocab_file_path + ".part", self.vocab_file_path)
 
+    def download_from_release(self):
+        """Download <name>.xz from kVocabularyReleaseUrl and unpack it. False if that fails."""
+        name = os.path.basename(self.vocab_file_path)
+        expected_size = kVocabularyFileSizes.get(name)
+        if expected_size is None or not kVocabularyReleaseUrl:
+            return False
+        import lzma
+        import shutil
+        import urllib.request
+
+        url = f"{kVocabularyReleaseUrl.rstrip('/')}/{name}.xz"
+        part = self.vocab_file_path + ".part"
+        Printer.blue(f"VocabularyData: downloading vocabulary {name} from: {url}")
+        try:
+            os.makedirs(os.path.dirname(self.vocab_file_path), exist_ok=True)
+            request = urllib.request.Request(url, headers={"User-Agent": "pyslam-vocabulary"})
+            with urllib.request.urlopen(request, timeout=60) as response:
+                with lzma.open(response) as unpacked, open(part, "wb") as f:
+                    shutil.copyfileobj(unpacked, f, 1 << 20)
+            if os.path.getsize(part) != expected_size:
+                raise ValueError(f"{os.path.getsize(part)} bytes instead of {expected_size}")
+            os.replace(part, self.vocab_file_path)
+            return True
+        except Exception as e:  # noqa: BLE001  (network errors, a corrupt or missing file)
+            Printer.yellow(f"VocabularyData: download from {url} failed ({e}): trying {self.url_type}")
+            if os.path.exists(part):
+                os.remove(part)
+            return False
+
     def check_download(self):
         self.set_aside_incomplete_file()
         self.copy_from_mirror()
+        if self.url_vocabulary is not None and not os.path.exists(self.vocab_file_path):
+            self.download_from_release()
         if self.url_vocabulary is not None and not os.path.exists(self.vocab_file_path):
             if self.url_type == "gdrive":
                 gdrive_url = self.url_vocabulary
