@@ -282,16 +282,6 @@ if __name__ == "__main__":
         "(DBOW3_INDEPENDENT), unless the settings file names a loop detector.",
     )
     parser.add_argument(
-        "--features",
-        default=None,
-        metavar="NAME",
-        help="The features: a FeatureTrackerConfigs entry, e.g. ORB2 (the default), ROOT_SIFT, "
-        "SUPERPOINT or LIGHTGLUE (`pixi run feature-matching --list` lists them and what installs "
-        "their models). It replaces FeatureTrackerConfig.name of the settings file. With features "
-        "whose descriptors are not ORB, loop closing computes ORB descriptors of its own "
-        "(DBOW3_INDEPENDENT), unless the settings file names a loop detector.",
-    )
-    parser.add_argument(
         "--plot-window",
         type=int,
         default=None,
