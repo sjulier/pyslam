@@ -402,6 +402,8 @@ if __name__ == "__main__":
         max_speed=args.speed,
         enabled=is_throttle_enabled(args.throttle, args.no_throttle, args.headless),
     )
+    if plot_drawer:
+        plot_drawer.set_playback_throttle(playback_throttle)
     is_throttle_hint_shown = False  # the hint about --throttle when tracking is lost
     is_end_message_shown = False  # the message at the end of the sequence (with windows)
     img_draw = None  # the last image drawn in the Camera window
@@ -493,7 +495,7 @@ if __name__ == "__main__":
 
                         # draw 2d plots
                         if plot_drawer:
-                            plot_drawer.draw(img_id)
+                            plot_drawer.draw(img_id, frame_duration)
 
                     if (
                         online_trajectory_writer is not None
