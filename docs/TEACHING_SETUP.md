@@ -116,9 +116,15 @@ their models. `pixi run vo --features ORB2` chooses the features of visual odome
 
 `pixi run slam-evaluation` runs SLAM several times without windows and makes a table of the results:
 by default 3 runs with ORB2 and 3 with ROOT_SIFT features on the bundled KITTI 06 video (about 15
-minutes). It prints the tables at the end (trajectory error `rmse` and `max` in metres, and
-`percent_lost`, the percentage of frames where tracking was lost) and writes them, a `report.html`
-and one folder per run to `results/eval_<date>/`. A run that fails is reported in red with the reason.
+minutes). It prints the tables at the end and writes them, a `report.html` and one folder per run to
+`results/eval_<date>/`:
+
+- `rmse` and `max`: the trajectory error in metres, **over the tracked frames only**;
+- `percent_tracked`: the percentage of the frames that have a pose in the final trajectory. Read the
+  errors with it: a run that lost track after a tenth of the sequence has a small error;
+- `percent_lost`: the percentage of the frames where tracking was lost or relocalizing.
+
+A run that fails is reported in red with the reason.
 Choose the features, the number of runs and the sequence:
 
 ```bash
@@ -132,13 +138,16 @@ pixi run slam-evaluation --tum my/tum_sequence --settings settings/MY_CAMERA.yam
 - `--video`, `--images` (a folder of images, in the order of their names) and `--tum` need `--settings`,
   the calibration of your camera: copy a file of `settings/`, e.g. `WEBCAM.yaml`, and set `Camera.fx`,
   `Camera.fy`, `Camera.cx`, `Camera.cy`, the distortion, and the image size.
-- Without ground truth there is no trajectory error, only `percent_lost`. With `--groundtruth NAME`,
+- Without ground truth there is no trajectory error, only `percent_tracked` and `percent_lost`. With `--groundtruth NAME`,
   a file in the folder of the sequence with one line per frame (`timestamp x y z qx qy qz qw scale`),
   the trajectory errors are computed too.
 - `--tum` reads a sequence in the layout of the TUM RGB-D datasets as those are read: the images, their
   timestamps and their order come from the list of the frames (`associations.txt`, or `rgb.txt` for a
   sequence without depth images: `timestamp rgb/<timestamp>.png` per line), and the ground truth from
   `groundtruth.txt` (`timestamp tx ty tz qx qy qz qw` per line), which a TUM sequence must have.
+- `--throttle` slows the playback down when tracking gets weak, and `--speed 0.5` plays at half the
+  camera's frame rate: for features that cannot keep up with the camera (e.g. LIGHTGLUE on an older
+  GPU), which otherwise lose track early. The runs take longer, and are no longer in real time.
 - `--jobs 2` runs two at a time: faster, but the results get worse when the machine cannot keep up.
 - `pixi run slam-evaluation --help` lists all the options. The public datasets (TUM, KITTI, EuRoC)
   are evaluated with `-c pyslam/evaluation/configs/evaluation_tum.json` (and the like) after
