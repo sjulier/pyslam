@@ -338,6 +338,17 @@ class LoopDetectorBase:
                             f"LoopDetectorBase: covisible keyframe {cov_kf.id} has img dtype: {cov_kf.img.dtype}, converting to uint8"
                         )
                         cov_kf.img = cov_kf.img.astype(np.uint8)
+                if self.local_feature_manager is not None:
+                    # An independent local feature manager: the descriptors of the keyframe are the
+                    # front-end's (e.g. SuperPoint), not the ones the vocabulary is made of. They must
+                    # be re-computed, as compute_local_des_if_needed() does for the keyframe of the
+                    # task (the front-end's descriptors made the loop-detection process stop).
+                    if cov_kf.img is None:
+                        LoopDetectorBase.print(
+                            f"LoopDetectorBase: covisible keyframe {cov_kf.id}: no img to re-compute its local descriptors"
+                        )
+                        continue
+                    _, cov_kf.des = self.local_feature_manager.compute(cov_kf.img, cov_kf.kps)
                 LoopDetectorBase.print(
                     f"LoopDetectorBase: computing global descriptor for keyframe {cov_kf.id}"
                 )
