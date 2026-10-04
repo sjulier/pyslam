@@ -435,7 +435,7 @@ class Qplot2d:
         self.x_window = x_window
         if self.win is not None:
             self.win.setTitle(x_window_title(self.title, x_window, self.x_window_unit))
-        print(f'Qplot2d "{self.title}": showing {x_window_str(x_window, self.xlabel)}')
+        print(f'Qplot2d "{self.title}": showing {x_window_str(x_window, self.x_window_unit)}')
         self.got_data = True  # redraw
 
     def setGridAxis(self, xlim=None, ylim=None):

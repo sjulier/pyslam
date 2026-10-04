@@ -64,8 +64,8 @@ def x_window_from_key(x_window, key, x_span):
     return new_window
 
 
-def x_window_str(x_window, xlabel=""):
-    return f"the last {x_window:g} ({xlabel})" if x_window > 0 else "the whole run"
+def x_window_str(x_window, unit=""):
+    return f"the last {x_window:g} {unit}".rstrip() if x_window > 0 else "the whole run"
 
 
 def x_window_title(title, x_window, unit):

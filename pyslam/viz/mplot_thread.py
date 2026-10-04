@@ -324,11 +324,12 @@ class Mplot2d:
             self.ax.autoscale(True)  # the limits were set by the sliding window
         if self.title != "":
             self.ax.set_title(x_window_title(self.title, x_window, self.x_window_unit))
-        print(f'Mplot2d "{self.title}": showing {x_window_str(x_window, self.xlabel)}')
+        print(f'Mplot2d "{self.title}": showing {x_window_str(x_window, self.x_window_unit)}')
         self.got_data = True  # redraw
 
     def setAxis(self):
-        self.ax.legend()
+        # a fixed place: "best" moves the legend around as the curves grow, often over them
+        self.ax.legend(loc="upper left", framealpha=0.7)
         self.ax.relim()
         self.ax.autoscale_view()
         if self.x_window > 0:
