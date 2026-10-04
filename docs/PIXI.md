@@ -127,7 +127,8 @@ python main_semantic_image_segmentation.py
 
 | task | level | what it does |
 |---|---|---|
-| `build` | default | build the native modules (GTSAM, g2o, Pangolin, DBoW2/3, iBoW, ORB-SLAM2 features, C++ utilities, C++ core), then check that they share one pybind11 ABI |
+| `build` | default | install or build the native modules in two parts, then check that they share one pybind11 ABI: the prerequisites (GTSAM, g2o, Pangolin, DBoW2/3, iBoW) and pySLAM's own C++ code (ORB-SLAM2 features, C++ utilities, C++ core). Each part comes prebuilt when there is a bundle for the checkout and machine (`scripts/native_bundle.py`); after a change to pySLAM's C++ code only that part is rebuilt |
+| `build-prerequisites`, `build-pyslam` | default | build one part from source |
 | `vocabulary` | default | download the ORB vocabulary of the default loop detector (part of `build`); an interrupted or stalled download is resumed |
 | `check` | default | the ABI check and the GTSAM and g2o optimiser tests |
 | `models` | default | the recommended learned models: `models-features` + `models-vpr` |
@@ -144,7 +145,8 @@ python main_semantic_image_segmentation.py
 | `scene-from-views` | full | `main_scene_from_views.py` |
 
 `pixi task list` shows them all. The single build steps are tasks too (`build-gtsam`, `build-g2o`,
-`build-cpp-core`, ...), to re-run one of them.
+`build-cpp-core`, ...), to re-run one of them. `build-cpp-core` and the other steps of the pySLAM part
+expect the prerequisites to be there (built, or installed by `build`).
 
 ## Good to know
 

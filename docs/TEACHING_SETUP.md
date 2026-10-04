@@ -79,8 +79,8 @@ pixi run models     # the recommended learned models: SuperPoint, LightGlue and 
 - The first `build` downloads the environment (about 6 GB with an NVIDIA GPU): this takes 20 minutes
   or more, mostly **without any output**, which is normal.
 - `build` then installs pySLAM's C++ modules ready-made when there is a prebuilt copy for your system
-  (`[native bundle] installed the prebuilt native modules`, a 27 MB download), and otherwise compiles
-  them, which takes from 15 minutes to over an hour.
+  (`[native bundle] installed the prebuilt prereq modules` and `... pyslam modules`, about 30 MB of
+  downloads), and otherwise compiles them, which takes from 15 minutes to over an hour.
 - `build` ends by checking that all native modules share one pybind11 ABI (`OK: ... module(s) share ...`).
 - `check` ends with the GTSAM and g2o tests passing.
 - `models` prints one line per component, `OK` with the device it ran on (`cuda`, `mps` or `cpu`),
@@ -184,10 +184,11 @@ windows instead, where `q` quits.
 - **Do not `pip install` into the environment** and do not run `./clean.sh` casually: it deletes the
   build folders, and rebuilding takes up to an hour.
 - **If you change pySLAM's C++ code, rebuild with `pixi run build`**, never with a module's own
-  `build.sh` outside pixi (the scripts stop with an error there). After a change to the C++ code,
-  `build` compiles **all** the C++ modules from source, GTSAM included: that takes from 30 minutes to
-  over an hour and needs the memory described above. If a build fails or is interrupted, run
-  `./clean.sh` and then `pixi run build`.
+  `build.sh` outside pixi (the scripts stop with an error there). After a change to pySLAM's own C++
+  code (`pyslam/slam/cpp`, `cpp/`, `thirdparty/orbslam2_features`), `build` keeps the prebuilt
+  libraries it is built on (GTSAM, g2o, ...) and compiles only that code, in a few minutes. A change
+  to those libraries themselves means compiling everything, from 30 minutes to over an hour. If a
+  build fails or is interrupted, run `./clean.sh` and then `pixi run build`.
 - **Error messages tell you what to do.** If a component is not installed or not built, pySLAM says
   which one and which command installs or builds it.
 - **Not available**: SURF (non-free). The TensorFlow-based features (DELF, LF-Net, ContextDesc,
