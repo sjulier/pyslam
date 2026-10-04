@@ -357,7 +357,7 @@ def run_slam(r, log_path):
         percent_lost = float("nan")
     detail = (f"{frames.get('num_processed_frames')}/{frames.get('num_total_frames')} frames, "
               f"{frames.get('num_lost_frames')} lost ({percent_lost:.1f}%), {seconds:.0f} s, "
-              + (f"ATE RMSE {rmse:.1f} m (about 13-18 m in our tests)" if rmse is not None else "no ATE in stats_final.json")
+              + (f"ATE RMSE {rmse:.1f} m (it varies from run to run: 11-21 m in our tests)" if rmse is not None else "no ATE in stats_final.json")
               + f" (log: {log_path})")
     # a relocalisation or two is normal (runs differ); more than 5% lost or an ATE far outside the usual range is not
     r.add("OK" if percent_lost <= 5 and rmse is not None and rmse <= 30 else "WARN", "main_slam.py --headless", detail)

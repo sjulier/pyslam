@@ -5,7 +5,10 @@ Check that pySLAM's native modules load in the current environment: every Python
 the native build is imported, each in its own process (so that one crash does not hide the others).
 Exit code 0 if they all load.
 
-usage: python scripts/check_native_modules.py [-v]
+A module that is missing also counts as a failure, unless --present is given (check only the modules
+that are there: used while the prebuilt modules are installed one part at a time).
+
+usage: python scripts/check_native_modules.py [-v] [--present]
 """
 import glob
 import os
@@ -30,13 +33,20 @@ MODULE_GLOBS = [
 
 def main():
     verbose = "-v" in sys.argv
-    modules = []
+    modules, missing = [], []
     for pattern in MODULE_GLOBS:
-        modules += sorted(glob.glob(os.path.join(ROOT, pattern)))
+        found = sorted(glob.glob(os.path.join(ROOT, pattern)))
+        modules += found
+        if not found:
+            missing.append(pattern)
     if not modules:
         print("check_native_modules: no native modules found (run `pixi run build`)")
         return 1
     failed = []
+    if "--present" not in sys.argv:
+        for pattern in missing:
+            print(f"  {pattern:22s} MISSING (not built)")
+            failed.append(pattern)
     for path in modules:
         name = os.path.basename(path).split(".")[0]
         folder = os.path.dirname(path)
@@ -52,7 +62,8 @@ def main():
         if not ok:
             failed.append(name)
     if failed:
-        print(f"check_native_modules: {len(failed)} of {len(modules)} native modules do not load: {', '.join(failed)}")
+        print(f"check_native_modules: {len(failed)} of {len(modules) + len(missing) * ('--present' not in sys.argv)} "
+              f"native modules are missing or do not load: {', '.join(failed)} (run `pixi run build`)")
         return 1
     print(f"OK: {len(modules)} native modules load")
     return 0

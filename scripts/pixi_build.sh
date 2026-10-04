@@ -21,6 +21,7 @@ for part in prereq pyslam; do
     if [[ $rc -ne 0 ]]; then
         task=build-prerequisites
         [[ $part == pyslam ]] && task=build-pyslam
+        python scripts/native_bundle.py stale "$part"
         "$PIXI_" run -e "$ENV_" "$task" || exit 1
     fi
 done

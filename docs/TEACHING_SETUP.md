@@ -160,7 +160,7 @@ windows instead, where `q` quits.
 ## Good to know
 
 - **Results vary from run to run.** SLAM runs several threads, so two runs on the same video differ.
-  On KITTI 06 the trajectory error (ATE) of monocular SLAM was about 13-18 m in our tests. Compare
+  On KITTI 06 the trajectory error (ATE) of monocular SLAM ranged from 11 to 21 m in our tests (several machines). Compare
   methods over several runs. See
   [non-determinism](./TROUBLESHOOTING.md#non-determinism-and-run-to-run-variability).
 - **SLAM runs at the camera's frame rate**, also with `--headless`. `--speed 2` plays twice as fast and
@@ -195,7 +195,7 @@ windows instead, where `q` quits.
 - **If you change pySLAM's C++ code, rebuild with `pixi run build`**, never with a module's own
   `build.sh` outside pixi (the scripts stop with an error there). After a change to pySLAM's own C++
   code (`pyslam/slam/cpp`, `cpp/`, `thirdparty/orbslam2_features`), `build` keeps the prebuilt
-  libraries it is built on (GTSAM, g2o, ...) and compiles only that code, in a few minutes. A change
+  libraries it is built on (GTSAM, g2o, ...) and compiles only that code (about 10 minutes on a laptop). A change
   to those libraries themselves means compiling everything, from 30 minutes to over an hour. If a
   build fails or is interrupted, run `./clean.sh` and then `pixi run build`.
 - **Error messages tell you what to do.** If a component is not installed or not built, pySLAM says

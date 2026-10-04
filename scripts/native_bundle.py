@@ -25,6 +25,8 @@ usage:
   python scripts/native_bundle.py fetch [PART]   download and unpack the bundle for this checkout, then check it
                                                  (exit code 0: installed; 2: no bundle for this checkout or machine)
   python scripts/native_bundle.py remove [PART]  remove the files a fetched bundle installed
+  python scripts/native_bundle.py stale [PART]   remove the CMake build folders configured in the other
+                                                 ladder (gpu/cpu), before building from source
 PART is prereq or pyslam; without it, both (in that order; `remove`: pyslam first).
 
 environment:
@@ -36,6 +38,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -101,6 +104,8 @@ PARTS = {
             "thirdparty/pyibow/lib/*.so",
         ],
         "folders": ["thirdparty/gtsam_local/install"],
+        "build_roots": ["thirdparty/gtsam_local", "thirdparty/gtsam_factors", "thirdparty/g2opy",
+                        "thirdparty/pangolin", "thirdparty/pydbow2", "thirdparty/pydbow3", "thirdparty/pyibow"],
     },
     "pyslam": {
         "globs": [
@@ -120,6 +125,7 @@ PARTS = {
             "pyslam/slam/cpp/lib/*.so",
         ],
         "folders": [],
+        "build_roots": ["thirdparty/orbslam2_features", "cpp", "pyslam/slam/cpp"],
     },
 }
 PART_NAMES = ["prereq", "pyslam"]
@@ -548,8 +554,13 @@ def fetch(part):
         prereq = read_manifest("prereq")
         if prereq is None or prereq.get("key") != source_key("prereq")[0]:
             return no_bundle(part, "the prereq modules were built from source")
+    # modules built from source: the prereq ones are kept (rebuilding them takes up to an hour); the
+    # pyslam ones (e.g. left from a change that was then undone) are replaced by the bundle, if there is one
+    replace = False
     if built_modules(part):
-        return no_bundle(part, "modules built from source are already there (run ./clean.sh to replace them)")
+        if part == "prereq":
+            return no_bundle(part, "modules built from source are already there (run ./clean.sh to replace them)")
+        replace = True
 
     name = bundle_name(part, key)
     base = os.environ.get("PYSLAM_NATIVE_URL", DEFAULT_URL).rstrip("/")
@@ -564,6 +575,9 @@ def fetch(part):
             return no_bundle(part, "the download failed")
         if sha256_of(archive) != expected:
             return no_bundle(part, "the downloaded file is corrupt (checksum mismatch)")
+        if replace:
+            log("replacing the pyslam modules built from source")
+            remove_files(bundle_files(part))
         log(f"unpacking {os.path.getsize(archive) / 1e6:.1f} MB")
         with tarfile.open(archive) as tar:
             members = tar.getmembers()
@@ -587,7 +601,7 @@ def fetch(part):
             f.write(data.replace(ROOT_PLACEHOLDER.encode(), ROOT.encode()))
 
     # the bundle's modules must load in this environment: check them before relying on them
-    check = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "check_native_modules.py")])
+    check = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "check_native_modules.py"), "--present"])
     if check.returncode != 0:
         remove(part, quiet=True)
         return no_bundle(part, "its modules do not load on this machine")
@@ -598,11 +612,36 @@ def fetch(part):
     return 0
 
 
+def stale(part):
+    """
+    Remove the CMake build folders of a part that were configured in the other ladder: their caches
+    name the other environment's compiler and libraries, and a build there would mix the two.
+    """
+    current = ladder()
+    for top in PARTS[part]["build_roots"]:
+        for folder, dirs, files in os.walk(os.path.join(ROOT, top)):
+            depth = os.path.relpath(folder, os.path.join(ROOT, top)).count(os.sep)
+            if depth >= 3 or os.path.basename(folder) == "_deps":
+                dirs[:] = []
+            if "CMakeCache.txt" not in files:
+                continue
+            dirs[:] = []
+            try:
+                with open(os.path.join(folder, "CMakeCache.txt"), errors="replace") as f:
+                    envs = set(re.findall(r"/\.pixi/envs/([^/\s]+)/", f.read()))
+            except OSError:
+                continue
+            others = sorted(e for e in envs if ("cpu" if e.endswith("-cpu") else "gpu") != current)
+            if others:
+                log(f"removing {os.path.relpath(folder, ROOT)}: configured in the {others[0]} environment")
+                shutil.rmtree(folder, ignore_errors=True)
+
+
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     parts = sys.argv[2:] or PART_NAMES
     unknown = [p for p in parts if p not in PARTS]
-    if unknown or command not in ("key", "pack", "fetch", "remove"):
+    if unknown or command not in ("key", "pack", "fetch", "remove", "stale"):
         print(__doc__)
         sys.exit(1)
     if command == "key":
@@ -617,6 +656,9 @@ def main():
     elif command == "remove":
         for part in reversed(parts):
             remove(part)
+    elif command == "stale":
+        for part in parts:
+            stale(part)
 
 
 if __name__ == "__main__":
