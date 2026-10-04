@@ -59,6 +59,8 @@ from pyslam.viz.cvimage_thread import CvImageViewer
 from pyslam.viz.qimage_thread import QimageViewer
 
 from pyslam.local_features.feature_tracker_configs import FeatureTrackerConfigs
+from pyslam.local_features.feature_tracker import FeatureTrackerTypes
+from pyslam.local_features.feature_types import FeatureDescriptorTypes
 
 from pyslam.loop_closing.loop_detector_configs import LoopDetectorConfigs
 
@@ -133,6 +135,16 @@ if __name__ == "__main__":
         "--no-throttle",
         action="store_true",
         help="Never slow the playback down (the default, unless kPlaybackThrottle is set).",
+    )
+    parser.add_argument(
+        "--features",
+        default=None,
+        metavar="NAME",
+        help="The features: a FeatureTrackerConfigs entry, e.g. ORB2 (the default), ROOT_SIFT, "
+        "SUPERPOINT or LIGHTGLUE (`pixi run feature-matching --list` lists them and what installs "
+        "their models). It replaces FeatureTrackerConfig.name of the settings file. With features "
+        "whose descriptors are not ORB, loop closing computes ORB descriptors of its own "
+        "(DBOW3_INDEPENDENT), unless the settings file names a loop detector.",
     )
     parser.add_argument(
         "--plot-window",
@@ -236,6 +248,18 @@ if __name__ == "__main__":
         feature_tracker_config = FeatureTrackerConfigs.get_config_from_name(
             config.feature_tracker_config_name
         )  # Override the feature tracker configuration from the `settings` file
+    if args.features:  # the command line replaces the settings file
+        feature_tracker_config = FeatureTrackerConfigs.get_config_from_name(args.features)
+        if feature_tracker_config is None:
+            sys.exit(f"--features {args.features}: unknown; `pixi run feature-matching --list` lists the names")
+        if feature_tracker_config.get("tracker_type") == FeatureTrackerTypes.LK:
+            sys.exit(f"--features {args.features}: SLAM needs features with descriptors (the LK_* trackers have none)")
+        # the vocabulary of the default loop detector (DBOW3) is made of ORB descriptors: with other
+        # features, use the loop detector that computes ORB descriptors of its own
+        if config.loop_detection_config_name is None and feature_tracker_config.get(
+            "descriptor_type"
+        ) not in (FeatureDescriptorTypes.ORB, FeatureDescriptorTypes.ORB2):
+            loop_detection_config = LoopDetectorConfigs.DBOW3_INDEPENDENT
     if (
         config.num_features_to_extract > 0
     ):  # Check if we set `FeatureTrackerConfig.nFeatures` in the `settings` file
