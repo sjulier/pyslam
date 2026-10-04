@@ -23,7 +23,7 @@
 
 import numpy as np
 
-kMinXWindow = 25  # the smallest window the keys can set
+kXWindowLadder = (25, 50, 100, 250, 500, 1000, 2000, 5000)  # the windows the keys step through
 kXWindowKeysHelp = "+ / - / 0"  # shown in the title of the plots: wider, narrower, the whole run
 
 
@@ -48,20 +48,25 @@ def sliding_window_limits(curves, x_window):
 
 
 def x_window_from_key(x_window, key, x_span):
-    """The new window after `key` is pressed in a plot ('+' or '=': twice as wide, '-': half as
-    wide, '0': the whole run), or None if the key is not one of these. `x_span` is the extent of
-    the data on the x axis: '-' starts from it when the whole run is shown."""
+    """The new window after `key` is pressed in a plot, or None if the key is not one of these:
+    '-' the next value of kXWindowLadder below the window, '+' or '=' the next one above, '0' the
+    whole run (0). The keys step through fixed, round values, so the same keys give the same
+    windows in every run. `x_span` is the extent of the data on the x axis: from the whole run '-'
+    goes to the largest value below it, and '+' goes back to the whole run once the next value
+    would show all the data anyway."""
+    if key == "-":
+        below = [w for w in kXWindowLadder if w < (x_window if x_window > 0 else x_span)]
+        return below[-1] if below else kXWindowLadder[0]
     if key in ("+", "="):
-        new_window = 2 * x_window if x_window > 0 else 0
-        if x_span > 0 and new_window >= x_span:
-            new_window = 0  # wider than the data: the whole run
-    elif key == "-":
-        new_window = max(kMinXWindow, 0.5 * (x_window if x_window > 0 else x_span))
-    elif key == "0":
-        new_window = 0
-    else:
-        return None
-    return new_window
+        if x_window <= 0:
+            return 0
+        above = [w for w in kXWindowLadder if w > x_window]
+        if not above or (x_span > 0 and above[0] >= x_span):
+            return 0  # as wide as the data, or wider: the whole run
+        return above[0]
+    if key == "0":
+        return 0
+    return None
 
 
 def x_window_str(x_window, unit=""):
