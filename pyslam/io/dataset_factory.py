@@ -75,6 +75,50 @@ kRootFolder = kScriptFolder + "/../.."
 kSettingsFolder = kRootFolder + "/settings"
 
 
+def dataset_image_size(dataset):
+    """(width, height) of the images of `dataset`, from the video or from its first image, without
+    reading a frame through the dataset; None if it cannot be told."""
+    width, height = getattr(dataset, "width", None), getattr(dataset, "height", None)
+    if width and height:  # a video
+        return int(width), int(height)
+    image_file = None
+    if getattr(dataset, "listing", None):  # a folder of images
+        image_file = dataset.listing[0]
+    elif getattr(dataset, "associations_data", None) and getattr(dataset, "base_path", None):
+        # a sequence in the TUM layout: `timestamp rgb/<file> ...` per line
+        image_file = dataset.base_path + dataset.associations_data[0].strip().split()[1]
+    if image_file is not None:
+        img = cv2.imread(image_file)
+        if img is not None:
+            return img.shape[1], img.shape[0]
+    return None
+
+
+def complete_camera_size(config, dataset):
+    """Settings files written for ORB-SLAM2 give the calibration of the camera but not the size of
+    the image (Camera.width, Camera.height): take it from the images of the dataset, so that such
+    a file can be used as it is."""
+    settings = config.cam_settings
+    if settings is None:
+        return
+    has_width = bool(settings.get("Camera.width") or settings.get("Camera.w"))
+    has_height = bool(settings.get("Camera.height") or settings.get("Camera.h"))
+    if has_width and has_height:
+        return
+    size = dataset_image_size(dataset)
+    if size is None:
+        return  # PinholeCamera says which fields are missing
+    settings["Camera.width"], settings["Camera.height"] = size
+    # drop the cached values of config.width and config.height, if they were read already
+    for cached in ("_width", "_height"):
+        if hasattr(config, cached):
+            delattr(config, cached)
+    Printer.yellow(
+        f"Camera: the settings file does not give the size of the image (Camera.width, "
+        f"Camera.height): using the size of the images, {size[0]}x{size[1]}"
+    )
+
+
 def dataset_factory(config: "Config") -> Dataset:
     dataset_settings: dict = config.dataset_settings if config.dataset_settings is not None else {}
     type = DatasetType.NONE
@@ -250,6 +294,7 @@ def dataset_factory(config: "Config") -> Dataset:
             environment_type=environment_type,
         )
 
+    complete_camera_size(config, dataset)  # before the configuration of the dataset is recorded
     dataset.minimal_config = MinimalDatasetConfig(config=config)
 
     return dataset
