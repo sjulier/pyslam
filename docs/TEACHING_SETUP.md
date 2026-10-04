@@ -165,9 +165,11 @@ windows instead, where `q` quits.
   [non-determinism](./TROUBLESHOOTING.md#non-determinism-and-run-to-run-variability).
 - **SLAM runs at the camera's frame rate**, also with `--headless`. `--speed 2` plays twice as fast and
   `--speed 0` as fast as possible; faster than the camera, tracking is sometimes lost at the turns.
-  Use the default speed when you compare results. If tracking is lost at the same places in every
-  run, your machine may be too slow for the camera's frame rate: add `--throttle`, which slows the
-  playback down when tracking gets weak (it prints `Playback speed: ...`).
+  Use the default speed when you compare results. With the windows open, the playback slows down by
+  itself when tracking gets weak (it prints `Playback speed: ...`): drawing the windows takes CPU time
+  from SLAM, and on a laptop that can be enough to lose track. `--no-throttle` turns this off. With
+  `--headless` it is off; if tracking is lost at the same places in every headless run, your machine
+  may be too slow for the camera's frame rate: add `--throttle`.
 - **Memory for the build.** Compiling GTSAM needs about 12 GB of free memory: a few files of its Python
   wrapper need up to 12 GB each. The build runs as many compiler jobs as the free memory allows; set
   `PYSLAM_BUILD_JOBS=1` to build one file at a time. On **Windows**, WSL2 gets only half of the

@@ -161,9 +161,10 @@ expect the prerequisites to be there (built, or installed by `build`).
 - **`main_slam.py` feeds frames at the camera's rate**, with or without `--headless`. `--speed 2`
   plays twice as fast, and `--speed 0` as fast as possible. Faster than the camera, the mapping thread
   gets less time per frame, and on KITTI 06 tracking is then sometimes lost at the turns. Use the
-  default speed when you compare results. If tracking is lost at the same places in every run, the
-  machine may be too slow for the camera's frame rate: `--throttle` slows the playback down whenever
-  tracking gets weak (it prints `Playback speed: ...`).
+  default speed when you compare results. With the windows open, the playback slows down by itself
+  whenever tracking gets weak (it prints `Playback speed: ...`; `--no-throttle` turns this off). With
+  `--headless` it is off: if tracking is lost at the same places in every run, the machine may be too
+  slow for the camera's frame rate, and `--throttle` turns it on.
 - **If a download fails**, run the same task again: what is already installed is skipped, and an
   interrupted download continues where it stopped. A component that could not be installed does not
   stop the others; the task lists what is missing at the end (`Not installed: ...`). Model weights

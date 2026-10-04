@@ -82,6 +82,18 @@ class KeyframeDemand:
         return self.num_suppressed / self.num_wanted if self.num_wanted > 0 else 0.0
 
 
+def is_throttle_enabled(throttle=False, no_throttle=False, headless=False):
+    """Whether main_slam.py throttles the playback: on by default with windows (drawing them takes CPU
+    time from tracking and local mapping), off by default headless; --throttle / --no-throttle decide."""
+    if no_throttle or not Parameters.kLocalMappingOnSeparateThread:
+        return False
+    return bool(
+        throttle
+        or Parameters.kPlaybackThrottle
+        or (not headless and Parameters.kPlaybackThrottleWithGui)
+    )
+
+
 class PlaybackThrottle:
     """
     Adapts the playback speed of a dataset to what local mapping can keep up with.
@@ -103,6 +115,7 @@ class PlaybackThrottle:
         min_speed=None,
         update_period=None,
         min_samples=None,
+        warmup_frames=None,
     ):
         self.max_speed = math.inf if (max_speed is None or max_speed <= 0) else float(max_speed)
         self.enabled = enabled
@@ -115,6 +128,9 @@ class PlaybackThrottle:
             Parameters.kPlaybackThrottleUpdatePeriod if update_period is None else update_period
         )
         self.min_samples = Parameters.kPlaybackThrottleMinSamples if min_samples is None else min_samples
+        self.warmup_frames = (
+            Parameters.kPlaybackThrottleWarmupFrames if warmup_frames is None else warmup_frames
+        )
 
         self.speed = self.max_speed  # current speed limit (inf = no wait)
         self.measured_speed = None  # actual playback speed, smoothed
@@ -136,6 +152,12 @@ class PlaybackThrottle:
         """Call once per frame. Returns True when the speed has changed."""
         self.num_frames += 1
         if not self.enabled or demand is None:
+            return False
+        # Tracking is weak by nature while the map is being initialised: ignore the first frames,
+        # and drop what the window recorded during them.
+        if self.num_frames <= self.warmup_frames:
+            if self.num_frames == self.warmup_frames:
+                demand.reset_window()
             return False
         if self.num_frames % self.update_period != 0:
             return False

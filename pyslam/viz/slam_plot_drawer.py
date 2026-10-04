@@ -27,7 +27,7 @@ import threading
 import traceback
 import numpy as np
 import matplotlib.colors as mcolors
-from collections import namedtuple
+from collections import deque, namedtuple
 
 from pyslam.slam.slam import Slam
 from pyslam.io.dataset_types import SensorType
@@ -98,6 +98,10 @@ SlamStateSnapshot = namedtuple(
         "time_volumetric_integration_value",
         # Map data
         "num_keyframes",
+        # Playback (dataset playback with the throttle)
+        "frame_duration",
+        "playback_speed",
+        "playback_weak_fraction",
     ],
 )
 
@@ -121,6 +125,11 @@ class SlamPlotDrawerThread:
         self.chi2_error_plt = None
         self.timing_plt = None
         self.traj_error_plt = None
+        self.playback_plt = None  # created by set_playback_throttle()
+        self.playback_throttle = None
+        # local mapping's work per keyframe, for its load: (img id when it was done, seconds)
+        self.local_mapping_work = deque()
+        self.last_local_mapping_kf_img_id = -1
 
         self.last_alignment_timestamp = None
         self.last_alignment_gt_data = TrajectoryAlignementData()
@@ -171,7 +180,40 @@ class SlamPlotDrawerThread:
         )
         self.draw_thread.start()
 
-    def _create_snapshot(self, img_id):
+    def set_playback_throttle(self, playback_throttle):
+        """Show the dataset playback in its own plot: the speed the throttle sets, its signal (the share
+        of recent frames with weak tracking) and local mapping's load (seconds of mapping work per
+        second of video over the recent frames). Above a load of 1, local mapping cannot keep up."""
+        self.playback_throttle = playback_throttle
+        if playback_throttle is None or self.playback_plt is not None:
+            return
+        self.playback_plt = factory_plot2d(
+            xlabel="img id",
+            ylabel="",
+            title="playback",
+            x_window=Parameters.kPlotSlidingWindowNumFrames,
+            x_window_unit="frames",
+        )
+        self.plt_list.append(self.playback_plt)
+
+    def _local_mapping_load(self, img_id, snapshot):
+        """Seconds of local mapping work per second of video over the last kPlaybackThrottleWindow frames."""
+        kf_img_id = snapshot.last_processed_kf_img_id
+        if (
+            kf_img_id is not None
+            and kf_img_id != self.last_local_mapping_kf_img_id
+            and snapshot.time_local_mapping
+        ):
+            self.last_local_mapping_kf_img_id = kf_img_id
+            self.local_mapping_work.append((img_id, snapshot.time_local_mapping))
+        window = Parameters.kPlaybackThrottleWindow
+        while self.local_mapping_work and self.local_mapping_work[0][0] <= img_id - window:
+            self.local_mapping_work.popleft()
+        if not snapshot.frame_duration or snapshot.frame_duration <= 0:
+            return None
+        return sum(t for _, t in self.local_mapping_work) / (window * snapshot.frame_duration)
+
+    def _create_snapshot(self, img_id, frame_duration=None):
         """Create a snapshot of SLAM state for thread-safe access"""
         try:
             # Access SLAM attributes (should be fast, mostly reading scalars)
@@ -287,6 +329,16 @@ class SlamPlotDrawerThread:
                 ),
                 # Map
                 num_keyframes=self.slam.map.num_keyframes() if hasattr(self.slam, "map") else 0,
+                # Playback
+                frame_duration=frame_duration,
+                playback_speed=(
+                    self.playback_throttle.speed if self.playback_throttle is not None else None
+                ),
+                playback_weak_fraction=(
+                    tracking.kf_demand.weak_fraction()
+                    if self.playback_throttle is not None and hasattr(tracking, "kf_demand")
+                    else None
+                ),
             )
             return snapshot
         except Exception as e:
@@ -558,6 +610,18 @@ class SlamPlotDrawerThread:
                             marker="+",
                         )
 
+            # draw the playback: speed, the throttle's signal and local mapping's load
+            if self.playback_plt is not None:
+                load = self._local_mapping_load(img_id, snapshot)
+                if snapshot.playback_speed is not None and np.isfinite(snapshot.playback_speed):
+                    self.playback_plt.draw([img_id, snapshot.playback_speed], "speed (x real time)", color="b")
+                if snapshot.playback_weak_fraction is not None:
+                    self.playback_plt.draw(
+                        [img_id, snapshot.playback_weak_fraction], "weak tracking (share of recent frames)", color="r"
+                    )
+                if load is not None:
+                    self.playback_plt.draw([img_id, load], "local mapping load (s per s of video)", color="g")
+
             # draw number of keyframes
             if self.info_keyframes_plt is not None:
                 if snapshot.num_keyframes > 0:
@@ -671,14 +735,14 @@ class SlamPlotDrawerThread:
             traceback_details = traceback.format_exc()
             print(f"\t traceback details: {traceback_details}")
 
-    def draw(self, img_id):
+    def draw(self, img_id, frame_duration=None):
         """
         Fast, non-blocking method that creates snapshot and queues it.
         Returns immediately without waiting for drawing operations.
         """
         try:
             # Create snapshot of SLAM state (fast, just reading attributes)
-            snapshot = self._create_snapshot(img_id)
+            snapshot = self._create_snapshot(img_id, frame_duration)
             if snapshot is None:
                 return
 

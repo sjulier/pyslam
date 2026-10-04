@@ -71,16 +71,18 @@ class Parameters:
     # new keyframes and map points are then not arriving fast enough (see pyslam/slam/playback_throttle.py).
     # How often local mapping is busy does NOT separate the two cases: on KITTI 06 it was busy for
     # 52% of the keyframe requests in a run that tracked every frame, and for 59% in one that lost track.
-    kPlaybackThrottle = False  # off by default: main_slam.py --throttle turns it on
+    kPlaybackThrottle = False  # headless runs: off by default (main_slam.py --throttle turns it on)
+    kPlaybackThrottleWithGui = True  # runs with windows: on by default (--no-throttle turns it off); drawing them takes CPU time from tracking and local mapping
     kPlaybackThrottleWeakTrackingRatio = 0.5  # weak: tracked points < this ratio x the reference keyframe's
     kPlaybackThrottleHighWeakFraction = 0.25  # above: reduce the playback speed
     kPlaybackThrottleLowWeakFraction = 0.10  # below: raise it again, up to the requested speed
     kPlaybackThrottleDecreaseFactor = 0.8
-    kPlaybackThrottleIncreaseFactor = 1.1
-    kPlaybackThrottleMinSpeed = 0.1  # relative to the camera's frame rate
+    kPlaybackThrottleIncreaseFactor = 1.25  # recover quickly once tracking is strong again
+    kPlaybackThrottleMinSpeed = 0.4  # relative to the camera's frame rate; slower rarely helps: weak tracking at a sharp turn comes from the scene, not from the machine
     kPlaybackThrottleWindow = 30  # number of recent frames (at the current speed)
     kPlaybackThrottleMinSamples = 15  # do not slow down before this many of them (twice as many to speed up)
     kPlaybackThrottleUpdatePeriod = 10  # [frames]
+    kPlaybackThrottleWarmupFrames = 50  # [frames] ignored at the start: tracking is weak while the map is initialised
     kWaitForLocalMappingTimeout = (
         0.5 if not USE_CPP_CORE else 0.05
     )  # [s]  # Timeout for waiting local mapping to be idle (if kTrackingWaitForLocalMappingToGetIdle is True)   (was previously 1.5)
