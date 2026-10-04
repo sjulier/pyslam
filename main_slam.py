@@ -31,7 +31,7 @@ import multiprocessing
 import torch.multiprocessing as mp
 import platform
 
-from pyslam.config import Config  # , dump_config_to_json
+from pyslam.config import Config, kDefaultConfigPath  # , dump_config_to_json
 
 from pyslam.semantics.semantic_mapping_configs import SemanticMappingConfigs
 from pyslam.semantics.semantic_eval import evaluate_semantic_mapping
@@ -76,6 +76,9 @@ from datetime import datetime
 import traceback
 
 import argparse
+import glob
+import tempfile
+import yaml
 
 
 from typing import TYPE_CHECKING
@@ -101,6 +104,86 @@ def draw_associated_cameras(viewer3D, assoc_est_poses, assoc_gt_poses, T_gt_est)
     )
 
 
+def sequence_config_path(args, parser):
+    """The configuration file for the sequence given on the command line (--video, --images or
+    --tum, with --settings): a copy of the configuration file (config.yaml, or the one of -c) with
+    its dataset replaced, written to a temporary file. Without such a sequence, the file of -c."""
+    num_sequences = sum(bool(sequence) for sequence in (args.video, args.images, args.tum))
+    if num_sequences == 0:
+        if args.settings or args.groundtruth or args.timestamps:
+            parser.error("--settings, --groundtruth and --timestamps go with --video, --images or --tum")
+        return args.config_path
+    if num_sequences > 1:
+        parser.error("give only one of --video, --images and --tum")
+    if not args.settings:
+        parser.error("--video, --images and --tum need the camera settings file: --settings")
+    settings_path = os.path.abspath(os.path.expanduser(args.settings))
+    if not os.path.isfile(settings_path):
+        sys.exit(f"--settings: no file {settings_path}")
+
+    # the ground truth is optional for a video or an image folder (without it there is no trajectory
+    # error); a file given with --groundtruth is in the folder of the sequence
+    dataset = {"sensor_type": "mono", "settings": settings_path}
+    if args.groundtruth:
+        dataset["groundtruth_file"] = args.groundtruth
+    if args.video:
+        video_path = os.path.abspath(os.path.expanduser(args.video))
+        if not os.path.isfile(video_path):
+            sys.exit(f"--video: no file {video_path}")
+        dataset_type = "VIDEO_DATASET"
+        dataset.update(type="video", base_path=os.path.dirname(video_path), name=os.path.basename(video_path))
+        if args.timestamps:
+            dataset["timestamps"] = args.timestamps
+    elif args.images:
+        images_path = os.path.abspath(os.path.expanduser(args.images))
+        if not glob.glob(os.path.join(images_path, args.pattern)):
+            sys.exit(f"--images: no images {args.pattern} in {images_path} (see --pattern)")
+        dataset_type = "FOLDER_DATASET"
+        dataset.update(type="folder", base_path=images_path, name=args.pattern, fps=args.fps)
+        if args.timestamps:
+            dataset["timestamps"] = args.timestamps
+    else:
+        # a sequence in the layout of the TUM RGB-D datasets: the images, their timestamps and
+        # their order come from the list of the frames, as for the TUM datasets themselves
+        tum_path = os.path.abspath(os.path.expanduser(args.tum)).rstrip("/")
+        associations = args.associations
+        if associations is None:
+            has_associations = os.path.exists(os.path.join(tum_path, "associations.txt"))
+            associations = "associations.txt" if has_associations else "rgb.txt"
+        if not os.path.isfile(os.path.join(tum_path, associations)):
+            sys.exit(f"--tum: no {associations} in {tum_path}")
+        groundtruth_file = args.groundtruth or "groundtruth.txt"
+        if not os.path.isfile(os.path.join(tum_path, groundtruth_file)):
+            sys.exit(
+                f"--tum: no {groundtruth_file} in {tum_path} (TUM sequences need their ground truth). "
+                f"For a sequence without ground truth, use its images: --images {os.path.join(args.tum, 'rgb')}"
+            )
+        sensor_type = args.sensor
+        if sensor_type is None:  # rgbd if the list of the frames has depth images (4 columns)
+            with open(os.path.join(tum_path, associations)) as f:
+                lines = [l.split() for l in f if l.strip() and not l.lstrip().startswith("#")]
+            sensor_type = "rgbd" if lines and len(lines[0]) >= 4 else "mono"
+        dataset_type = "TUM_DATASET"
+        dataset.update(
+            type="tum",
+            sensor_type=sensor_type,
+            base_path=os.path.dirname(tum_path),
+            name=os.path.basename(tum_path),
+            associations=associations,
+            groundtruth_file=args.groundtruth or "auto",
+        )
+
+    with open(args.config_path or kDefaultConfigPath, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    config["DATASET"]["type"] = dataset_type
+    config[dataset_type] = dataset
+    with tempfile.NamedTemporaryFile(
+        "w", prefix="pyslam_config_", suffix=".yaml", delete=False
+    ) as f:
+        yaml.dump(config, f)
+    return f.name
+
+
 def draw_end_of_sequence_message(img, text):
     """A copy of `img` with `text` in a shaded strip across the bottom (on two lines if the image is
     too narrow for one)."""
@@ -122,7 +205,12 @@ def draw_end_of_sequence_message(img, text):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="pySLAM: SLAM on the dataset of config.yaml, or on a sequence of your own",
+        epilog="examples: pixi run slam --features SUPERPOINT; "
+        "pixi run slam --video my/video.mp4 --settings settings/MY_CAMERA.yaml; "
+        "pixi run slam --images my/images --pattern '*.jpg' --fps 30 --settings settings/MY_CAMERA.yaml",
+    )
     parser.add_argument(
         "-c",
         "--config_path",
@@ -135,6 +223,32 @@ if __name__ == "__main__":
         action="store_true",
         help="Do not append date to output directory",
     )
+    sequence = parser.add_argument_group(
+        "a sequence of your own (instead of the dataset of the configuration file)",
+        "the same options as main_slam_evaluation.py; they need --settings",
+    )
+    sequence.add_argument("--video", help="a video file (monocular)")
+    sequence.add_argument("--images", help="a folder of images, read in the order of their names")
+    sequence.add_argument(
+        "--tum",
+        metavar="FOLDER",
+        help="a sequence in the layout of the TUM RGB-D datasets, with its ground truth "
+        "(groundtruth.txt); the frames come from associations.txt, or from rgb.txt (monocular)",
+    )
+    sequence.add_argument("--associations", help="with --tum: the list of the frames")
+    sequence.add_argument("--sensor", choices=("mono", "rgbd"), help="with --tum: default rgbd if the list of the frames has depth images")
+    sequence.add_argument("--pattern", default="*.png", help="with --images: which files (default '*.png')")
+    sequence.add_argument("--fps", type=float, default=10, help="with --images: frames per second (default 10)")
+    sequence.add_argument(
+        "--settings",
+        help="the camera settings file of the sequence (calibration, image size, frame rate): "
+        "copy one of settings/, e.g. WEBCAM.yaml",
+    )
+    sequence.add_argument(
+        "--groundtruth",
+        help="the ground truth file, in the folder of the sequence; with --tum: default groundtruth.txt",
+    )
+    sequence.add_argument("--timestamps", help="with --video or --images: a file of the timestamps of the frames")
     parser.add_argument("--headless", action="store_true", help="Run in headless mode")
     parser.add_argument(
         "--speed",
@@ -168,6 +282,16 @@ if __name__ == "__main__":
         "(DBOW3_INDEPENDENT), unless the settings file names a loop detector.",
     )
     parser.add_argument(
+        "--features",
+        default=None,
+        metavar="NAME",
+        help="The features: a FeatureTrackerConfigs entry, e.g. ORB2 (the default), ROOT_SIFT, "
+        "SUPERPOINT or LIGHTGLUE (`pixi run feature-matching --list` lists them and what installs "
+        "their models). It replaces FeatureTrackerConfig.name of the settings file. With features "
+        "whose descriptors are not ORB, loop closing computes ORB descriptors of its own "
+        "(DBOW3_INDEPENDENT), unless the settings file names a loop detector.",
+    )
+    parser.add_argument(
         "--plot-window",
         type=int,
         default=None,
@@ -183,8 +307,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.config_path:
-        config = Config(args.config_path)  # use the custom configuration path file
+    config_path = sequence_config_path(args, parser)  # --video, --images or --tum, if given
+    if config_path:
+        config = Config(config_path)  # use the custom configuration path file
+        if config_path != args.config_path:
+            os.remove(config_path)  # the temporary file of sequence_config_path(): it has been read
     else:
         config = Config()
 
