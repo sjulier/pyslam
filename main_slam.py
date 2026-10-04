@@ -99,6 +99,26 @@ def draw_associated_cameras(viewer3D, assoc_est_poses, assoc_gt_poses, T_gt_est)
     )
 
 
+def draw_end_of_sequence_message(img, text):
+    """A copy of `img` with `text` in a shaded strip across the bottom (on two lines if the image is
+    too narrow for one)."""
+    img = img.copy()
+    font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1
+    margin = 10
+    lines = [text]
+    if cv2.getTextSize(text, font, scale, thickness)[0][0] > img.shape[1] - 2 * margin:
+        words = text.split()
+        lines = [" ".join(words[: len(words) // 2]), " ".join(words[len(words) // 2 :])]
+    line_height = cv2.getTextSize(text, font, scale, thickness)[0][1] + margin
+    strip_height = min(img.shape[0], len(lines) * line_height + margin)
+    strip = img[-strip_height:]
+    img[-strip_height:] = cv2.addWeighted(strip, 0.3, np.zeros_like(strip), 0.7, 0)
+    for i, line in enumerate(lines):
+        y = img.shape[0] - strip_height + (i + 1) * line_height
+        cv2.putText(img, line, (margin, y), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
+    return img
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -387,6 +407,7 @@ if __name__ == "__main__":
     )
     is_throttle_hint_shown = False  # the hint about --throttle when tracking is lost
     is_end_message_shown = False  # the message at the end of the sequence (with windows)
+    img_draw = None  # the last image drawn in the Camera window
     is_map_save = False  # save map on GUI
     is_bundle_adjust = False  # bundle adjust on GUI
     is_viewer_closed = False  # viewer GUI was closed
@@ -499,6 +520,15 @@ if __name__ == "__main__":
                             "End of the sequence. The windows stay open: press 'q' or Esc in the "
                             "Camera window to quit and compute the trajectory error."
                         )
+                        if img_draw is not None and cv_image_viewer:
+                            # also in the Camera window, on a copy of its last image
+                            cv_image_viewer.draw(
+                                draw_end_of_sequence_message(
+                                    img_draw,
+                                    "End of the sequence: press q or Esc to quit and compute the trajectory error",
+                                ),
+                                "Camera",
+                            )
 
             else:
                 time.sleep(0.1)  # pause or do step on GUI
