@@ -909,8 +909,21 @@ void ORBextractor<IsDeterministic>::ComputeKeyPointsOctTree(vector<vector<KeyPoi
         vector<KeyPoint> &keypoints = allKeypoints[level];
         keypoints.reserve(nfeatures);
 
+        // feature quality: the octree keeps the keypoints with the best weighted response
+        std::vector<float> vOriginalResponses;
+        if (!mQuality.empty())
+            vOriginalResponses = WeightByQuality(vToDistributeKeys, level, minBorderX, minBorderY);
+
         keypoints = DistributeOctTree(vToDistributeKeys, minBorderX, maxBorderX, minBorderY,
                                       maxBorderY, mnFeaturesPerLevel[level], level);
+
+        if (!mQuality.empty()) {
+            // back to the FAST responses (class_id carries the index given by WeightByQuality)
+            for (KeyPoint &kp : keypoints) {
+                kp.response = vOriginalResponses[kp.class_id];
+                kp.class_id = -1;
+            }
+        }
 
         const int scaledPatchSize = PATCH_SIZE * mvScaleFactor[level];
 
@@ -934,6 +947,53 @@ void ORBextractor<IsDeterministic>::ComputeKeyPointsOctTree(vector<vector<KeyPoi
         for (int level = 0; level < nlevels; ++level)
             computeOrientation(mvImagePyramid[level], allKeypoints[level], umax);
     }
+}
+
+template <bool IsDeterministic>
+void ORBextractor<IsDeterministic>::SetQuality(cv::InputArray quality, const cv::Size &imageSize) {
+    mImageSize = imageSize;
+    if (quality.empty()) {
+        mQuality.release();
+        return;
+    }
+    Mat q = quality.getMat();
+    if (q.channels() != 1)
+        throw std::invalid_argument("ORBextractor: the quality map must have a single channel");
+    if (q.depth() == CV_8U) {
+        // a standard mask: 0 = excluded, anything else = weight 1
+        Mat nonzero;
+        cv::compare(q, 0, nonzero, cv::CMP_GT); // 255 where q > 0
+        nonzero.convertTo(mQuality, CV_32F, 1.0 / 255.0);
+    } else {
+        q.convertTo(mQuality, CV_32F);
+    }
+}
+
+template <bool IsDeterministic>
+std::vector<float> ORBextractor<IsDeterministic>::WeightByQuality(std::vector<cv::KeyPoint> &keys,
+                                                                  int level, int offsetX,
+                                                                  int offsetY) const {
+    // keypoint (level coordinates, relative to the border) -> level 0 -> quality map
+    const float scale = mvScaleFactor[level];
+    const float sx = (float)mQuality.cols / mImageSize.width;
+    const float sy = (float)mQuality.rows / mImageSize.height;
+    std::vector<float> responses;
+    responses.reserve(keys.size());
+    size_t kept = 0;
+    for (size_t i = 0; i < keys.size(); i++) {
+        cv::KeyPoint kp = keys[i];
+        const int x = std::min(std::max(int((kp.pt.x + offsetX) * scale * sx), 0), mQuality.cols - 1);
+        const int y = std::min(std::max(int((kp.pt.y + offsetY) * scale * sy), 0), mQuality.rows - 1);
+        const float w = mQuality.at<float>(y, x);
+        if (!(w > 0.f))
+            continue; // excluded (also NaN)
+        kp.class_id = (int)responses.size();
+        responses.push_back(kp.response);
+        kp.response *= w;
+        keys[kept++] = kp; // keeps the order: the deterministic octree breaks ties by it
+    }
+    keys.resize(kept);
+    return responses;
 }
 
 static void computeDescriptors(const Mat &image, vector<KeyPoint> &keypoints, Mat &descriptors,
@@ -961,6 +1021,7 @@ void ORBextractor<IsDeterministic>::detectAndCompute(InputArray _image, InputArr
 
     // Pre-compute the scale pyramid
     ComputePyramid(image);
+    SetQuality(_mask, image.size());
 
     if (bComputeDescriptors)
         bComputeOrientation =

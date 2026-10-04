@@ -46,8 +46,8 @@ using ORBextractorDeterministic = ORBextractor<true>;     // deterministic versi
         .def("GetScaleFactor", &CLASS::GetScaleFactor)                                             \
         .def("SetNumFeatures", &CLASS::SetNumFeatures)                                             \
         .def("detectAndCompute",                                                                   \
-             [](CLASS &o, cv::Mat &image) {                                                        \
-                 cv::Mat mask = cv::Mat();                                                         \
+             [](CLASS &o, cv::Mat &image, py::object quality) {                                    \
+                 cv::Mat mask = quality.is_none() ? cv::Mat() : quality.cast<cv::Mat>();           \
                  std::vector<cv::KeyPoint> keypoints;                                              \
                  cv::Mat descriptors;                                                              \
                  {                                                                                 \
@@ -55,11 +55,12 @@ using ORBextractorDeterministic = ORBextractor<true>;     // deterministic versi
                      o.detectAndCompute(image, mask, keypoints, descriptors);                      \
                  }                                                                                 \
                  return std::make_tuple(keypoints, descriptors);                                   \
-             })                                                                                    \
+             },                                                                                    \
+             "image"_a, "quality"_a = py::none())                                                  \
         .def(                                                                                      \
             "detect",                                                                              \
-            [](CLASS &o, cv::Mat &image, bool bComputeOrientation = true) {                        \
-                cv::Mat mask = cv::Mat();                                                          \
+            [](CLASS &o, cv::Mat &image, bool bComputeOrientation, py::object quality) {           \
+                cv::Mat mask = quality.is_none() ? cv::Mat() : quality.cast<cv::Mat>();            \
                 std::vector<cv::KeyPoint> keypoints;                                               \
                 {                                                                                  \
                     py::gil_scoped_release release;                                                \
@@ -67,7 +68,7 @@ using ORBextractorDeterministic = ORBextractor<true>;     // deterministic versi
                 }                                                                                  \
                 return keypoints;                                                                  \
             },                                                                                     \
-            "image"_a, "bComputeOrientation"_a = true)                                             \
+            "image"_a, "bComputeOrientation"_a = true, "quality"_a = py::none())                   \
         .def_static("DistributeOctTree", &CLASS::DistributeOctTree, "vToDistributeKeys"_a,         \
                     "minX"_a, "maxX"_a, "minY"_a, "maxY"_a, "nFeatures"_a, "level"_a = 0)          \
         .def("__repr__", [](const CLASS &o) {                                                      \

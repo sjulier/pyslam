@@ -40,11 +40,13 @@ class Orbslam2Feature2D(BaseFeature2D):
             self.orb_extractor = ORBextractor(num_features, scale_factor, num_levels)
 
     # extract keypoints
-    def detect(
-        self, img, mask=None
-    ):  # mask is fake: it is not considered by the c++ implementation
+    # mask is fake: it is not considered by the c++ implementation.
+    # quality: an optional quality map (feature quality), a single-channel image of any size with the
+    # weight of each pixel: the octree keeps the keypoints with the best FAST response x weight, and
+    # drops those with weight 0 (see ORBextractor.h). None: the original ORB-SLAM2 behaviour.
+    def detect(self, img, mask=None, quality=None):
         # detect and compute
-        kps_tuples = self.orb_extractor.detect(img)
+        kps_tuples = self.orb_extractor.detect(img, quality=quality)
         # convert keypoints
         kps = [cv2.KeyPoint(*kp) for kp in kps_tuples]
         return kps
@@ -64,12 +66,10 @@ class Orbslam2Feature2D(BaseFeature2D):
             num_features
         )  # custom method name for OrbSlam2 python wrapper
 
-    # compute both keypoints and descriptors
-    def detectAndCompute(
-        self, img, mask=None
-    ):  # mask is fake: it is not considered by the c++ implementation
+    # compute both keypoints and descriptors (mask and quality: see detect())
+    def detectAndCompute(self, img, mask=None, quality=None):
         # detect and compute
-        kps_tuples, des = self.orb_extractor.detectAndCompute(img)
+        kps_tuples, des = self.orb_extractor.detectAndCompute(img, quality=quality)
         # convert keypoints
         kps = [cv2.KeyPoint(*kp) for kp in kps_tuples]
         return kps, des
