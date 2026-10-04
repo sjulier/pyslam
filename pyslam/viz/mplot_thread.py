@@ -41,6 +41,7 @@ from pyslam.utilities.multi_processing import MultiprocessingManager
 from pyslam.config_parameters import Parameters
 from pyslam.viz.plot_window import (
     sliding_window_limits,
+    x_data_span,
     x_window_from_key,
     x_window_str,
     x_window_title,
@@ -312,10 +313,8 @@ class Mplot2d:
             return ""
 
     def update_x_window(self, key):
-        """Keys in the plot window: '+' and '-' change the sliding window, '0' shows the whole run."""
-        xs = [np.asarray(h.get_xdata(), dtype=float) for h in self.handle_map.values()]
-        xs = [x for x in xs if x.size > 0]
-        x_span = max(np.max(x) for x in xs) - min(np.min(x) for x in xs) if xs else 0
+        """Keys in the plot window: '+' zooms in (fewer frames), '-' zooms out, '0' shows the whole run."""
+        x_span = x_data_span([(h.get_xdata(), h.get_ydata()) for h in self.handle_map.values()])
         x_window = x_window_from_key(self.x_window, key, x_span)
         if x_window is None:
             return
@@ -324,11 +323,12 @@ class Mplot2d:
             self.ax.autoscale(True)  # the limits were set by the sliding window
         if self.title != "":
             self.ax.set_title(x_window_title(self.title, x_window, self.x_window_unit))
-        print(f'Mplot2d "{self.title}": showing {x_window_str(x_window, self.xlabel)}')
+        print(f'Mplot2d "{self.title}": showing {x_window_str(x_window, self.x_window_unit)}')
         self.got_data = True  # redraw
 
     def setAxis(self):
-        self.ax.legend()
+        # a fixed place: "best" moves the legend around as the curves grow, often over them
+        self.ax.legend(loc="upper left", framealpha=0.7)
         self.ax.relim()
         self.ax.autoscale_view()
         if self.x_window > 0:

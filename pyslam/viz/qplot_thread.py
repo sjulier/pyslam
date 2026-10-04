@@ -59,6 +59,7 @@ from pyslam.utilities.system import locally_configure_qt_environment
 from pyslam.config_parameters import Parameters
 from pyslam.viz.plot_window import (
     sliding_window_limits,
+    x_data_span,
     x_window_from_key,
     x_window_str,
     x_window_title,
@@ -427,15 +428,16 @@ class Qplot2d:
             return ""
 
     def update_x_window(self, key):
-        """Keys in the plot window: '+' and '-' change the sliding window, '0' shows the whole run."""
-        x_span = self.xlim[1] - self.xlim[0] if self.axis_computed else 0
+        """Keys in the plot window: '+' zooms in (fewer frames), '-' zooms out, '0' shows the whole run."""
+        # the extent of the data of all the curves (self.xlim is not it in every plot)
+        x_span = x_data_span(list(self.handle_data_map.values()))
         x_window = x_window_from_key(self.x_window, key, x_span)
         if x_window is None:
             return
         self.x_window = x_window
         if self.win is not None:
             self.win.setTitle(x_window_title(self.title, x_window, self.x_window_unit))
-        print(f'Qplot2d "{self.title}": showing {x_window_str(x_window, self.xlabel)}')
+        print(f'Qplot2d "{self.title}": showing {x_window_str(x_window, self.x_window_unit)}')
         self.got_data = True  # redraw
 
     def setGridAxis(self, xlim=None, ylim=None):

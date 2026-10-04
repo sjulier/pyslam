@@ -441,7 +441,7 @@ class Parameters:
     # Visualization
     # ===============================================================
     kMaxFeatureTrailLength = 16  # Maximum length of a feature trail
-    kPlotSlidingWindowNumFrames = 1000  # The plots over the frames (# matches, chi2 error, timing) show the last N frames; 0: the whole run. In a plot window, '+' and '-' change it and '0' shows the whole run
+    kPlotSlidingWindowNumFrames = 1000  # The plots over the frames (# matches, chi2 error, timing) show the last N frames; 0: the whole run. In a plot window, '+' zooms in (fewer frames), '-' zooms out and '0' shows the whole run
 
     # Sparse map visualization
     kSparseImageColorPatchDelta = 1  # center +- delta
