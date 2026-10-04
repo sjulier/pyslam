@@ -4,6 +4,7 @@ import argparse
 import importlib.util
 import sys
 import os
+import time
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
@@ -30,6 +31,7 @@ from pyslam.utilities.plotting import plot_errors_histograms
 from pyslam.local_features.feature_tracker_configs import FeatureTrackerConfigs
 
 from pyslam.utilities.timer import TimerFps
+from pyslam.utilities.logging import Printer
 
 
 kScriptPath = os.path.realpath(__file__)
@@ -81,10 +83,16 @@ def config_groups():
 
 parser = argparse.ArgumentParser(
     description="Match the features of an image pair with one of pySLAM's feature configurations",
-    epilog="example: pixi run feature-matching --features SUPERPOINT --test mars",
+    epilog="examples: pixi run feature-matching --features SUPERPOINT --test mars; "
+    "pixi run feature-matching --features ORB2 --images a.png b.png",
 )
 parser.add_argument("--features", default="ROOT_SIFT", help="a FeatureTrackerConfigs entry (default ROOT_SIFT; see --list)")
 parser.add_argument("--test", default="graf", choices=sorted(kTests), help="the image pair (default graf)")
+parser.add_argument("--images", nargs=2, metavar=("IMAGE1", "IMAGE2"), help="two image files of your own, instead of --test")
+parser.add_argument("--model", choices=("fundamental", "homography"), default=None,
+                    help="the model fitted to the matches to find the inliers: fundamental (two views of a 3D scene; "
+                    "the default with --images) or homography (a planar scene, or a camera that only rotates). "
+                    "The default with --test is the model of the pair")
 parser.add_argument("--num-features", type=int, default=2000, help="number of features per image (default 2000)")
 parser.add_argument("--list", action="store_true", help="list the feature configurations, grouped by what installs their models")
 args = parser.parse_args()
@@ -122,9 +130,24 @@ model_fitting_type = (
 draw_horizontal_layout = True  # draw matches with the two images in an horizontal or vertical layout (automatically set below, this is an initialization)
 
 test_type = args.test  # select the image pair with --test (add yours to kTests above)
-img1_file, img2_file, model_fitting_type, draw_horizontal_layout = kTests[test_type]
-img1 = cv2.imread(kScriptFolder + "/test/data/" + img1_file)  # queryImage
-img2 = cv2.imread(kScriptFolder + "/test/data/" + img2_file)  # trainImage
+if args.images:  # two image files of the user
+    test_type = None
+    pair_name = " and ".join(os.path.basename(f) for f in args.images)
+    img1 = cv2.imread(args.images[0])  # queryImage
+    img2 = cv2.imread(args.images[1])  # trainImage
+    for img, img_file in zip((img1, img2), args.images):
+        if img is None:
+            sys.exit(f"--images: cannot read the image {img_file}")
+    model_fitting_type = "fundamental"
+    # wide images (e.g. KITTI) one above the other, the others side by side
+    draw_horizontal_layout = img1.shape[1] < 2 * img1.shape[0]
+else:
+    pair_name = test_type
+    img1_file, img2_file, model_fitting_type, draw_horizontal_layout = kTests[test_type]
+    img1 = cv2.imread(kScriptFolder + "/test/data/" + img1_file)  # queryImage
+    img2 = cv2.imread(kScriptFolder + "/test/data/" + img2_file)  # trainImage
+if args.model:
+    model_fitting_type = args.model
 if test_type == "graf":
     img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2RGB)
     img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
@@ -196,10 +219,12 @@ except Exception as e:  # noqa: BLE001  (e.g. a learned model whose code or weig
 # Compute keypoints and descriptors
 # ============================================
 
-# Loop for measuring time performance
-N = 1
+# Loop for measuring time performance: the first pass includes loading the models and warming up the
+# GPU, so the time of the summary is the one of the last pass
+N = 2
 for i in range(N):
     timer.start()
+    time_start = time.perf_counter()
 
     # Find the keypoints and descriptors in img1
     kps1, des1 = feature_tracker.detectAndCompute(img1)  # with DL matchers this a null operation
@@ -209,6 +234,7 @@ for i in range(N):
     matching_result = feature_tracker.matcher.match(img1, img2, des1, des2, kps1, kps2)
 
     timer.refresh()
+    matching_time = time.perf_counter() - time_start
 
 # Get/update the info from the maching result
 idxs1, idxs2 = matching_result.idxs1, matching_result.idxs2
@@ -385,6 +411,20 @@ if not show_kps_size:
 img_matched = draw_feature_matches(
     img1, img2, kps1_matched, kps2_matched, kps1_size, kps2_size, draw_horizontal_layout
 )
+
+# Summary: one line to compare the feature configurations on the same image pair
+num_matches = len(idxs1)
+summary = f"{args.features} on {pair_name}: {len(kps1)} and {len(kps2)} keypoints, {num_matches} matches"
+if mask is not None:
+    num_inliers = int(np.count_nonzero(mask.ravel() == 1))
+    summary += (
+        f", {num_inliers} inliers ({100 * num_inliers / max(num_matches, 1):.0f}% of the matches, "
+        f"{model_fitting_type})"
+    )
+else:
+    summary += f", no {model_fitting_type} model (too few matches)"
+summary += f", {1000 * matching_time:.0f} ms (detection, description and matching)"
+Printer.green(f"\nSummary: {summary}\n")
 
 fig1 = MPlotFigure(img_matched, title="All matches")
 if img_matched_inliers is not None:
