@@ -41,6 +41,7 @@ from pyslam.utilities.multi_processing import MultiprocessingManager
 from pyslam.config_parameters import Parameters
 from pyslam.viz.plot_window import (
     sliding_window_limits,
+    x_data_span,
     x_window_from_key,
     x_window_str,
     x_window_title,
@@ -313,9 +314,7 @@ class Mplot2d:
 
     def update_x_window(self, key):
         """Keys in the plot window: '+' and '-' change the sliding window, '0' shows the whole run."""
-        xs = [np.asarray(h.get_xdata(), dtype=float) for h in self.handle_map.values()]
-        xs = [x for x in xs if x.size > 0]
-        x_span = max(np.max(x) for x in xs) - min(np.min(x) for x in xs) if xs else 0
+        x_span = x_data_span([(h.get_xdata(), h.get_ydata()) for h in self.handle_map.values()])
         x_window = x_window_from_key(self.x_window, key, x_span)
         if x_window is None:
             return

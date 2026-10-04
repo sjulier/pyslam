@@ -47,6 +47,16 @@ def sliding_window_limits(curves, x_window):
     return x_first, max(x_last, x_first + 1), y_min - margin, y_max + margin
 
 
+def x_data_span(curves):
+    """The extent on the x axis of the data of `curves`, a list of (x, y) arrays or lists (single
+    samples count too): last x - first x over all of them, 0 without data."""
+    xs = [np.atleast_1d(np.asarray(x, dtype=float)) for x, _ in curves]
+    xs = [x for x in xs if x.size > 0]
+    if not xs:
+        return 0
+    return float(max(np.max(x) for x in xs) - min(np.min(x) for x in xs))
+
+
 def x_window_from_key(x_window, key, x_span):
     """The new window after `key` is pressed in a plot, or None if the key is not one of these:
     '-' the next value of kXWindowLadder below the window, '+' or '=' the next one above, '0' the

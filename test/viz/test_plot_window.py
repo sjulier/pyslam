@@ -78,3 +78,11 @@ def test_sliding_window_limits():
     assert (x_min, x_max) == (1749, 1999)
     assert y_min < 249 and y_max > 499 and y_max < 600  # scaled to the visible samples
     assert plot_window.sliding_window_limits([([], [])], 250) is None
+
+
+def test_x_data_span_is_the_extent_of_all_the_curves():
+    span = plot_window.x_data_span
+    assert span([(np.arange(100, 400), np.zeros(300)), ([0, 1, 2], [0, 0, 0])]) == 399
+    assert span([([5.0, 6.0], [1, 1]), ([], [])]) == 1
+    assert span([(7, 1.5)]) == 0  # a single sample
+    assert span([]) == 0
