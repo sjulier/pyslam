@@ -428,7 +428,7 @@ class Qplot2d:
             return ""
 
     def update_x_window(self, key):
-        """Keys in the plot window: '+' and '-' change the sliding window, '0' shows the whole run."""
+        """Keys in the plot window: '+' zooms in (fewer frames), '-' zooms out, '0' shows the whole run."""
         # the extent of the data of all the curves (self.xlim is not it in every plot)
         x_span = x_data_span(list(self.handle_data_map.values()))
         x_window = x_window_from_key(self.x_window, key, x_span)

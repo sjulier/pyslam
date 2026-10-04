@@ -24,7 +24,7 @@
 import numpy as np
 
 kXWindowLadder = (25, 50, 100, 250, 500, 1000, 2000, 5000)  # the windows the keys step through
-kXWindowKeysHelp = "+ / - / 0"  # shown in the title of the plots: wider, narrower, the whole run
+kXWindowKeysHelp = "+ / - / 0"  # shown in the title of the plots: zoom in, zoom out, the whole run
 
 
 def sliding_window_limits(curves, x_window):
@@ -59,15 +59,15 @@ def x_data_span(curves):
 
 def x_window_from_key(x_window, key, x_span):
     """The new window after `key` is pressed in a plot, or None if the key is not one of these:
-    '-' the next value of kXWindowLadder below the window, '+' or '=' the next one above, '0' the
-    whole run (0). The keys step through fixed, round values, so the same keys give the same
-    windows in every run. `x_span` is the extent of the data on the x axis: from the whole run '-'
-    goes to the largest value below it, and '+' goes back to the whole run once the next value
-    would show all the data anyway."""
-    if key == "-":
+    '+' or '=' zooms in (the next value of kXWindowLadder below the window: fewer frames), '-'
+    zooms out (the next one above: more frames), '0' shows the whole run (0). The keys step through
+    fixed, round values, so the same keys give the same windows in every run. `x_span` is the
+    extent of the data on the x axis: from the whole run '+' goes to the largest value below it,
+    and '-' goes back to the whole run once the next value would show all the data anyway."""
+    if key in ("+", "="):
         below = [w for w in kXWindowLadder if w < (x_window if x_window > 0 else x_span)]
         return below[-1] if below else kXWindowLadder[0]
-    if key in ("+", "="):
+    if key == "-":
         if x_window <= 0:
             return 0
         above = [w for w in kXWindowLadder if w > x_window]

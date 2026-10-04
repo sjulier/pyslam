@@ -313,7 +313,7 @@ class Mplot2d:
             return ""
 
     def update_x_window(self, key):
-        """Keys in the plot window: '+' and '-' change the sliding window, '0' shows the whole run."""
+        """Keys in the plot window: '+' zooms in (fewer frames), '-' zooms out, '0' shows the whole run."""
         x_span = x_data_span([(h.get_xdata(), h.get_ydata()) for h in self.handle_map.values()])
         x_window = x_window_from_key(self.x_window, key, x_span)
         if x_window is None:

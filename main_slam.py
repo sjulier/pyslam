@@ -298,7 +298,7 @@ if __name__ == "__main__":
         metavar="N",
         help="The plots over the frames (# matches, chi2 error, timing) show the last N frames "
         f"(default: {Parameters.kPlotSlidingWindowNumFrames}; 0: the whole run). In a plot window, "
-        "'+' widens the window, '-' narrows it and '0' shows the whole run.",
+        "'+' zooms in (fewer frames), '-' zooms out and '0' shows the whole run.",
     )
     parser.add_argument(
         "--verbose",
