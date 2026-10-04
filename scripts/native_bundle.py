@@ -351,7 +351,18 @@ def relocate_macho(path, staged):
 
 def roots():
     """The checkout's path as the build tools may have written it (also through a link)."""
-    return sorted({ROOT, os.path.realpath(ROOT)}, key=len, reverse=True)
+    candidates = {ROOT, os.path.realpath(ROOT)}
+    # the shell's spelling of the current folder, when the checkout is reached through a link
+    pwd = os.environ.get("PWD", "")
+    if pwd and os.path.realpath(pwd) == os.path.realpath(ROOT):
+        candidates.add(pwd)
+    # macOS: /tmp, /var and /etc are links to /private/...; CMake may have recorded either spelling
+    for root in list(candidates):
+        if root.startswith("/private/"):
+            candidates.add(root[len("/private"):])
+        elif root.split("/")[1:2] in (["tmp"], ["var"], ["etc"]):
+            candidates.add("/private" + root)
+    return sorted(candidates, key=len, reverse=True)
 
 
 def placehold_root(staged):
