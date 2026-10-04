@@ -55,74 +55,34 @@ QMainWindow = QtWidgets.QMainWindow
 kVerbose = False
 
 
-class Resizer:
-    def __init__(self, window, name, max_width, max_height, screen_width, screen_height):
-        self.name = name
-        self.window = window
-        self.max_width = max_width
-        self.max_height = max_height
-        self.screen_width = screen_width
-        self.screen_height = screen_height
-        self.aspect_ratio = float(self.window.width() / self.window.height())
-        self.in_resize_event = False  # Flag to prevent recursive resize events
-        self.is_mouse_resizing = False
-        self.set_max_size = False
-        self.reset_timer = QTimer()
-        self.reset_timer.setSingleShot(True)
-        self.reset_timer.timeout.connect(self.reset_max_size)
+class ImageWidget(QWidget):
+    """Shows an image scaled to the widget, keeping its aspect ratio (centred on a dark background),
+    so that the window can be resized freely."""
 
-    def reset_max_size(self):
-        if kVerbose:
-            print(f'Resizer: "{self.name}" reset max size')
-        self.window.setMaximumSize(self.screen_width, self.screen_height)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.pixmap = None
+        self.setMinimumSize(80, 60)
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.is_mouse_resizing = True
-        super().mousePressEvent(event)
+    def setPixmap(self, pixmap):
+        self.pixmap = pixmap
+        self.update()
 
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.is_mouse_resizing = False
-        super().mouseReleaseEvent(event)
-
-    # Override the resizeEvent to maintain aspect ratio. Ensures that the width and height are resized proportionally.
-    def resizeEvent(self, event):
-        if self.in_resize_event:
-            return  # Prevent recursive calls
-        self.in_resize_event = True
-
-        width = event.size().width()
-        height = event.size().height()
-
-        current_size = self.window.size()
-
-        # Calculate the new height based on the fixed aspect ratio
-        new_width = width
-        new_height = int(width / self.aspect_ratio)
-
-        if new_width > self.max_width:
-            new_width = self.max_width
-            new_height = int(self.max_width / self.aspect_ratio)
-
-        if new_height > self.max_height:
-            new_height = self.max_height
-            new_width = int(self.max_height * self.aspect_ratio)
-
-        self.window.resize(new_width, new_height)
-        if self.set_max_size:
-            # NOTE: this is a kind of HACK and seems necessary to actually get a resized window
-            self.window.setFixedWidth(new_width)
-            self.window.setFixedHeight(new_height)
-            self.set_max_size = False
-        self.reset_timer.start(100)  # Restart the timer to remove the fixed size (100ms delay)
-
-        if kVerbose:
-            print(
-                f'Resizer: "{self.name}" resize event {width}x{height} -> current size: {current_size.width()}x{current_size.height()}, new size: {new_width}x{new_height}, desired aspect ratio: {self.aspect_ratio:.2f}, actual aspect ratio: {new_width/new_height:.2f}'
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.fillRect(self.rect(), QColor(40, 40, 40))
+        if self.pixmap is not None and not self.pixmap.isNull():
+            scaled = self.pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            painter.drawPixmap(
+                (self.width() - scaled.width()) // 2, (self.height() - scaled.height()) // 2, scaled
             )
-        self.in_resize_event = False  # Reset flag
-        event.accept()
+        painter.end()
+
+
+def fit_size(width, height, max_width, max_height):
+    """(width, height) scaled down, with the same aspect ratio, to fit in max_width x max_height."""
+    scale = min(1.0, max_width / float(width), max_height / float(height))
+    return max(1, int(round(width * scale))), max(1, int(round(height * scale)))
 
 
 def check_image_format(image):
@@ -226,13 +186,13 @@ class QimageViewer:
     def init(self):
         locally_configure_qt_environment()
         self.app = QApplication([])  # Initialize the application
-        self.image_map = {}  # name -> (label,window)
+        self.image_map = {}  # name -> [image widget, window, aspect ratio of its image]
         self.key
         self.offset = 0
         self.screen_width, self.screen_height = self.get_screen_dimensions()
 
     def close(self):
-        for name, (label, window, resizer) in self.image_map.items():
+        for name, (label, window, aspect_ratio) in self.image_map.items():
             window.close()
 
     def init_window(self, name, width, height):
@@ -241,64 +201,52 @@ class QimageViewer:
         window.setGeometry(10 + self.offset, 10 + self.offset, 200, 200)  # Set a default size
         self.offset += 30
 
-        current_position = window.frameGeometry().topLeft()
-        window.setGeometry(
-            current_position.x() + self.offset, current_position.y() + self.offset, width, height
-        )  # Set a default size
-
-        label = QLabel(window)
-        label.setAlignment(Qt.AlignCenter)
-        label.setScaledContents(True)  # Ensure image fits the label size
-        window.setCentralWidget(label)
-
-        # Define maximum size for the window (e.g., half the screen size)
+        # The largest size the viewer gives a window itself (the user can make it larger)
         self.max_width = int(self.screen_width * 4.0 / 5)
         self.max_height = int(self.screen_height * 4.0 / 5)
 
-        # Set maximum size constraints
-        # window.setMaximumSize(max_width, max_height)
-        # label.setMaximumSize(max_width, max_height)
+        # The first image at its own size, if it fits
+        width, height = fit_size(width, height, self.max_width, self.max_height)
+        current_position = window.frameGeometry().topLeft()
+        window.setGeometry(
+            current_position.x() + self.offset, current_position.y() + self.offset, width, height
+        )
+
+        label = ImageWidget(window)  # scales the image to the window, keeping its aspect ratio
+        window.setCentralWidget(label)
 
         window.keyPressEvent = self.on_key_press
         window.keyReleaseEvent = self.on_key_release
         window.closeEvent = self.on_close
 
-        resizer = Resizer(
-            window, name, self.max_width, self.max_height, self.screen_width, self.screen_height
-        )
-        window.resizeEvent = resizer.resizeEvent
-
         window.show()
-        return label, window, resizer
+        return label, window
 
     def update_image(self, image, name, format=QImage.Format_BGR888):
-        if name not in self.image_map:
-            label, window, resizer = self.init_window(name, image.shape[1], image.shape[0])
-            self.image_map[name] = (label, window, resizer)
-        else:
-            label, window, resizer = self.image_map[name]
         height, width, channels = image.shape
         new_aspect_ratio = float(width) / height
+        if name not in self.image_map:
+            label, window = self.init_window(name, width, height)
+            self.image_map[name] = [label, window, new_aspect_ratio]
+        label, window, aspect_ratio = self.image_map[name]
         bytes_per_line = channels * width
         q_image = QImage(image.data, width, height, bytes_per_line, format)
-        pixmap = QPixmap.fromImage(q_image)
-        label.setPixmap(pixmap)
-        window_size = window.size()
-        label_size = label.size()
-        is_label_size_different = (
-            abs(label_size.width() - window_size.width()) > 1e-3
-            or abs(label_size.height() - window_size.height()) > 1e-3
-        )
-        if abs(resizer.aspect_ratio - new_aspect_ratio) > 1e-3 or is_label_size_different:
+        label.setPixmap(QPixmap.fromImage(q_image.copy()))  # copy: the pixmap outlives the numpy array
+        if abs(aspect_ratio - new_aspect_ratio) > 1e-3:
+            # The shape of the image has changed (e.g. another number of loop candidates): keep the
+            # width of the window, which the user may have chosen, and adapt its height. With the same
+            # shape the window is left as it is, so the user's resizing is kept.
             if kVerbose:
                 print(
-                    f"QimageViewer: window {name}:  image size: {width}x{height}, aspect ratio changed from {resizer.aspect_ratio} to {new_aspect_ratio}"
+                    f"QimageViewer: window {name}:  image size: {width}x{height}, aspect ratio changed from {aspect_ratio} to {new_aspect_ratio}"
                 )
-            # Reset size constraints temporarily to prevent resizing event being blocked
-            # window.setMaximumSize(self.screen_width, self.screen_height)
-            resizer.aspect_ratio = new_aspect_ratio
-            resizer.set_max_size = True
-            window.resize(width, height)
+            self.image_map[name][2] = new_aspect_ratio
+            new_width = window.width()
+            new_height = int(round(new_width / new_aspect_ratio))
+            if new_height > self.max_height:
+                new_height = self.max_height
+                new_width = int(round(new_height * new_aspect_ratio))
+            window.resize(new_width, new_height)
 
     def run(self, queue, key_queue, key, is_running):
         self.key = key

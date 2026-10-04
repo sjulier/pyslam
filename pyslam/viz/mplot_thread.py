@@ -39,6 +39,12 @@ from pyslam.utilities.logging import Logging
 from pyslam.utilities.system import locally_configure_qt_environment
 from pyslam.utilities.multi_processing import MultiprocessingManager
 from pyslam.config_parameters import Parameters
+from pyslam.viz.plot_window import (
+    sliding_window_limits,
+    x_window_from_key,
+    x_window_str,
+    x_window_title,
+)
 
 kPlotSleep = 0.04
 kVerbose = False
@@ -118,10 +124,22 @@ class SharedSingletonLock:
 
 # use mplotlib figure to draw in 2d dynamic data
 class Mplot2d:
-    def __init__(self, xlabel: str = "", ylabel: str = "", title: str = ""):
+    def __init__(
+        self,
+        xlabel: str = "",
+        ylabel: str = "",
+        title: str = "",
+        x_window: float = 0,
+        x_window_unit: str = "",
+    ):
         self.xlabel = xlabel
         self.ylabel = ylabel
         self.title = title
+        # show the last x_window units of the x axis (0: the whole run); see plot_window.py
+        self.x_window = x_window
+        # what the x axis counts (e.g. "frames"): with it, the title of the plot shows the window
+        # and the keys that change it
+        self.x_window_unit = x_window_unit
 
         self.data = None
         self.got_data = False
@@ -192,7 +210,10 @@ class Mplot2d:
         # self.ax = self.fig.gca()
         self.ax = self.fig.add_subplot(111)
         if self.title != "":
-            self.ax.set_title(self.title)
+            self.ax.set_title(x_window_title(self.title, self.x_window, self.x_window_unit))
+            # name the window after the plot (instead of "Figure <n>")
+            if self.fig.canvas.manager is not None:
+                self.fig.canvas.manager.set_window_title(self.title)
         self.ax.set_xlabel(self.xlabel)
         self.ax.set_ylabel(self.ylabel)
         if matplotlib.get_backend() == "Qt5Agg":
@@ -260,6 +281,7 @@ class Mplot2d:
             mp.current_process().name,
             f' - Mplot2d "{self.title}": key event pressed...  {event.key}',
         )
+        self.update_x_window(event.key)
         if event.key == "escape":
             self.key.value = 27  # escape key
         elif len(event.key) == 1:
@@ -289,10 +311,33 @@ class Mplot2d:
         else:
             return ""
 
+    def update_x_window(self, key):
+        """Keys in the plot window: '+' and '-' change the sliding window, '0' shows the whole run."""
+        xs = [np.asarray(h.get_xdata(), dtype=float) for h in self.handle_map.values()]
+        xs = [x for x in xs if x.size > 0]
+        x_span = max(np.max(x) for x in xs) - min(np.min(x) for x in xs) if xs else 0
+        x_window = x_window_from_key(self.x_window, key, x_span)
+        if x_window is None:
+            return
+        self.x_window = x_window
+        if x_window == 0:
+            self.ax.autoscale(True)  # the limits were set by the sliding window
+        if self.title != "":
+            self.ax.set_title(x_window_title(self.title, x_window, self.x_window_unit))
+        print(f'Mplot2d "{self.title}": showing {x_window_str(x_window, self.xlabel)}')
+        self.got_data = True  # redraw
+
     def setAxis(self):
         self.ax.legend()
         self.ax.relim()
         self.ax.autoscale_view()
+        if self.x_window > 0:
+            limits = sliding_window_limits(
+                [(h.get_xdata(), h.get_ydata()) for h in self.handle_map.values()], self.x_window
+            )
+            if limits is not None:
+                self.ax.set_xlim(limits[0], limits[1])
+                self.ax.set_ylim(limits[2], limits[3])
         # We need to draw *and* flush
         if not kUseFigCanvasDrawIdle:
             self.fig.canvas.draw()
