@@ -38,7 +38,7 @@ from pyslam.semantics.semantic_eval import evaluate_semantic_mapping
 
 from pyslam.slam.slam import Slam, SlamState
 from pyslam.slam import PinholeCamera, USE_CPP
-from pyslam.slam.playback_throttle import PlaybackThrottle
+from pyslam.slam.playback_throttle import PlaybackThrottle, is_throttle_enabled
 
 from pyslam.viz.slam_plot_drawer import SlamPlotDrawerThread
 from pyslam.io.ground_truth import groundtruth_factory, is_valid_groundtruth, need_sim3_alignment
@@ -147,12 +147,13 @@ if __name__ == "__main__":
         "--throttle",
         action="store_true",
         help="Slow the playback down below --speed when tracking gets weak because local mapping "
-        "cannot keep up with the frames. Off by default: try it if tracking is lost on your machine.",
+        "cannot keep up with the frames. On by default when the windows are shown; with --headless "
+        "it is off unless this option is given.",
     )
     parser.add_argument(
         "--no-throttle",
         action="store_true",
-        help="Never slow the playback down (the default, unless kPlaybackThrottle is set).",
+        help="Never slow the playback down (the default with --headless).",
     )
     parser.add_argument(
         "--plot-window",
@@ -399,11 +400,7 @@ if __name__ == "__main__":
     # Playback speed: --speed is the maximum; the throttle reduces it when local mapping cannot keep up
     playback_throttle = PlaybackThrottle(
         max_speed=args.speed,
-        enabled=(
-            (args.throttle or Parameters.kPlaybackThrottle)
-            and not args.no_throttle
-            and Parameters.kLocalMappingOnSeparateThread
-        ),
+        enabled=is_throttle_enabled(args.throttle, args.no_throttle, args.headless),
     )
     is_throttle_hint_shown = False  # the hint about --throttle when tracking is lost
     is_end_message_shown = False  # the message at the end of the sequence (with windows)

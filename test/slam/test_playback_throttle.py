@@ -6,7 +6,8 @@ import sys
 sys.path.append("./")
 sys.path.append("../../")
 
-from pyslam.slam.playback_throttle import KeyframeDemand, PlaybackThrottle
+from pyslam.config_parameters import Parameters
+from pyslam.slam.playback_throttle import KeyframeDemand, PlaybackThrottle, is_throttle_enabled
 
 NUM_REF = 200  # map points tracked by the reference keyframe
 STRONG, WEAK = 180, 60  # points matched by a frame: above / below half of NUM_REF
@@ -25,7 +26,7 @@ def feed(demand, throttle, num_frames, weak_percent, frame_duration=0.1, process
 
 
 def make(max_speed, **kwargs):
-    params = dict(high=0.25, low=0.10, decrease=0.8, increase=1.1, min_speed=0.1, update_period=10, min_samples=10)
+    params = dict(high=0.25, low=0.10, decrease=0.8, increase=1.1, min_speed=0.1, update_period=10, min_samples=10, warmup_frames=0)
     params.update(kwargs)
     return KeyframeDemand(window=30, weak_ratio=0.5), PlaybackThrottle(max_speed=max_speed, **params)
 
@@ -120,3 +121,33 @@ def test_between_thresholds_is_stable():
     demand, throttle = make(1.0)
     feed(demand, throttle, 300, weak_percent=20)  # between low (10%) and high (25%)
     assert throttle.speed == 1.0
+
+
+def test_start_up_is_ignored():
+    demand, throttle = make(1.0, warmup_frames=50)
+    feed(demand, throttle, 50, weak_percent=100)  # weak while the map is initialised
+    assert throttle.num_decreases == 0
+    assert demand.num_samples() == 0  # the start-up frames are dropped from the window
+    feed(demand, throttle, 300, weak_percent=0)
+    assert throttle.speed == 1.0 and throttle.num_decreases == 0
+
+
+def test_default_parameters_floor_and_quick_recovery():
+    # with the defaults: never below kPlaybackThrottleMinSpeed, and back to full speed within
+    # 200 frames once tracking is strong again (KITTI 06 on a Mac with windows took 240 frames to
+    # climb from 0.31x to 0.67x with the earlier x1.1 steps)
+    demand = KeyframeDemand()
+    throttle = PlaybackThrottle(max_speed=1.0)
+    feed(demand, throttle, Parameters.kPlaybackThrottleWarmupFrames, weak_percent=0)
+    feed(demand, throttle, 1000, weak_percent=50)
+    assert throttle.speed == Parameters.kPlaybackThrottleMinSpeed
+    feed(demand, throttle, 200, weak_percent=0)
+    assert throttle.speed == 1.0
+
+
+def test_enabled_by_default_with_windows_only():
+    assert is_throttle_enabled(headless=False)
+    assert not is_throttle_enabled(headless=True)
+    assert is_throttle_enabled(throttle=True, headless=True)
+    assert not is_throttle_enabled(no_throttle=True, headless=False)
+    assert not is_throttle_enabled(throttle=True, no_throttle=True)
