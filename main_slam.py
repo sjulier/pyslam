@@ -135,6 +135,15 @@ if __name__ == "__main__":
         help="Never slow the playback down (the default, unless kPlaybackThrottle is set).",
     )
     parser.add_argument(
+        "--plot-window",
+        type=int,
+        default=None,
+        metavar="N",
+        help="The plots over the frames (# matches, chi2 error, timing) show the last N frames "
+        f"(default: {Parameters.kPlotSlidingWindowNumFrames}; 0: the whole run). In a plot window, "
+        "'+' widens the window, '-' narrows it and '0' shows the whole run.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Print the full camera and configuration dumps (JSON)",
@@ -145,6 +154,9 @@ if __name__ == "__main__":
         config = Config(args.config_path)  # use the custom configuration path file
     else:
         config = Config()
+
+    if args.plot_window is not None:
+        Parameters.kPlotSlidingWindowNumFrames = max(0, args.plot_window)
 
     if args.no_output_date:
         print("Not appending date to output directory")
@@ -374,6 +386,7 @@ if __name__ == "__main__":
         ),
     )
     is_throttle_hint_shown = False  # the hint about --throttle when tracking is lost
+    is_end_message_shown = False  # the message at the end of the sequence (with windows)
     is_map_save = False  # save map on GUI
     is_bundle_adjust = False  # bundle adjust on GUI
     is_viewer_closed = False  # viewer GUI was closed
@@ -480,6 +493,12 @@ if __name__ == "__main__":
                     # Printer.yellow("sleeping for 0.1 seconds - img is None")
                     if args.headless:
                         break  # exit from the loop if headless
+                    if not is_end_message_shown and not dataset.is_ok:
+                        is_end_message_shown = True
+                        Printer.green(
+                            "End of the sequence. The windows stay open: press 'q' or Esc in the "
+                            "Camera window to quit and compute the trajectory error."
+                        )
 
             else:
                 time.sleep(0.1)  # pause or do step on GUI

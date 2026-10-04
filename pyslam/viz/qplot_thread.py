@@ -57,6 +57,7 @@ from pyslam.utilities.logging import Logging
 from pyslam.utilities.system import locally_configure_qt_environment
 
 from pyslam.config_parameters import Parameters
+from pyslam.viz.plot_window import sliding_window_limits, x_window_from_key, x_window_str
 
 kVerbose = False
 kDebugAndPrintToFile = True
@@ -146,10 +147,12 @@ def mathtext_to_html(text):
 
 
 class Qplot2d:
-    def __init__(self, xlabel: str = "", ylabel: str = "", title: str = ""):
+    def __init__(self, xlabel: str = "", ylabel: str = "", title: str = "", x_window: float = 0):
         self.xlabel = xlabel
         self.ylabel = ylabel
         self.title = title
+        # show the last x_window units of the x axis (0: the whole run); see plot_window.py
+        self.x_window = x_window
 
         self.data = None
         self.got_data = False
@@ -375,6 +378,7 @@ class Qplot2d:
 
     def on_key_press(self, event):
         key = event.key()
+        self.update_x_window(event.text())
         try:
             self.key.value = ord(event.text())  # Convert to int
             self.key_queue_thread.put(self.key.value)
@@ -405,9 +409,21 @@ class Qplot2d:
         else:
             return ""
 
-    def setGridAxis(self):
-        deltax = self.xlim[1] - self.xlim[0]
-        deltay = self.ylim[1] - self.ylim[0]
+    def update_x_window(self, key):
+        """Keys in the plot window: '+' and '-' change the sliding window, '0' shows the whole run."""
+        x_span = self.xlim[1] - self.xlim[0] if self.axis_computed else 0
+        x_window = x_window_from_key(self.x_window, key, x_span)
+        if x_window is None:
+            return
+        self.x_window = x_window
+        print(f'Qplot2d "{self.title}": showing {x_window_str(x_window, self.xlabel)}')
+        self.got_data = True  # redraw
+
+    def setGridAxis(self, xlim=None, ylim=None):
+        xlim = self.xlim if xlim is None else xlim
+        ylim = self.ylim if ylim is None else ylim
+        deltax = xlim[1] - xlim[0]
+        deltay = ylim[1] - ylim[0]
         # self.win.getAxis('left').setTickSpacing(10, 100)  # Y-axis: major and minor ticks
 
         # def get_values(delta):
@@ -449,6 +465,13 @@ class Qplot2d:
             )  # X-axis: major and minor ticks
 
     def setAxis(self):
+        if self.axis_computed and self.x_window > 0:
+            limits = sliding_window_limits(list(self.handle_data_map.values()), self.x_window)
+            if limits is not None:
+                self.win.setXRange(limits[0], limits[1])
+                self.win.setYRange(limits[2], limits[3])
+                self.setGridAxis(limits[0:2], limits[2:4])
+                return
         if self.axis_computed:
             if self.xlim != [float("inf"), float("-inf")]:
                 self.win.setXRange(self.xlim[0], self.xlim[1])
