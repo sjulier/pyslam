@@ -24,7 +24,7 @@
 import numpy as np
 
 kMinXWindow = 25  # the smallest window the keys can set
-kXWindowKeysHelp = "'+' widens it, '-' narrows it, '0' shows the whole run"
+kXWindowKeysHelp = "+ / - / 0"  # shown in the title of the plots: wider, narrower, the whole run
 
 
 def sliding_window_limits(curves, x_window):
@@ -66,3 +66,13 @@ def x_window_from_key(x_window, key, x_span):
 
 def x_window_str(x_window, xlabel=""):
     return f"the last {x_window:g} ({xlabel})" if x_window > 0 else "the whole run"
+
+
+def x_window_title(title, x_window, unit):
+    """The title of a plot with a sliding window: what it shows and the keys that change it, e.g.
+    "# matches · last 1000 frames · keys + / - / 0". `unit` names the x axis (e.g. "frames"); a plot
+    without a unit has no sliding window to show, and keeps its title."""
+    if not unit:
+        return title
+    span = f"last {x_window:g} {unit}" if x_window > 0 else "whole run"
+    return f"{title} \u00b7 {span} \u00b7 keys {kXWindowKeysHelp}"

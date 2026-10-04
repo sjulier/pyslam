@@ -633,7 +633,9 @@ if __name__ == "__main__":
                     # Printer.yellow(f"sleeping for {delta_time_sleep} seconds - frame duration > processing duration")
 
             # press 'q' or ESC for quitting (the viewers' get_key() return the pressed key as a character)
-            if key == "q" or key_cv in ("q", "\x1b"):
+            # also in loop closing's debug windows (similarity matrix, consistency checks)
+            key_qimage = QimageViewer.get_instance().get_key() if QimageViewer.is_running() else None
+            if key == "q" or key_cv in ("q", "\x1b") or key_qimage in ("q", "\x1b"):
                 break
 
     except KeyboardInterrupt:

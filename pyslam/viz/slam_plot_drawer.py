@@ -129,20 +129,20 @@ class SlamPlotDrawerThread:
         # the plots over the frames show the last x_window frames ('+', '-' and '0' in a plot change it)
         x_window = Parameters.kPlotSlidingWindowNumFrames
         self.matched_points_plt = factory_plot2d(
-            xlabel="img id", ylabel="# matches", title="# matches", x_window=x_window
+            xlabel="img id", ylabel="# matches", title="# matches", x_window=x_window, x_window_unit="frames"
         )
         if False:
             self.info_3dpoints_plt = factory_plot2d(
-                xlabel="img id", ylabel="# points", title="info 3d points", x_window=x_window
+                xlabel="img id", ylabel="# points", title="info 3d points", x_window=x_window, x_window_unit="frames"
             )
             self.info_keyframes_plt = factory_plot2d(
-                xlabel="img id", ylabel="# keyframes", title="# keyframes", x_window=x_window
+                xlabel="img id", ylabel="# keyframes", title="# keyframes", x_window=x_window, x_window_unit="frames"
             )
         self.chi2_error_plt = factory_plot2d(
-            xlabel="img id", ylabel="error", title="mean chi2 error", x_window=x_window
+            xlabel="img id", ylabel="error", title="mean chi2 error", x_window=x_window, x_window_unit="frames"
         )
         self.timing_plt = factory_plot2d(
-            xlabel="img id", ylabel="s", title="timing", x_window=x_window
+            xlabel="img id", ylabel="s", title="timing", x_window=x_window, x_window_unit="frames"
         )
         self.traj_error_plt = factory_plot2d(
             xlabel="time [s]", ylabel="error", title="trajectories: gt vs (aligned)estimated"

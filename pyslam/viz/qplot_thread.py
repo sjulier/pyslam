@@ -57,7 +57,12 @@ from pyslam.utilities.logging import Logging
 from pyslam.utilities.system import locally_configure_qt_environment
 
 from pyslam.config_parameters import Parameters
-from pyslam.viz.plot_window import sliding_window_limits, x_window_from_key, x_window_str
+from pyslam.viz.plot_window import (
+    sliding_window_limits,
+    x_window_from_key,
+    x_window_str,
+    x_window_title,
+)
 
 kVerbose = False
 kDebugAndPrintToFile = True
@@ -147,12 +152,22 @@ def mathtext_to_html(text):
 
 
 class Qplot2d:
-    def __init__(self, xlabel: str = "", ylabel: str = "", title: str = "", x_window: float = 0):
+    def __init__(
+        self,
+        xlabel: str = "",
+        ylabel: str = "",
+        title: str = "",
+        x_window: float = 0,
+        x_window_unit: str = "",
+    ):
         self.xlabel = xlabel
         self.ylabel = ylabel
         self.title = title
         # show the last x_window units of the x axis (0: the whole run); see plot_window.py
         self.x_window = x_window
+        # what the x axis counts (e.g. "frames"): with it, the title of the plot shows the window
+        # and the keys that change it
+        self.x_window_unit = x_window_unit
 
         self.data = None
         self.got_data = False
@@ -244,7 +259,9 @@ class Qplot2d:
         # Fetch desktop dimensions
         self.screen_width, self.screen_height = self.get_screen_dimensions()
 
-        self.win = pg.PlotWidget(title=self.title)  # Create a plot widget
+        self.win = pg.PlotWidget(
+            title=x_window_title(self.title, self.x_window, self.x_window_unit)
+        )  # Create a plot widget
         # Line width in logical pixels, scaled by the screen's device-pixel ratio: pyqtgraph's default
         # 1-px pens look hair-thin on high-DPI (e.g. macOS Retina, 2x) screens. 1 on standard screens.
         self.line_width = 1.0
@@ -416,6 +433,8 @@ class Qplot2d:
         if x_window is None:
             return
         self.x_window = x_window
+        if self.win is not None:
+            self.win.setTitle(x_window_title(self.title, x_window, self.x_window_unit))
         print(f'Qplot2d "{self.title}": showing {x_window_str(x_window, self.xlabel)}')
         self.got_data = True  # redraw
 

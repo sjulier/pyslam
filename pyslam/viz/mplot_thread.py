@@ -39,7 +39,12 @@ from pyslam.utilities.logging import Logging
 from pyslam.utilities.system import locally_configure_qt_environment
 from pyslam.utilities.multi_processing import MultiprocessingManager
 from pyslam.config_parameters import Parameters
-from pyslam.viz.plot_window import sliding_window_limits, x_window_from_key, x_window_str
+from pyslam.viz.plot_window import (
+    sliding_window_limits,
+    x_window_from_key,
+    x_window_str,
+    x_window_title,
+)
 
 kPlotSleep = 0.04
 kVerbose = False
@@ -119,12 +124,22 @@ class SharedSingletonLock:
 
 # use mplotlib figure to draw in 2d dynamic data
 class Mplot2d:
-    def __init__(self, xlabel: str = "", ylabel: str = "", title: str = "", x_window: float = 0):
+    def __init__(
+        self,
+        xlabel: str = "",
+        ylabel: str = "",
+        title: str = "",
+        x_window: float = 0,
+        x_window_unit: str = "",
+    ):
         self.xlabel = xlabel
         self.ylabel = ylabel
         self.title = title
         # show the last x_window units of the x axis (0: the whole run); see plot_window.py
         self.x_window = x_window
+        # what the x axis counts (e.g. "frames"): with it, the title of the plot shows the window
+        # and the keys that change it
+        self.x_window_unit = x_window_unit
 
         self.data = None
         self.got_data = False
@@ -195,7 +210,7 @@ class Mplot2d:
         # self.ax = self.fig.gca()
         self.ax = self.fig.add_subplot(111)
         if self.title != "":
-            self.ax.set_title(self.title)
+            self.ax.set_title(x_window_title(self.title, self.x_window, self.x_window_unit))
             # name the window after the plot (instead of "Figure <n>")
             if self.fig.canvas.manager is not None:
                 self.fig.canvas.manager.set_window_title(self.title)
@@ -307,6 +322,8 @@ class Mplot2d:
         self.x_window = x_window
         if x_window == 0:
             self.ax.autoscale(True)  # the limits were set by the sliding window
+        if self.title != "":
+            self.ax.set_title(x_window_title(self.title, x_window, self.x_window_unit))
         print(f'Mplot2d "{self.title}": showing {x_window_str(x_window, self.xlabel)}')
         self.got_data = True  # redraw
 
