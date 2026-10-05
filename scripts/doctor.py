@@ -320,18 +320,59 @@ def parse_metrics_info(text):
     return info
 
 
+def read_tail(path, num_bytes=20000):
+    """The end of a text file (empty if it cannot be read)."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - num_bytes))
+            return f.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def slam_progress(log_tail, seconds):
+    """One line saying where a main_slam.py run is, from the end of its log."""
+    frames = re.findall(r"img id: (\d+)", log_tail)
+    if "SLAM: quitting" in log_tail or "Dataset end" in log_tail:
+        stage = "the sequence is done: computing the trajectory error"
+    elif frames:
+        stage = f"tracking frame {int(frames[-1])} of the 1101 of KITTI 06"
+    else:
+        stage = "starting (loading the vocabulary and the models)"
+    return f"{stage}, {seconds:.0f} s"
+
+
 def run_slam(r, log_path):
     """The guide's own end-to-end check: main_slam.py --headless on the bundled KITTI 06 video."""
     r.section("SLAM run (KITTI 06, headless)")
     t0 = time.time()
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     with open(log_path, "w") as log:
-        try:
-            p = subprocess.run([sys.executable, "main_slam.py", "--headless"], cwd=ROOT_DIR, stdout=log,
-                               stderr=subprocess.STDOUT, text=True, timeout=1200)
-        except subprocess.TimeoutExpired:
-            r.add("FAIL", "main_slam.py --headless", f"timed out after 1200 s (log: {log_path})")
-            return
+        # unbuffered, so that the log (and the progress read from it) follows the run
+        p = subprocess.Popen([sys.executable, "-u", "main_slam.py", "--headless"], cwd=ROOT_DIR, stdout=log,
+                             stderr=subprocess.STDOUT, text=True)
+        # the run is silent for about two minutes: show that it is alive
+        is_tty, last_line, last_print = sys.stdout.isatty(), "", 0.0
+        while p.poll() is None:
+            if time.time() - t0 > 1200:
+                p.kill()
+                p.wait()
+                if is_tty:
+                    print()
+                r.add("FAIL", "main_slam.py --headless", f"timed out after 1200 s (log: {log_path})")
+                return
+            time.sleep(1.0)
+            line = "  ...   " + slam_progress(read_tail(log_path), time.time() - t0)
+            # a terminal gets one line that updates in place; a file or a pipe a line every 15 s
+            if is_tty and line != last_line:
+                print("\r" + line.ljust(len(last_line)), end="", flush=True)
+            elif not is_tty and time.time() - last_print >= 15:
+                print(line, flush=True)
+                last_print = time.time()
+            last_line = line
+        if is_tty and last_line:
+            print("\r" + " " * len(last_line) + "\r", end="", flush=True)  # the result line replaces it
     seconds = time.time() - t0
     # the run writes results/metrics_<date>/; take the folder this run created
     dirs = [d for d in glob.glob(os.path.join(ROOT_DIR, "results", "metrics_*")) if os.path.getmtime(d) >= t0 - 1]

@@ -40,3 +40,17 @@ def test_abi_summary():
     assert status == "FAIL" and "__a__: 13 module(s)" in detail and "__b__: 2 module(s)" in detail
     status, detail = doctor.abi_summary(2, ["check_pybind11_abi: no built pybind11 module found"])
     assert status == "FAIL" and "no built module" in detail
+
+
+def test_slam_progress():
+    assert doctor.slam_progress("", 3).startswith("starting")
+    line = doctor.slam_progress(" @tracking MONOCULAR, img id: 41, frame id: 41, state: OK\n ... img id: 42, frame", 12.4)
+    assert "frame 42 of the 1101" in line and line.endswith("12 s")
+    assert "trajectory error" in doctor.slam_progress("img id: 1100, ...\n Dataset end: video_color.mp4", 150)
+
+
+def test_read_tail(tmp_path):
+    f = tmp_path / "log.txt"
+    f.write_text("a" * 100 + "END")
+    assert doctor.read_tail(str(f), num_bytes=10) == "a" * 7 + "END"
+    assert doctor.read_tail(str(tmp_path / "missing.txt")) == ""
