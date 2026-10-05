@@ -21,6 +21,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import textwrap
@@ -343,36 +344,79 @@ def slam_progress(log_tail, seconds):
     return f"{stage}, {seconds:.0f} s"
 
 
+def stop_process_group(p, grace=10.0):
+    """Stop a process started with start_new_session=True and everything it started (main_slam.py runs
+    loop closing and other parts in processes of their own): SIGTERM, then SIGKILL after grace seconds."""
+    if p.poll() is not None:
+        return
+    for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, 5.0)):
+        try:
+            os.killpg(p.pid, sig)
+        except (ProcessLookupError, PermissionError):
+            return
+        try:
+            p.wait(timeout=wait)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+
+
+class Interrupted(Exception):
+    """doctor was asked to stop (Ctrl-C, or a SIGTERM/SIGHUP from elsewhere)."""
+
+
+def raise_interrupted(signum, frame):
+    raise Interrupted(signal.Signals(signum).name)
+
+
 def run_slam(r, log_path):
     """The guide's own end-to-end check: main_slam.py --headless on the bundled KITTI 06 video."""
     r.section("SLAM run (KITTI 06, headless)")
     t0 = time.time()
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    with open(log_path, "w") as log:
-        # unbuffered, so that the log (and the progress read from it) follows the run
-        p = subprocess.Popen([sys.executable, "-u", "main_slam.py", "--headless"], cwd=ROOT_DIR, stdout=log,
-                             stderr=subprocess.STDOUT, text=True)
-        # the run is silent for about two minutes: show that it is alive
-        is_tty, last_line, last_print = sys.stdout.isatty(), "", 0.0
-        while p.poll() is None:
-            if time.time() - t0 > 1200:
-                p.kill()
-                p.wait()
-                if is_tty:
-                    print()
-                r.add("FAIL", "main_slam.py --headless", f"timed out after 1200 s (log: {log_path})")
-                return
-            time.sleep(1.0)
-            line = "  ...   " + slam_progress(read_tail(log_path), time.time() - t0)
-            # a terminal gets one line that updates in place; a file or a pipe a line every 15 s
-            if is_tty and line != last_line:
-                print("\r" + line.ljust(len(last_line)), end="", flush=True)
-            elif not is_tty and time.time() - last_print >= 15:
-                print(line, flush=True)
-                last_print = time.time()
-            last_line = line
-        if is_tty and last_line:
-            print("\r" + " " * len(last_line) + "\r", end="", flush=True)  # the result line replaces it
+    # a SIGTERM or SIGHUP (e.g. kill from another terminal, or the terminal closed) must stop the SLAM run
+    # too, not leave it running in the background
+    handled = [s for s in ("SIGTERM", "SIGHUP") if hasattr(signal, s)]
+    previous = {s: signal.signal(getattr(signal, s), raise_interrupted) for s in handled}
+    is_tty, last_line, last_print = sys.stdout.isatty(), "", 0.0
+    try:
+        with open(log_path, "w") as log:
+            # unbuffered, so that the log (and the progress read from it) follows the run. A process group
+            # of its own, so that stopping it also stops the processes it starts.
+            p = subprocess.Popen([sys.executable, "-u", "main_slam.py", "--headless"], cwd=ROOT_DIR, stdout=log,
+                                 stderr=subprocess.STDOUT, text=True, start_new_session=True)
+            try:
+                # the run is silent for about two minutes: show that it is alive
+                while p.poll() is None:
+                    if time.time() - t0 > 1200:
+                        stop_process_group(p)
+                        if is_tty:
+                            print()
+                        r.add("FAIL", "main_slam.py --headless", f"timed out after 1200 s (log: {log_path})")
+                        return
+                    time.sleep(1.0)
+                    line = "  ...   " + slam_progress(read_tail(log_path), time.time() - t0)
+                    # a terminal gets one line that updates in place; a file or a pipe a line every 15 s
+                    if is_tty and line != last_line:
+                        print("\r" + line.ljust(len(last_line)), end="", flush=True)
+                    elif not is_tty and time.time() - last_print >= 15:
+                        print(line, flush=True)
+                        last_print = time.time()
+                    last_line = line
+            finally:
+                stop_process_group(p)  # nothing to do if the run ended; otherwise doctor is being stopped
+            if is_tty and last_line:
+                print("\r" + " " * len(last_line) + "\r", end="", flush=True)  # the result line replaces it
+    except (KeyboardInterrupt, Interrupted) as e:
+        if is_tty:
+            print()
+        how = "Ctrl-C" if isinstance(e, KeyboardInterrupt) else str(e)
+        print(f"doctor: interrupted ({how}) after {time.time() - t0:.0f} s; the SLAM run was stopped "
+              f"(log: {log_path})", flush=True)
+        sys.exit(130)
+    finally:
+        for s, handler in previous.items():
+            signal.signal(getattr(signal, s), handler)
     seconds = time.time() - t0
     # the run writes results/metrics_<date>/; take the folder this run created
     dirs = [d for d in glob.glob(os.path.join(ROOT_DIR, "results", "metrics_*")) if os.path.getmtime(d) >= t0 - 1]
