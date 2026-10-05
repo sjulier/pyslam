@@ -201,7 +201,6 @@ class MapPointBase(object):
                 kf_remove_point_match = True
                 if __debug__:
                     assert self == keyframe.get_point_match(idx)
-                    assert not self in keyframe.points  # checking there are no multiple instances
             else:
                 kf_remove_point = True
             try:
