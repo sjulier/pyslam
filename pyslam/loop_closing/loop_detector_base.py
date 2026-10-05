@@ -177,6 +177,10 @@ class LoopDetectorBase:
         self.map_entry_id_to_frame_id = {}
         self.map_frame_id_to_img = {}
         self.map_frame_id_to_entry_id = {}  # not always used
+        # The global descriptor of each keyframe, computed once: re-computing it for the covisible
+        # keyframes of every task (a CNN pass for CosPlace & co., a full ORB extraction with an
+        # independent local feature manager) made the loop-detection process fall behind
+        self.map_frame_id_to_g_des = {}
 
         self.global_descriptor_type = None  # to be set by loop_detector_factory
         self.local_descriptor_aggregation_type = None  # to be set by loop_detector_factory
@@ -284,6 +288,7 @@ class LoopDetectorBase:
         self.map_entry_id_to_frame_id.clear()
         self.map_frame_id_to_img.clear()
         self.map_frame_id_to_entry_id.clear()
+        self.map_frame_id_to_g_des.clear()
         if self.S_float is not None:
             self.S_float.fill(0)
             self.S_color.fill(0)
@@ -293,11 +298,15 @@ class LoopDetectorBase:
     # Check and compute if requested the image local descriptors by using the potentially allocated independent local feature manager.
     # This feature manager may have be allocated since we want to use different local descriptors in the loop detector (different from the extracted ones in the frontend).
     # If the local feature manager is allocated then compute the local descriptors and replace the "keyframe_data.des" field in the task data structure.
+    def compute_independent_local_des(self, img):
+        """The descriptors of the independent local feature manager on an image. The front-end's keypoints
+        are not used: they come from another detector, and ORB2 extracts its own keypoints anyway."""
+        _, des = self.local_feature_manager.detectAndCompute(img)
+        return des
+
     def compute_local_des_if_needed(self, task: LoopDetectorTask):
         if self.local_feature_manager is not None:
-            kps, des = self.local_feature_manager.compute(
-                task.keyframe_data.img, task.keyframe_data.kps
-            )
+            des = self.compute_independent_local_des(task.keyframe_data.img)
             task.keyframe_data.des = des
             LoopDetectorBase.print(
                 f"LoopDetectorBase: re-computed {des.shape[0]} local descriptors ({self.local_feature_manager.descriptor_type.name}) for keyframe {task.keyframe_data.id}"
@@ -317,10 +326,14 @@ class LoopDetectorBase:
         # Loop candidates must have a higher similarity than this
         keyframe = task.keyframe_data
         min_score = 1
+        if keyframe.g_des is not None:
+            self.map_frame_id_to_g_des[keyframe.id] = keyframe.g_des
         # print(f'LoopDetectorBase: computing reference similarity score for keyframe {keyframe.id} with covisible keyframes {[cov_kf.id for cov_kf in task.covisible_keyframes_data]}')
         if len(task.covisible_keyframes_data) == 0:
             return -sys.float_info.max
         for cov_kf in task.covisible_keyframes_data:
+            if cov_kf.g_des is None:
+                cov_kf.g_des = self.map_frame_id_to_g_des.get(cov_kf.id)  # computed by an earlier task
             if cov_kf.g_des is None:
                 try:
                     if cov_kf.img is None:
@@ -348,11 +361,13 @@ class LoopDetectorBase:
                             f"LoopDetectorBase: covisible keyframe {cov_kf.id}: no img to re-compute its local descriptors"
                         )
                         continue
-                    _, cov_kf.des = self.local_feature_manager.compute(cov_kf.img, cov_kf.kps)
+                    cov_kf.des = self.compute_independent_local_des(cov_kf.img)
                 LoopDetectorBase.print(
                     f"LoopDetectorBase: computing global descriptor for keyframe {cov_kf.id}"
                 )
                 cov_kf.g_des = self.compute_global_des(cov_kf.des, cov_kf.img)
+                if cov_kf.g_des is not None:
+                    self.map_frame_id_to_g_des[cov_kf.id] = cov_kf.g_des
             if cov_kf.g_des is not None:
                 if not isinstance(cov_kf.g_des, vector_type):
                     # print(f'LoopDetectorBase: covisible keyframe {cov_kf.id} converting g_des from {type(cov_kf.g_des)} to type {vector_type}')

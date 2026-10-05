@@ -81,19 +81,17 @@ def feature_preset(name):
     """The preset that runs SLAM with the features `name` (a FeatureTrackerConfigs entry)."""
     from pyslam.local_features.feature_tracker_configs import FeatureTrackerConfigs
     from pyslam.local_features.feature_tracker import FeatureTrackerTypes
-    from pyslam.local_features.feature_types import FeatureDescriptorTypes
+    from pyslam.loop_closing.loop_detector_configs import loop_detector_name_for_features
 
     feature_config = getattr(FeatureTrackerConfigs, name)
     if feature_config.get("tracker_type") == FeatureTrackerTypes.LK:
         sys.exit(f"--features {name}: SLAM needs features with descriptors (the LK_* trackers have none)")
     settings = {"FeatureTrackerConfig.name": name}
-    # the vocabulary of the default loop detector (DBOW3) is made of ORB descriptors: with other
-    # features, use the loop detector that computes ORB descriptors of its own
-    if feature_config.get("descriptor_type") not in (
-        FeatureDescriptorTypes.ORB,
-        FeatureDescriptorTypes.ORB2,
-    ):
-        settings["LoopDetectionConfig.name"] = "DBOW3_INDEPENDENT"
+    # the same rule as main_slam.py --features: with descriptors that are not ORB, CosPlace when it is
+    # installed, else DBoW3 on ORB descriptors of its own
+    loop_name = loop_detector_name_for_features(feature_config.get("descriptor_type"))
+    if loop_name is not None:
+        settings["LoopDetectionConfig.name"] = loop_name
     return {"name": name, "custom_parameters": {"settings": settings}}
 
 

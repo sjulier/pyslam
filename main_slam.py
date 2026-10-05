@@ -62,7 +62,7 @@ from pyslam.local_features.feature_tracker_configs import FeatureTrackerConfigs
 from pyslam.local_features.feature_tracker import FeatureTrackerTypes
 from pyslam.local_features.feature_types import FeatureDescriptorTypes
 
-from pyslam.loop_closing.loop_detector_configs import LoopDetectorConfigs
+from pyslam.loop_closing.loop_detector_configs import LoopDetectorConfigs, loop_detector_name_for_features
 
 from pyslam.depth_estimation.depth_estimator_factory import (
     depth_estimator_factory,
@@ -278,8 +278,9 @@ if __name__ == "__main__":
         help="The features: a FeatureTrackerConfigs entry, e.g. ORB2 (the default), ROOT_SIFT, "
         "SUPERPOINT or LIGHTGLUE (`pixi run feature-matching --list` lists them and what installs "
         "their models). It replaces FeatureTrackerConfig.name of the settings file. With features "
-        "whose descriptors are not ORB, loop closing computes ORB descriptors of its own "
-        "(DBOW3_INDEPENDENT), unless the settings file names a loop detector.",
+        "whose descriptors are not ORB, loop closing uses CosPlace when it is installed (`pixi run "
+        "models`), otherwise DBoW3 on ORB descriptors of its own (DBOW3_INDEPENDENT), unless the "
+        "settings file names a loop detector.",
     )
     parser.add_argument(
         "--plot-window",
@@ -392,12 +393,15 @@ if __name__ == "__main__":
             sys.exit(f"--features {args.features}: unknown; `pixi run feature-matching --list` lists the names")
         if feature_tracker_config.get("tracker_type") == FeatureTrackerTypes.LK:
             sys.exit(f"--features {args.features}: SLAM needs features with descriptors (the LK_* trackers have none)")
-        # the vocabulary of the default loop detector (DBOW3) is made of ORB descriptors: with other
-        # features, use the loop detector that computes ORB descriptors of its own
-        if config.loop_detection_config_name is None and feature_tracker_config.get(
-            "descriptor_type"
-        ) not in (FeatureDescriptorTypes.ORB, FeatureDescriptorTypes.ORB2):
-            loop_detection_config = LoopDetectorConfigs.DBOW3_INDEPENDENT
+        # the vocabularies of the BoW loop detectors are made of ORB descriptors: with other features,
+        # CosPlace when it is installed, else DBoW3 on ORB descriptors of its own
+        loop_name = loop_detector_name_for_features(feature_tracker_config.get("descriptor_type"))
+        if config.loop_detection_config_name is None and loop_name is not None:
+            loop_detection_config = getattr(LoopDetectorConfigs, loop_name)
+            Printer.green(
+                f"--features {args.features}: loop closing with {loop_name} (the descriptors are not ORB)"
+                + ("" if loop_name == "COSPLACE" else "; `pixi run models` installs CosPlace, used instead when it is there")
+            )
     if (
         config.num_features_to_extract > 0
     ):  # Check if we set `FeatureTrackerConfig.nFeatures` in the `settings` file

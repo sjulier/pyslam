@@ -134,6 +134,33 @@ Template configuration:
 """
 
 
+def is_cosplace_installed():
+    """Whether the CosPlace loop detector can run without downloading anything: its code (thirdparty/vpr)
+    and its model (torch.hub) are there. `pixi run models` (or models-vpr) installs both."""
+    code = os.path.join(kRootFolder, "thirdparty", "vpr", "feature_extraction", "feature_extractor_cosplace.py")
+    if not os.path.isfile(code):
+        return False
+    try:
+        import torch
+
+        hub = torch.hub.get_dir()
+    except Exception:  # noqa: BLE001
+        return False
+    return os.path.isdir(os.path.join(hub, "gmberton_cosplace_main")) and os.path.isfile(
+        os.path.join(hub, "checkpoints", "ResNet50_2048_cosplace.pth")
+    )
+
+
+def loop_detector_name_for_features(descriptor_type):
+    """The loop detector for features with these descriptors when nothing names one (main_slam.py and
+    main_slam_evaluation.py --features): None (the default DBOW3) for ORB; otherwise CosPlace when it is
+    installed, else DBOW3_INDEPENDENT (DBoW3 on ORB descriptors of its own), since the vocabularies are
+    made of ORB descriptors."""
+    if descriptor_type in (FeatureDescriptorTypes.ORB, FeatureDescriptorTypes.ORB2):
+        return None
+    return "COSPLACE" if is_cosplace_installed() else "DBOW3_INDEPENDENT"
+
+
 class LoopDetectorConfigs:
 
     @staticmethod
