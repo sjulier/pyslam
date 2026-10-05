@@ -738,18 +738,20 @@ class LoopClosing:
         self.headless = headless
         self.init_print()
 
-        # to nicely visualize loop candidates in a single image
+        # to nicely visualize loop candidates in a single image (a window: not when headless)
         self.loop_consistent_candidate_imgs = (
             LoopCandidateImgs()
-            if Parameters.kLoopClosingDebugWithLoopConsistencyCheckImages
+            if Parameters.kLoopClosingDebugWithLoopConsistencyCheckImages and not headless
             else None
         )
         self.draw_loop_consistent_candidate_imgs_init = False
         self.draw_loop_detection_imgs_init = False
         self.draw_similarity_matrix_init = False
 
+        # a copy of every keyframe image, only for the debug windows above (about 1.3 MB per keyframe
+        # on KITTI: it was kept in headless runs too, where nothing shows it)
         self.store_kf_imgs = (
-            Parameters.kLoopClosingDebugWithLoopConsistencyCheckImages
+            self.loop_consistent_candidate_imgs is not None
             or Parameters.kLoopClosingDebugShowLoopMatchedPoints
         )
         self.map_frame_id_to_img = {}
@@ -920,9 +922,9 @@ class LoopClosing:
         self.loop_detecting_process.quit()
         self.GBA.quit()
         if (
-            self.loop_consistent_candidate_imgs.candidates is not None
-            or self.draw_similarity_matrix_init
-        ):
+            self.loop_consistent_candidate_imgs is not None
+            and self.loop_consistent_candidate_imgs.candidates is not None
+        ) or self.draw_similarity_matrix_init:
             cv2.destroyAllWindows()
         if QimageViewer.is_running():
             QimageViewer.get_instance().quit()
