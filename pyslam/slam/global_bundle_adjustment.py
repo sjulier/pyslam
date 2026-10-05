@@ -315,12 +315,18 @@ class GlobalBundleAdjustment:
         # Send a stop signal to Local Mapping
         # Avoid new keyframes are inserted while correcting the loop
         self.local_mapping.request_stop()
-        # wait till local mapping is idle
-        self.local_mapping.wait_idle(timeout=1.0, print=print)
-        while self.local_mapping.queue_size() > 0:
-            time.sleep(0.1)
-            Printer.yellow(
-                f"GlobalBundleAdjustment: waiting for local mapping to be idle and queue to be empty..."
+        # Wait till local mapping is idle. Do not wait for its queue to be empty: once a stop is
+        # requested, local mapping does not take keyframes from its queue any more, so a keyframe
+        # that tracking queued just before the request stayed there, this wait never ended, the map
+        # was never corrected and local mapping was never released: no new keyframes, and tracking
+        # was lost soon after. release() drops the queued keyframes, as after a loop correction.
+        while not self.local_mapping.is_idle():
+            Printer.yellow("GlobalBundleAdjustment: waiting for local mapping to be idle...")
+            self.local_mapping.wait_idle(timeout=1.0, print=print)
+        if self.local_mapping.queue_size() > 0:
+            GlobalBundleAdjustment.print(
+                f"GlobalBundleAdjustment: {self.local_mapping.queue_size()} keyframe(s) left in the "
+                "queue of local mapping: they are dropped when it is released"
             )
 
         GlobalBundleAdjustment.print("GlobalBundleAdjustment: starting correction ...")
