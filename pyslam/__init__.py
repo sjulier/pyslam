@@ -13,3 +13,50 @@ if sys.platform == "darwin":
     # Some models use ops that Apple MPS does not implement (e.g. torchvision's deform_conv2d in ALIKED):
     # let torch run just those ops on the CPU. This must be set before torch is imported.
     os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
+
+def _keep_running_on_ctrl_z():
+    """Ctrl+Z in the terminal (SIGTSTP) is ignored by pySLAM's main scripts and their worker processes,
+    with a message. Under `pixi run` it suspended SLAM but not pixi, so the windows froze and the
+    terminal did not come back; and a run suspended half-way (some of its processes stopped, some
+    not) does not resume cleanly anyway. The main script sets PYSLAM_IGNORE_CTRL_Z for its workers,
+    which import pyslam again when they are spawned (macOS); forked workers inherit the handler."""
+    import signal
+    import threading
+
+    if not hasattr(signal, "SIGTSTP") or threading.current_thread() is not threading.main_thread():
+        return
+    is_main_script = os.path.basename(sys.argv[0] if sys.argv else "").startswith("main_")
+    if not (is_main_script or os.environ.get("PYSLAM_IGNORE_CTRL_Z") == "1"):
+        return  # pyslam used as a library: leave the program's signals alone
+    if os.environ.get("PYSLAM_IGNORE_CTRL_Z") == "0":
+        return  # opt out: PYSLAM_IGNORE_CTRL_Z=0
+    os.environ["PYSLAM_IGNORE_CTRL_Z"] = "1"
+    # the first process (the main script) says so once; its workers, forked or spawned, stay silent
+    os.environ.setdefault("PYSLAM_CTRL_Z_MESSAGE_PID", str(os.getpid()))
+
+    last_message = [0.0]
+
+    def on_ctrl_z(signum, frame):
+        import time
+
+        # one message per key press: under `pixi run` the signal arrives twice (from the terminal, and
+        # forwarded by pixi)
+        if (
+            os.environ.get("PYSLAM_CTRL_Z_MESSAGE_PID") == str(os.getpid())
+            and time.monotonic() - last_message[0] > 1.0
+        ):
+            last_message[0] = time.monotonic()
+            sys.stderr.write(
+                "\npySLAM: Ctrl+Z is ignored (it would freeze the windows, not stop the run). "
+                "To stop, press q in a window, or Ctrl+C here.\n"
+            )
+            sys.stderr.flush()
+
+    try:
+        signal.signal(signal.SIGTSTP, on_ctrl_z)
+    except (ValueError, OSError):
+        pass
+
+
+_keep_running_on_ctrl_z()
