@@ -92,6 +92,13 @@ class G2oGraphReleaser {
         delete algorithm;
     }
 
+    // remove an edge's robust kernel and delete it (setRobustKernel() does not delete the old one here)
+    static void remove_robust_kernel(g2o::OptimizableGraph::Edge *edge) {
+        g2o::RobustKernel *kernel = edge->robustKernel();
+        edge->setRobustKernel(nullptr);
+        delete kernel;
+    }
+
     // an edge (and its robust kernel) removed from the optimizer with removeEdge()
     static void delete_edge(g2o::HyperGraph::Edge *edge) {
         if (auto *optimizable_edge = dynamic_cast<g2o::OptimizableGraph::Edge *>(edge)) {
@@ -302,7 +309,7 @@ BundleAdjustmentResult OptimizerG2o::bundle_adjustment(
                 edge->setLevel(1);
                 num_bad_edges++;
             }
-            edge->setRobustKernel(nullptr);
+            G2oGraphReleaser::remove_robust_kernel(edge);
         }
 
         for (auto &edge_pair : graph_edges_stereo) {
@@ -312,7 +319,7 @@ BundleAdjustmentResult OptimizerG2o::bundle_adjustment(
                 edge->setLevel(1);
                 num_bad_edges++;
             }
-            edge->setRobustKernel(nullptr);
+            G2oGraphReleaser::remove_robust_kernel(edge);
         }
     }
 
@@ -556,7 +563,7 @@ PoseOptimizationResult OptimizerG2o::pose_optimization(FramePtr &frame, bool ver
             }
 
             if (it == 2) {
-                edge->setRobustKernel(nullptr);
+                G2oGraphReleaser::remove_robust_kernel(edge);
             }
         }
 
@@ -580,7 +587,7 @@ PoseOptimizationResult OptimizerG2o::pose_optimization(FramePtr &frame, bool ver
             }
 
             if (it == 2) {
-                edge->setRobustKernel(nullptr);
+                G2oGraphReleaser::remove_robust_kernel(edge);
             }
         }
 
@@ -803,7 +810,7 @@ std::pair<double, double> OptimizerG2o::local_bundle_adjustment(
                 edge->setLevel(1);
                 num_bad_edges++;
             }
-            edge->setRobustKernel(nullptr);
+            G2oGraphReleaser::remove_robust_kernel(edge);
         }
 
         for (auto &edge_pair : graph_edges_stereo) {
@@ -817,7 +824,7 @@ std::pair<double, double> OptimizerG2o::local_bundle_adjustment(
                 edge->setLevel(1);
                 num_bad_edges++;
             }
-            edge->setRobustKernel(nullptr);
+            G2oGraphReleaser::remove_robust_kernel(edge);
         }
 
         // Optimize again without outliers
