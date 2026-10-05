@@ -408,14 +408,26 @@ class LoopDetectingProcess:
         try:
             if is_running.value == 1:
 
-                # check q_in size and dump a warn message if it is too big
+                # check q_in size and warn if it is too big: on the console at most every
+                # kWarningPeriod seconds, or sooner if the queue has doubled since the last warning
+                # (one line per task flooded the console when loop detection fell behind)
                 q_in_size = q_in.qsize()
                 if q_in_size >= 10:
                     warn_msg = (
-                        f"\n!LoopDetectingProcess: WARNING: q_in size: {q_in_size} is too big!!!\n"
+                        f"LoopDetectingProcess: WARNING: loop detection is behind: {q_in_size} keyframes "
+                        "queued (q_in); it catches up when the load drops"
                     )
                     LoopDetectorBase.print(warn_msg)
-                    Printer.red(warn_msg)
+                    now = time.time()
+                    last_time = getattr(self, "_last_queue_warning_time", 0.0)
+                    last_size = getattr(self, "_last_queue_warning_size", 0)
+                    kWarningPeriod = 10.0
+                    if now - last_time >= kWarningPeriod or q_in_size >= 2 * last_size:
+                        Printer.red(warn_msg)
+                        self._last_queue_warning_time = now
+                        self._last_queue_warning_size = q_in_size
+                elif q_in_size == 0:
+                    self._last_queue_warning_size = 0  # caught up: warn again at the next backlog
 
                 self.last_input_task = (
                     q_in.get()
