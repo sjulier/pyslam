@@ -786,6 +786,11 @@ if __name__ == "__main__":
         Printer.yellow("\nCTRL+C detected. Shutting down ...\n")
         force_kill_all_and_exit(verbose=False)
         sys.exit(0)
+    except Exception:
+        # Without this the traceback is printed but the threads and processes of SLAM keep the run alive
+        Printer.red("pySLAM: stopped by an error in the main loop:")
+        traceback.print_exc()
+        force_kill_all_and_exit(code=1, verbose=False)
 
     # exit from the main loop
     if not args.headless:
