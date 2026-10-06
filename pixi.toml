@@ -18,7 +18,8 @@
 # `pixi run` without -e uses default. On Linux without an NVIDIA GPU use the CPU
 # ladder: default-cpu, depth-cpu, semantics-cpu, full-cpu. macOS uses the names above (MPS).
 #
-# Windows is supported through WSL2 (linux-64).
+# Windows: through WSL2 (linux-64), or natively (win-64): the default level only, CPU torch
+# (default-cpu), experimental.
 #
 # Rules:
 # - conda-forge for everything available there; PyPI only for packages that are
@@ -36,6 +37,7 @@ platforms = [
   "linux-64",
   { name = "osx-arm64-14", platform = "osx-arm64", macos = "14.0" },  # Qt 6 (opencv, pyside6, open3d) needs macOS >= 14
   { name = "linux-64-cuda", platform = "linux-64", cuda = "12" },
+  "win-64",
 ]
 version = "2.10.8"
 
@@ -76,6 +78,14 @@ requests = "*"
 gdown = "*"
 mcap = "*"
 
+[target.win-64.activation.env]
+# pySLAM prints non-ASCII characters; the default encoding of redirected output on Windows cannot
+PYTHONUTF8 = "1"
+
+[target.win-64.dependencies]
+# The solver otherwise picks the headless build, which has no windows (cv2.imshow)
+opencv = { version = ">=4.12,<5", build = "qt6*" }
+
 [target.linux-64.dependencies]
 # Whatever pulls in CUDA (torch, faiss, tensorflow) uses the CUDA 12.9 builds,
 # which still support Pascal/Volta GPUs
@@ -100,11 +110,16 @@ flann = "*"
 glew = "*"
 spdlog = "*"
 qhull = "*"
-qhull-static = "*"  # libqhullcpp for cpp/volumetric (replaces scripts/install_qhull.sh)
 nlohmann_json = "*"  # replaces scripts/install_json_nlohmann.sh
 pyparsing = ">=3.2.5"
 pybind11-stubgen = ">=2.5.1"
 libopencv = ">=4.12,<5"
+
+[feature.build.target.unix.dependencies]
+qhull-static = "*"  # libqhullcpp for cpp/volumetric (replaces scripts/install_qhull.sh); no win-64 package
+
+[feature.build.target.win-64.dependencies]
+git = "*"  # the build clones GTSAM
 
 [feature.build.target.linux-64.dependencies]
 # `compilers` 2.x no longer pulls these in. Their activation scripts set CC, CXX,
@@ -188,15 +203,21 @@ cuda-libraries-dev = "*"
 
 # CPU-only torch on Linux
 [feature.cpu]
-platforms = ["linux-64"]
+platforms = ["linux-64", "win-64"]
 
 [feature.cpu.target.linux-64.dependencies]
+pytorch = { version = "*", build = "*cpu*" }
+
+[feature.cpu.target.win-64.dependencies]
 pytorch = { version = "*", build = "*cpu*" }
 
 # ---------------------------------------------------------------------------
 # (i.a) depth and stereo inference (Depth Anything v2/v3, Depth Pro,
 # RAFT-Stereo, CREStereo)
 # ---------------------------------------------------------------------------
+[feature.depth]
+platforms = ["linux-64", "linux-64-cuda", "osx-arm64-14"]  # not on win-64
+
 [feature.depth.dependencies]
 pillow-heif = "*"
 gradio = "5.*"  # gradio 6 needs huggingface-hub >= 1, transformers 4.x needs < 1
@@ -219,6 +240,9 @@ pycolmap = "*"
 # ---------------------------------------------------------------------------
 # (ii) semantic segmentation and object detection
 # ---------------------------------------------------------------------------
+[feature.semantics]
+platforms = ["linux-64", "linux-64-cuda", "osx-arm64-14"]  # not on win-64
+
 [feature.semantics.dependencies]
 transformers = ">=4.41.2,<5"  # RF-DETR (pinned commit) uses backbone utilities removed in transformers 5
 ultralytics = "*"
@@ -248,6 +272,9 @@ panopticapi = { git = "https://github.com/cocodataset/panopticapi.git" }
 # ---------------------------------------------------------------------------
 # (iv) 3D representations (Gaussian splatting, 3R models, TSDF/voxel)
 # ---------------------------------------------------------------------------
+[feature.recon3d]
+platforms = ["linux-64", "linux-64-cuda", "osx-arm64-14"]  # not on win-64
+
 [feature.recon3d.dependencies]
 pyglfw = "*"  # Python binding of GLFW (the conda package `glfw` is the C library): MonoGS GUI
 rootutils = "*"  # Fast3R
@@ -263,6 +290,9 @@ wandb = "*"
 # tf: TensorFlow features (contextdesc, delf, geodesc, lfnet, l2net_keras,
 # keynet_old) and HDC-DELF; own env, used through a worker process
 # ---------------------------------------------------------------------------
+[feature.tf]
+platforms = ["linux-64", "linux-64-cuda", "osx-arm64-14"]  # not on win-64
+
 [feature.tf.dependencies]
 tensorflow = "*"
 tensorflow-hub = "*"

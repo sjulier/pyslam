@@ -26,6 +26,11 @@
 #define CONCAT(a, b) CONCAT_IMPL(a, b)
 
 // NOTE: This macro is used to conditionally lock a mutex.
+// Two statements (not `cond ? make_optional<lock_guard>(m) : nullopt`, which needs a copy of the
+// optional that MSVC rejects: lock_guard cannot be copied)
+#define CONDITIONAL_LOCK_IMPL(mutex, condition, name)                                              \
+    std::optional<std::lock_guard<decltype(mutex)>> name;                                          \
+    if (condition)                                                                                 \
+        name.emplace(mutex)
 #define CONDITIONAL_LOCK(mutex, condition)                                                         \
-    auto CONCAT(_lock_, __COUNTER__) =                                                             \
-        (condition) ? std::make_optional<std::lock_guard<decltype(mutex)>>(mutex) : std::nullopt
+    CONDITIONAL_LOCK_IMPL(mutex, condition, CONCAT(_lock_, __COUNTER__))

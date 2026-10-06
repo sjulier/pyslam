@@ -39,7 +39,7 @@ inline void ensure_2d(const pybind11::array &arr, const char *name) {
         throw std::invalid_argument(std::string(name) + " must be 2D (N,D)");
 }
 
-inline void ensure_1d_len(const pybind11::array &arr, ssize_t L, const char *name) {
+inline void ensure_1d_len(const pybind11::array &arr, py::ssize_t L, const char *name) {
     if (arr.ndim() != 1 || arr.shape(0) != L)
         throw std::invalid_argument(std::string(name) + " must be 1D of length " +
                                     std::to_string(L));
@@ -267,8 +267,8 @@ void bind_dynamic_tree(py::module_ &m, const char *pyname) {
         // Zero-copy constructor: pass data pointer directly
         .def(py::init([](py::array_t<Scalar, py::array::c_style | py::array::forcecast> points) {
                  ensure_2d(points, "points");
-                 const ssize_t N = points.shape(0);
-                 const ssize_t D = points.shape(1);
+                 const py::ssize_t N = points.shape(0);
+                 const py::ssize_t D = points.shape(1);
 
                  // Validate row-major layout
                  if (!points.writeable()) {
@@ -285,8 +285,8 @@ void bind_dynamic_tree(py::module_ &m, const char *pyname) {
         // Constructor from numpy array (N,D), copies internally
         .def(py::init([](py::array_t<Scalar, py::array::c_style | py::array::forcecast> points) {
                  ensure_2d(points, "points");
-                 const ssize_t N = points.shape(0);
-                 const ssize_t D = points.shape(1);
+                 const py::ssize_t N = points.shape(0);
+                 const py::ssize_t D = points.shape(1);
                  Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> M(N, D);
                  std::memcpy(M.data(), points.data(),
                              sizeof(Scalar) * static_cast<size_t>(points.size()));
