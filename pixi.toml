@@ -267,9 +267,28 @@ wandb = "*"
 tensorflow = "*"
 tensorflow-hub = "*"
 tf-keras = "*"
+# imported by the feature code that runs in the TensorFlow worker (pyslam/workers/tf_worker.py)
+numba = "*"   # pyslam.utilities.features (GeoDesc)
+pandas = "*"  # DELF's package imports its training code
 
 [feature.tf.pypi-dependencies]
 tf-slim = "==1.1.0"
+evo = "*"  # pyslam.utilities.geometry (LF-Net); as in the feature slam, from PyPI
+
+# TensorFlow with CUDA on Linux with an NVIDIA GPU (DELF: ~0.02 s per frame against ~0.3 s on the CPU);
+# macOS: conda-forge's TensorFlow runs on the CPU
+[feature.tf-gpu]
+platforms = ["linux-64-cuda", "osx-arm64-14"]
+
+[feature.tf-gpu.target.linux-64.dependencies]
+tensorflow = { version = "*", build = "*cuda*" }
+
+# CPU-only TensorFlow on Linux
+[feature.tf-nogpu]
+platforms = ["linux-64"]
+
+[feature.tf-nogpu.target.linux-64.dependencies]
+tensorflow = { version = "*", build = "*cpu*" }
 
 # ---------------------------------------------------------------------------
 # dev tools
@@ -317,6 +336,9 @@ models-vpr = "bash scripts/install_extra.sh vpr-core"
 # All 19 learned features and matchers, and all 5 place recognition models (about 3.4 GB)
 models-all-features = "bash scripts/install_extra.sh features"
 models-all-vpr = "bash scripts/install_extra.sh vpr"
+# The TensorFlow-based features (DELF, LF-Net, ContextDesc, GeoDesc) and HDC-DELF: they run in the
+# pixi environment tf (installed on first use), in a worker process that pySLAM starts (pyslam/workers)
+models-tf = "bash scripts/install_extra.sh tf"
 # Check the installation
 check-abi = "python scripts/check_pybind11_abi.py"
 check-native = "python scripts/check_native_modules.py"  # every native module loads (works in every level)
@@ -366,5 +388,8 @@ default-cpu   = { features = ["build", "slam", "torch", "cpu", "dev"], solve-gro
 depth-cpu     = { features = ["build", "slam", "torch", "cpu", "depth", "dev"], solve-group = "cpu" }
 semantics-cpu = { features = ["build", "slam", "torch", "cpu", "depth", "semantics", "dev"], solve-group = "cpu" }
 full-cpu      = { features = ["build", "slam", "torch", "cpu", "depth", "semantics", "recon3d", "dev"], solve-group = "cpu" }
-# TensorFlow features, used through a worker process
-tf = { features = ["tf"] }
+# The TensorFlow-based features, in their own environment (their protobuf and friends do not fit the
+# ladder): pySLAM runs them in a worker process (pyslam/workers), tf from the GPU ladder, tf-cpu from
+# the CPU ladder
+tf     = { features = ["tf", "tf-gpu"] }
+tf-cpu = { features = ["tf", "tf-nogpu"] }

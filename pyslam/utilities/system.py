@@ -29,7 +29,10 @@ import logging
 from logging.handlers import QueueHandler, QueueListener
 
 # import multiprocessing as mp
-import torch.multiprocessing as mp
+try:
+    import torch.multiprocessing as mp
+except ImportError:  # an environment without torch (the TensorFlow worker: pyslam/workers/tf_worker.py)
+    import multiprocessing as mp
 
 
 from pathlib import Path

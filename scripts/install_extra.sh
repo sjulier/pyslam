@@ -37,7 +37,7 @@ cd "$ROOT_DIR"
 
 PYTHON_EXE=$(get_python_exe)
 
-EXTRAS_ORDER="features-core features vpr-core vpr depth semantics scene3d"
+EXTRAS_ORDER="features-core features vpr-core vpr depth semantics scene3d tf"
 
 # extra_description <extra>: print the description, or nothing for an unknown extra
 # (a function rather than an associative array, which needs bash >= 4; macOS ships bash 3.2)
@@ -50,6 +50,7 @@ function extra_description() {
         depth) echo "Depth and stereo estimation: Depth Anything V2, Depth Pro, RAFT-Stereo, CREStereo (PyTorch), Depth Anything V3 [pixi level: depth]" ;;
         semantics) echo "Semantic segmentation and object detection: DeepLabV3, SegFormer, YOLO, RF-DETR, CLIP, Detic, EOV-Seg, ODISE [pixi level: semantics]" ;;
         scene3d) echo "3D representations: MASt3R, DUSt3R, MV-DUSt3R, VGGT, Robust VGGT, Fast3R, Gaussian splatting (need an NVIDIA GPU) [pixi level: full]" ;;
+        tf) echo "TensorFlow-based features: DELF, LF-Net, ContextDesc, GeoDesc, and the HDC-DELF place recognition [pixi environment tf, used through a worker process]" ;;
     esac
 }
 
@@ -641,6 +642,79 @@ function install_scene3d() {
     component "VGGT and Robust VGGT" install_vggt
     component "Fast3R" install_fast3r
     component "Gaussian splatting" install_gaussian_splatting
+}
+
+function install_contextdesc() {
+    # ContextDesc (its code is part of this repository)
+    local dir=thirdparty/contextdesc/pretrained name
+    for name in "contextdesc++:1TQIjijkyd3fNvEivPPpnxHKaSqFxu5TE" "retrieval_model:1_J_aDSdKcUUk0ZXhn9bTqV6zuyzUixLD"; do
+        if [ ! -d "$dir/${name%:*}" ]; then
+            gdrive_download_file "${name#*:}" "$dir/${name%:*}.tar.xz"
+            unpack_archive "$dir/${name%:*}.tar.xz" "$dir"
+        fi
+    done
+}
+
+function install_lfnet() {
+    apply_patch lfnet lfnet.patch
+    [ -f thirdparty/lfnet/__init__.py ] || touch thirdparty/lfnet/__init__.py
+    if [ ! -d thirdparty/lfnet/pretrained/lfnet-norotaug ]; then
+        download_file https://cs.ubc.ca/research/kmyi_data/files/2018/lf-net/lfnet-norotaug.tar.gz thirdparty/lfnet/pretrained/lfnet-norotaug.tar.gz
+        unpack_archive thirdparty/lfnet/pretrained/lfnet-norotaug.tar.gz thirdparty/lfnet/pretrained
+    fi
+}
+
+function install_geodesc() {
+    # GeoDesc (its code is part of this repository)
+    download_file https://raw.githubusercontent.com/lzx551402/geodesc/master/model/geodesc.pb thirdparty/geodesc/model/geodesc.pb 5343979
+}
+
+function install_delf() {
+    # DELF (also used by the HDC-DELF place recognition): compile its protocol buffers with the protoc of
+    # the pixi environment $TF_ENVIRONMENT, where DELF runs, so that the generated code matches its protobuf
+    local delf_dir=thirdparty/tensorflow_models/research/delf
+    local protoc_version
+    protoc_version=$(in_tf_env protoc --version 2>/dev/null) \
+        || { print_red "ERROR: protoc not found in the pixi environment $TF_ENVIRONMENT (it comes with libprotobuf)"; exit 1; }
+    if [ ! -f "$delf_dir/delf/protos/.protoc_version" ] || [ "$(cat "$delf_dir/delf/protos/.protoc_version")" != "$protoc_version" ]; then
+        print_blue "Compiling DELF's protocol buffers with $protoc_version ..."
+        ( cd "$delf_dir" && in_tf_env protoc delf/protos/*.proto --python_out=. && echo "$protoc_version" > delf/protos/.protoc_version ) \
+            || { print_red "ERROR: could not compile DELF's protocol buffers"; exit 1; }
+    fi
+    if [ ! -d "$delf_dir/delf/python/examples/parameters/delf_gld_20190411" ]; then
+        download_file http://storage.googleapis.com/delf/delf_gld_20190411.tar.gz "$delf_dir/delf/python/examples/parameters/delf_gld_20190411.tar.gz"
+        unpack_archive "$delf_dir/delf/python/examples/parameters/delf_gld_20190411.tar.gz" "$delf_dir/delf/python/examples/parameters"
+    fi
+}
+
+# The pixi environment where TensorFlow is (the models run there, in the TensorFlow worker:
+# pyslam/workers/tf_worker.py): tf-cpu from the CPU ladder, else tf (as pyslam/workers/tf_client.py)
+TF_ENVIRONMENT="${PYSLAM_TF_ENVIRONMENT:-tf}"
+if [ -z "${PYSLAM_TF_ENVIRONMENT:-}" ] && [[ "${PIXI_ENVIRONMENT_NAME:-}" == *-cpu ]]; then
+    TF_ENVIRONMENT=tf-cpu
+fi
+
+# Runs a command in that environment
+function in_tf_env() {
+    local pixi="${PIXI_EXE:-$(command -v pixi || echo "$HOME/.pixi/bin/pixi")}"
+    "$pixi" run --manifest-path "${PIXI_PROJECT_MANIFEST:-$ROOT_DIR/pixi.toml}" -e "$TF_ENVIRONMENT" "$@"
+}
+
+function install_tf() {
+    print_blue "Checking the pixi environment $TF_ENVIRONMENT (TensorFlow; installed on first use) ..."
+    if ! in_tf_env python -c "import tensorflow" &>/dev/null; then
+        print_red "ERROR: TensorFlow does not load in the pixi environment $TF_ENVIRONMENT (try: pixi install -e $TF_ENVIRONMENT)"
+        exit 1
+    fi
+
+    init_submodules thirdparty/lfnet thirdparty/tensorflow_models thirdparty/vpr
+    component "ContextDesc" install_contextdesc
+    component "LF-Net" install_lfnet
+    component "GeoDesc" install_geodesc
+    component "DELF" install_delf
+
+    # HDC-DELF place recognition
+    apply_patch vpr vpr.patch
 }
 
 if [[ $# -eq 0 || "$1" == "--list" || "$1" == "-h" || "$1" == "--help" ]]; then
