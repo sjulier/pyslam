@@ -17,7 +17,9 @@
 * along with PYSLAM. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import torch.multiprocessing as mp
+# (not torch.multiprocessing: see pyslam/utilities/logging.py)
+import multiprocessing as mp
+import sys
 import threading as th
 import queue as queue_module
 from queue import Empty as QueueEmpty
@@ -41,7 +43,8 @@ def clone_obj(obj):
             getattr(clone_obj.__class__, attr), property
         ):
             continue
-        if isinstance(getattr(clone_obj, attr), torch.Tensor):
+        torch = sys.modules.get("torch")  # a tensor can only exist if torch is imported
+        if torch is not None and isinstance(getattr(clone_obj, attr), torch.Tensor):
             setattr(clone_obj, attr, getattr(clone_obj, attr).detach().clone())
     return clone_obj
 

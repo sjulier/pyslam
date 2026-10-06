@@ -28,8 +28,8 @@ import threading
 import logging
 from logging.handlers import QueueHandler, QueueListener
 
-# import multiprocessing as mp
-import torch.multiprocessing as mp
+# (not torch.multiprocessing: see pyslam/utilities/logging.py)
+import multiprocessing as mp
 
 
 from pathlib import Path
