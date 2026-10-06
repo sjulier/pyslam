@@ -190,13 +190,20 @@ def environment_name():
     return os.environ.get("PIXI_ENVIRONMENT_NAME", "default")
 
 
+def ladder_of(environment):
+    """'cpu' for the CPU environments (*-cpu, and default-win on Windows), 'gpu' for the others."""
+    return "cpu" if environment.endswith(("-cpu", "-win")) else "gpu"
+
+
 def ladder():
     """The modules are built once per ladder of levels: 'gpu' (default, depth, ...) or 'cpu' (*-cpu)."""
-    return "cpu" if environment_name().endswith("-cpu") else "gpu"
+    return ladder_of(environment_name())
 
 
 def build_environment():
     """The environment whose libraries the modules are linked to (the first level of the ladder)."""
+    if platform_name() == "win-64":
+        return "default-win"
     return "default-cpu" if ladder() == "cpu" else "default"
 
 
@@ -671,7 +678,7 @@ def stale(part):
                     envs = set(re.findall(r"/\.pixi/envs/([^/\s]+)/", f.read()))
             except OSError:
                 continue
-            others = sorted(e for e in envs if ("cpu" if e.endswith("-cpu") else "gpu") != current)
+            others = sorted(e for e in envs if ladder_of(e) != current)
             if others:
                 log(f"removing {os.path.relpath(folder, ROOT)}: configured in the {others[0]} environment")
                 shutil.rmtree(folder, ignore_errors=True)

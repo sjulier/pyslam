@@ -18,8 +18,8 @@
 # `pixi run` without -e uses default. On Linux without an NVIDIA GPU use the CPU
 # ladder: default-cpu, depth-cpu, semantics-cpu, full-cpu. macOS uses the names above (MPS).
 #
-# Windows: through WSL2 (linux-64), or natively (win-64): the default level only, CPU torch
-# (default-cpu), experimental.
+# Windows: through WSL2 (linux-64), or natively (win-64, experimental): the default level only, with
+# CPU torch, in its own environment: `pixi run -e default-win <task>`.
 #
 # Rules:
 # - conda-forge for everything available there; PyPI only for packages that are
@@ -209,21 +209,24 @@ cuda-libraries-dev = "*"
 
 # CPU-only torch on Linux
 [feature.cpu]
-platforms = ["linux-64", "win-64"]
+platforms = ["linux-64"]
 
 [feature.cpu.target.linux-64.dependencies]
 pytorch = { version = "*", build = "*cpu*" }
 
-[feature.cpu.target.win-64.dependencies]
+# Windows (native): CPU-only torch. Its own feature and environment (default-win), not win-64 in the cpu
+# feature: the environments of a solve group are solved together, and the levels above the default one
+# need packages that conda-forge does not have for Windows.
+[feature.cpu-win]
+platforms = ["win-64"]
+
+[feature.cpu-win.target.win-64.dependencies]
 pytorch = { version = "*", build = "*cpu*" }
 
 # ---------------------------------------------------------------------------
 # (i.a) depth and stereo inference (Depth Anything v2/v3, Depth Pro,
 # RAFT-Stereo, CREStereo)
 # ---------------------------------------------------------------------------
-[feature.depth]
-platforms = ["linux-64", "linux-64-cuda", "osx-arm64-14"]  # not on win-64
-
 [feature.depth.dependencies]
 pillow-heif = "*"
 gradio = "5.*"  # gradio 6 needs huggingface-hub >= 1, transformers 4.x needs < 1
@@ -246,9 +249,6 @@ pycolmap = "*"
 # ---------------------------------------------------------------------------
 # (ii) semantic segmentation and object detection
 # ---------------------------------------------------------------------------
-[feature.semantics]
-platforms = ["linux-64", "linux-64-cuda", "osx-arm64-14"]  # not on win-64
-
 [feature.semantics.dependencies]
 transformers = ">=4.41.2,<5"  # RF-DETR (pinned commit) uses backbone utilities removed in transformers 5
 ultralytics = "*"
@@ -278,9 +278,6 @@ panopticapi = { git = "https://github.com/cocodataset/panopticapi.git" }
 # ---------------------------------------------------------------------------
 # (iv) 3D representations (Gaussian splatting, 3R models, TSDF/voxel)
 # ---------------------------------------------------------------------------
-[feature.recon3d]
-platforms = ["linux-64", "linux-64-cuda", "osx-arm64-14"]  # not on win-64
-
 [feature.recon3d.dependencies]
 pyglfw = "*"  # Python binding of GLFW (the conda package `glfw` is the C library): MonoGS GUI
 rootutils = "*"  # Fast3R
@@ -404,3 +401,5 @@ semantics-cpu = { features = ["build", "slam", "torch", "cpu", "depth", "semanti
 full-cpu      = { features = ["build", "slam", "torch", "cpu", "depth", "semantics", "recon3d", "dev"], solve-group = "cpu" }
 # TensorFlow features, used through a worker process
 tf = { features = ["tf"] }
+# Windows (native), experimental: the default level with CPU torch
+default-win = { features = ["build", "slam", "torch", "cpu-win", "dev"], solve-group = "win" }

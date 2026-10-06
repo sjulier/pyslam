@@ -10,8 +10,8 @@ source otherwise. Building needs Microsoft's C++ compiler (Visual Studio 2022 or
 "Desktop development with C++"): the pixi environment finds it but cannot provide it.
 Set PYSLAM_NATIVE_BUNDLE=0 to always build from source.
 
-    pixi run -e default-cpu build                                     # both parts
-    pixi run -e default-cpu python scripts/build_windows.py MODULE...  # build these modules from source
+    pixi run -e default-win build                                     # both parts
+    pixi run -e default-win python scripts/build_windows.py MODULE...  # build these modules from source
 
 The Linux and macOS builds use the build.sh scripts; this is their counterpart for Windows, where there
 is no bash and no make. Each module is configured with CMake and built with Ninja in <module>/build.
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     if os.name != "nt":
         sys.exit("build_windows.py is for Windows: on Linux and macOS run `pixi run build`")
     if not PREFIX:
-        sys.exit("ERROR: run inside pySLAM's pixi environment: pixi run -e default-cpu python scripts/build_windows.py")
+        sys.exit("ERROR: run inside pySLAM's pixi environment: pixi run -e default-win python scripts/build_windows.py")
     os.environ["CFLAGS"] = (os.environ.get("CFLAGS", "") + " " + MSVC_C_FLAGS).strip()
     os.environ["CXXFLAGS"] = (os.environ.get("CXXFLAGS", "") + " " + MSVC_CXX_FLAGS).strip()
     if len(sys.argv) == 1:
