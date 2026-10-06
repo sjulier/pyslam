@@ -1002,6 +1002,21 @@ class Tracking:
             self.last_num_static_stereo_map_points = num_added_points
             self.total_num_static_stereo_map_points += num_added_points
 
+    def wait_if_GBA_correcting(self, timeout=30.0):
+        """Wait while the global BA of loop closing corrects the map (see track()). Must be called
+        outside 'with self.map.update_lock' blocks: the correction takes that lock."""
+        GBA = getattr(self.slam.loop_closing, "GBA", None)
+        if GBA is None or not GBA.is_correcting():
+            return
+        print(">>>> waiting for the global BA correction...")
+        time_start = time.time()
+        while GBA.is_correcting():
+            if time.time() - time_start > timeout:
+                Printer.orange(f"Tracking: the global BA correction took more than {timeout} s: tracking resumes")
+                return
+            time.sleep(0.005)
+        print(f"...global BA correction done ({time.time() - time_start:.2f} s)")
+
     # Since we do not have real-time performances, we can slow-down things and make tracking wait till local mapping gets idle
     # N.B.: this function must be called outside 'with self.map.update_lock' blocks,
     #       since both self.track() and the local-mapping optimization use the RLock 'map.update_lock'
@@ -1294,6 +1309,12 @@ class Tracking:
                 self.local_mapping.wait_idle(print=print)
                 self.slam.loop_closing.wait_if_closing()
                 print("...loop closing done")
+            # Likewise for the correction after a global BA: it has stopped local mapping and needs the
+            # map lock, which tracking takes again right after each frame (Python locks are not fair).
+            # Without this wait, when frames come fast (single-thread mode, --speed 0) the correction
+            # waited many frames for the lock, tracking got weaker with no new keyframes, and then the
+            # correction moved the map under it: tracking was lost.
+            self.wait_if_GBA_correcting()
 
         # HACK: Since local mapping may be not fast enough in python (and tracking is not in real-time) => give local mapping more time to process stuff
         self.wait_for_local_mapping()  # N.B.: this must be outside the `with self.map.update_lock:` block
