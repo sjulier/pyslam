@@ -17,7 +17,8 @@
 * along with PYSLAM. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import torch.multiprocessing as mp
+# (not torch.multiprocessing: see pyslam/utilities/logging.py)
+import multiprocessing as mp
 from pyslam.utilities.multi_processing import MultiprocessingManager
 import time
 import traceback
