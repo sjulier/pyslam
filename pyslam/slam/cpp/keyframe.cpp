@@ -350,36 +350,45 @@ void KeyFrame::update_connections() {
         return;
     }
 
-    std::lock_guard<std::mutex> lock(_lock_connections);
-
-    connected_keyframes_weights = std::move(viewing_keyframes);
-
-    if (w_max >= Parameters::kMinNumOfCovisiblePointsForCreatingConnection) {
-        ordered_keyframes_weights.clear();
-        ordered_keyframes_weights.reserve(covisible_keyframes.size());
-
+    // Locking: this keyframe's lock is never held while another keyframe's is taken, here and in
+    // set_bad(). The connections of the other keyframes are updated first, each under its own lock
+    // (as ORB-SLAM's UpdateConnections does); before, they were changed without it while
+    // set_bad() (loop closing, culling) could change the same containers: heap corruption.
+    const int min_weight = Parameters::kMinNumOfCovisiblePointsForCreatingConnection;
+    std::vector<std::pair<KeyFramePtr, int>> ordered;
+    if (w_max >= min_weight) {
+        ordered.reserve(covisible_keyframes.size());
         // Here we keep the weight-decreasing-order of the covisible_keyframes
         for (const auto &[kf, w] : covisible_keyframes) {
-            if (w >= Parameters::kMinNumOfCovisiblePointsForCreatingConnection) {
-                kf->add_connection_no_lock(self, w);
-                ordered_keyframes_weights.push_back({kf, w});
+            if (w >= min_weight) {
+                kf->add_connection(self, w);
+                ordered.push_back({kf, w});
             } else {
                 break; // Since sorted, no more will meet threshold
             }
         }
     } else {
-        ordered_keyframes_weights.clear();
-        ordered_keyframes_weights.push_back({kf_max, w_max});
-
-        kf_max->add_connection_no_lock(self, w_max);
+        kf_max->add_connection(self, w_max);
+        ordered.push_back({kf_max, w_max});
     }
 
-    // Update spanning tree
     // We need to avoid setting the parent to None or self or a bad keyframe
-    if (is_first_connection && (kid != 0) && (kf_max) && ((kf_max->id != this->id)) &&
-        !kf_max->is_bad()) {
-        set_parent_no_lock(kf_max);
-        is_first_connection = false;
+    const bool kf_max_can_be_parent = kf_max && (kf_max->id != this->id) && !kf_max->is_bad();
+    bool parent_set = false;
+    {
+        std::lock_guard<std::mutex> lock(_lock_connections);
+        connected_keyframes_weights = std::move(viewing_keyframes);
+        ordered_keyframes_weights = std::move(ordered);
+
+        // Update spanning tree
+        if (is_first_connection && (kid != 0) && kf_max_can_be_parent) {
+            parent = kf_max;
+            is_first_connection = false;
+            parent_set = true;
+        }
+    }
+    if (parent_set) {
+        kf_max->add_child(self); // after releasing this keyframe's lock
     }
 }
 
@@ -411,44 +420,50 @@ void KeyFrame::set_erase() {
 }
 
 void KeyFrame::set_bad() {
-    std::lock_guard<std::mutex> lock(_lock_connections);
-    if (kid <= 0) {
-        return;
-    }
-
-    if (not_to_erase) {
-        to_be_erased = true;
-        return;
-    }
+    // Locking: this keyframe's lock is never held while another keyframe's is taken (see
+    // update_connections()): what is needed is copied under it, the other keyframes are changed
+    // under their own locks, and this keyframe is finalized under its lock again. Before, the
+    // connections, children and parent of the other keyframes were changed without their locks
+    // while local mapping could change the same containers: heap corruption.
     auto self = KeyFrameGraph::downcasted_shared_from_this<KeyFrame>();
     if (!self) {
         MSG_ERROR("KeyFrameGraph could not be downcasted to KeyFrame");
         return;
     }
+    std::vector<KeyFramePtr> connected_keyframes;
+    std::vector<KeyFramePtr> remaining_children;
+    KeyFramePtr parent_kf;
+    {
+        std::lock_guard<std::mutex> lock(_lock_connections);
+        if (kid <= 0 || _is_bad) {
+            return;
+        }
+        if (not_to_erase) {
+            to_be_erased = true;
+            return;
+        }
+        connected_keyframes = get_connected_keyframes_no_lock();
+        remaining_children.assign(children.begin(), children.end());
+        parent_kf = std::static_pointer_cast<KeyFrame>(parent);
+    }
+    MSG_FORCED_ASSERT(parent_kf, "KeyFrame: set_bad - parent is nullptr");
 
     // 1) Remove covisibility connections
-    auto connected_keyframes = get_connected_keyframes_no_lock();
     for (auto &kf_connected : connected_keyframes) {
-        kf_connected->erase_connection_no_lock(self);
+        kf_connected->erase_connection(self);
     }
 
     // 2) Remove feature observations
-    for (size_t idx = 0; idx < points.size(); ++idx) {
-        const auto &p = points[idx];
+    const auto frame_points = get_points();
+    for (size_t idx = 0; idx < frame_points.size(); ++idx) {
+        const auto &p = frame_points[idx];
         if (p) {
             p->remove_observation(self, static_cast<int>(idx));
         }
     }
 
-    reset_covisibility();
-
     // 3) Update spanning tree
-    MSG_FORCED_ASSERT(parent, "KeyFrame: set_bad - parent is nullptr");
-
-    std::set<KeyFramePtr> parent_candidates = {std::static_pointer_cast<KeyFrame>(parent)};
-
-    std::vector<KeyFramePtr> remaining_children(children.begin(), children.end());
-    children.clear();
+    std::set<KeyFramePtr> parent_candidates = {parent_kf};
 
     // Reassign children via covisibility to any parent candidate; one child per iteration
     int iters = 0;
@@ -465,11 +480,11 @@ void KeyFrame::set_bad() {
             if (child->is_bad())
                 continue;
 
-            auto covisibles = child->get_covisible_keyframes_no_lock();
+            auto covisibles = child->get_covisible_keyframes();
             for (auto &candidate : parent_candidates) {
                 if (std::find(covisibles.begin(), covisibles.end(), candidate) !=
                     covisibles.end()) {
-                    int w = child->get_weight_no_lock(candidate);
+                    int w = child->get_weight(candidate);
                     if (w > max_weight) {
                         max_weight = w;
                         best_child = child;
@@ -500,14 +515,19 @@ void KeyFrame::set_bad() {
 
     // 4) Reassign any still-unconnected children to the original parent
     for (auto &child : remaining_children) {
-        child->set_parent_no_lock(parent);
+        child->set_parent(parent_kf);
     }
 
     // 5) Cleanup
-    auto parent_kf = std::static_pointer_cast<KeyFrame>(parent);
-    parent->erase_child_no_lock(self);
-    _pose_Tcp.update(this->Tcw() * parent_kf->Twc());
-    _is_bad = true;
+    parent_kf->erase_child(self);
+    const Eigen::Matrix4d Tcp = this->Tcw() * parent_kf->Twc();
+    {
+        std::lock_guard<std::mutex> lock(_lock_connections);
+        reset_covisibility();
+        children.clear();
+        _pose_Tcp.update(Tcp);
+        _is_bad = true;
+    }
 
     if (map) {
         map->remove_keyframe(self);
