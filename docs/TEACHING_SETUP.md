@@ -58,12 +58,22 @@ Open a new terminal, and check with `pixi --version` (0.81 or later). You also n
 ## 2. Get the code
 
 ```bash
-git clone --depth 1 https://github.com/sjulier/pyslam.git
+git clone --depth 1 --branch comp0227-2026 https://github.com/sjulier/pyslam.git
 cd pyslam
 ```
 
-`--depth 1` downloads only the current version, without the project's history: about 0.6 GB
-instead of 1.1 GB. `git pull` still updates it later.
+`comp0227-2026` is the version of pySLAM for this course: it only receives bug fixes, while
+development continues on `main`. `--depth 1` downloads only the current version, without the
+project's history: about 0.6 GB instead of 1.1 GB. `git pull` gets the course's bug fixes later.
+
+If you cloned pySLAM before the course branch existed (without `--branch`), switch to it, in the
+`pyslam` folder:
+
+```bash
+git remote set-branches --add origin comp0227-2026
+git fetch --depth 1 origin comp0227-2026
+git checkout comp0227-2026
+```
 
 Run all the commands below from this folder. If you already have an older pySLAM checkout (for
 example one set up with conda), make a fresh clone instead of updating it.
