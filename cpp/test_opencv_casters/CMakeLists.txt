@@ -40,7 +40,7 @@ include_directories(
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
-add_subdirectory(pybind11)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/pybind11" pybind11)
 
 pybind11_add_module(cvcasters_test test_bindings.cpp)
 target_include_directories(cvcasters_test PRIVATE ${OpenCV_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/../casters)
