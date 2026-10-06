@@ -1,11 +1,20 @@
 #!/usr/bin/env python
-"""Build pySLAM's native modules on Windows (win-64, MSVC), in the pixi environment.
+"""`pixi run build` on Windows (win-64): get pySLAM's native modules, in two parts as on Linux and macOS
+(scripts/native_bundle.py, scripts/pixi_build.sh):
 
-    pixi run -e default-cpu python scripts/build_windows.py [module ...]
+    prereq  GTSAM, g2o, Pangolin, DBoW2/3, iBoW
+    pyslam  pySLAM's own C++ code: the ORB features, the C++ utilities (cpp/) and the C++ core
 
-EXPERIMENTAL (spike): the Linux and macOS builds use the build.sh scripts; this is their counterpart
-for Windows, where there is no bash and no make. Each module is configured with CMake and built with
-Ninja in <module>/build. Without arguments it builds every module, in order.
+Each part is installed prebuilt when there is a bundle for this checkout and machine, and built from
+source otherwise. Building needs Microsoft's C++ compiler (Visual Studio 2022 or its Build Tools, with
+"Desktop development with C++"): the pixi environment finds it but cannot provide it.
+Set PYSLAM_NATIVE_BUNDLE=0 to always build from source.
+
+    pixi run -e default-cpu build                                     # both parts
+    pixi run -e default-cpu python scripts/build_windows.py MODULE...  # build these modules from source
+
+The Linux and macOS builds use the build.sh scripts; this is their counterpart for Windows, where there
+is no bash and no make. Each module is configured with CMake and built with Ninja in <module>/build.
 """
 
 import os
@@ -46,12 +55,11 @@ MODULES = {
     # DBoW3 itself, installed where the python module's CMake file looks for it; then the module
     "dbow3_lib": ("thirdparty/pydbow3/modules/dbow3", [f"-DCMAKE_INSTALL_PREFIX={ROOT}/thirdparty/pydbow3/modules/dbow3/install", "-DLIB_INSTALL_DIR=lib"]),
     "dbow3": ("thirdparty/pydbow3", []),
-    # GTSAM 4.3.0, cloned by fetch_gtsam(), with the options of scripts/install_gtsam.sh.
-    # Its python wrapper is not built yet (PYSLAM_GTSAM_PYTHON=1 turns it on).
+    # GTSAM 4.3.0, cloned by fetch_gtsam(), with the options of scripts/install_gtsam.sh
     "gtsam": ("thirdparty/gtsam_local", [
         f"-DCMAKE_INSTALL_PREFIX={ROOT}/thirdparty/gtsam_local/install",
         "-DGTSAM_USE_SYSTEM_EIGEN=ON", "-DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF",
-        "-DGTSAM_BUILD_PYTHON=" + ("ON" if os.environ.get("PYSLAM_GTSAM_PYTHON") else "OFF"),
+        "-DGTSAM_BUILD_PYTHON=ON",
         "-DGTSAM_BUILD_TESTS=OFF", "-DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF", "-DGTSAM_BUILD_TIMING_ALWAYS=OFF",
         "-DGTSAM_THROW_CHEIRALITY_EXCEPTION=OFF", "-DGTSAM_PYTHON_VERSION=3.11",
         "-DCMAKE_DISABLE_FIND_PACKAGE_Ceres=ON",
@@ -59,6 +67,12 @@ MODULES = {
         "-DGTSAM_BUILD_WITH_WERROR=OFF", "-DGTSAM_BUILD_UNSTABLE=OFF",
     ]),
     "gtsam_factors": ("thirdparty/gtsam_factors", []),
+    # DBoW2 and iBoW (with its index, obindex2): the libraries, then their python modules
+    "dbow2_lib": ("thirdparty/pydbow2/modules/dbow2", []),
+    "dbow2": ("thirdparty/pydbow2", []),
+    "obindex2": ("thirdparty/pyibow/modules/obindex2/lib", []),
+    "ibow_lcd": ("thirdparty/pyibow/modules/ibow-lcd", []),
+    "ibow": ("thirdparty/pyibow", []),
     # Pangolin and its python module (the 3D viewer), with the environment's GLEW, libpng and libjpeg and
     # the DLL C runtime (Pangolin's defaults on Windows: download them, static runtime)
     "pangolin": ("thirdparty/pangolin", [
@@ -114,7 +128,7 @@ def build(name):
     if any(o.startswith("-DCMAKE_INSTALL_PREFIX=") for o in options):
         if run(["cmake", "--install", build_dir], src) != 0:
             sys.exit(f"ERROR: {name}: install failed")
-    if name == "gtsam" and os.environ.get("PYSLAM_GTSAM_PYTHON"):
+    if name == "gtsam":
         # the python package, in the source tree (as scripts/install_gtsam.sh does under pixi)
         target = os.path.join(ROOT, "thirdparty", "gtsam_local", "install", "python")
         shutil.rmtree(target, ignore_errors=True)
@@ -124,6 +138,43 @@ def build(name):
     print(f"OK: {name}", flush=True)
 
 
+# The modules of each part of the native build, in build order
+PART_MODULES = {
+    "prereq": ["gtsam", "gtsam_factors", "g2o", "pangolin", "dbow3_lib", "dbow3", "dbow2_lib", "dbow2",
+               "obindex2", "ibow_lcd", "ibow"],
+    "pyslam": ["orbslam2_features", "cpp_utils", "cpp_core"],
+}
+
+
+def python_script(*args):
+    return subprocess.run([sys.executable, os.path.join(ROOT, "scripts", args[0]), *args[1:]], cwd=ROOT).returncode
+
+
+def require_compiler(part):
+    if shutil.which("cl") is None:
+        sys.exit(
+            f"ERROR: there are no prebuilt {part} modules for this checkout and machine (see the messages above), and\n"
+            "       Microsoft's C++ compiler (cl.exe) was not found to build them: install Visual Studio 2022 or its\n"
+            "       Build Tools with \"Desktop development with C++\", then run the same command again."
+        )
+
+
+def build_parts():
+    """`pixi run build`: each part prebuilt if there is a bundle, built from source otherwise."""
+    for part, modules in PART_MODULES.items():
+        rc = 2
+        if os.environ.get("PYSLAM_NATIVE_BUNDLE", "1") != "0":
+            rc = python_script("native_bundle.py", "fetch", part)
+        if rc != 0:
+            require_compiler(part)
+            python_script("native_bundle.py", "stale", part)
+            for name in modules:
+                build(name)
+    if python_script("check_pybind11_abi.py") != 0:
+        sys.exit(1)
+    sys.exit(python_script("download_vocabulary.py"))
+
+
 if __name__ == "__main__":
     if os.name != "nt":
         sys.exit("build_windows.py is for Windows: on Linux and macOS run `pixi run build`")
@@ -131,7 +182,9 @@ if __name__ == "__main__":
         sys.exit("ERROR: run inside pySLAM's pixi environment: pixi run -e default-cpu python scripts/build_windows.py")
     os.environ["CFLAGS"] = (os.environ.get("CFLAGS", "") + " " + MSVC_C_FLAGS).strip()
     os.environ["CXXFLAGS"] = (os.environ.get("CXXFLAGS", "") + " " + MSVC_CXX_FLAGS).strip()
-    names = sys.argv[1:] or list(MODULES)
+    if len(sys.argv) == 1:
+        build_parts()
+    names = sys.argv[1:]
     for n in names:
         if n not in MODULES:
             sys.exit(f"ERROR: unknown module {n}: choose from {', '.join(MODULES)}")

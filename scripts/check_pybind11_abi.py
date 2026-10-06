@@ -40,6 +40,9 @@ MODULE_GLOBS = [
     "thirdparty/gtsam_factors/lib/*.so",
 ]
 
+if os.name == "nt":  # python extension modules are .pyd on Windows, without "cpython" in the name
+    MODULE_GLOBS = [g.replace(".cpython*.so", "*.pyd").replace(".so", ".pyd") for g in MODULE_GLOBS]
+
 INTERNALS_RE = re.compile(rb"__pybind11_internals_v\d+[A-Za-z0-9_]*?__")
 
 
@@ -49,7 +52,7 @@ def find_gtsam_modules():
         return []
     found = []
     for location in spec.submodule_search_locations:
-        found += glob.glob(os.path.join(location, "*.so"))
+        found += glob.glob(os.path.join(location, "*.pyd" if os.name == "nt" else "*.so"))
     return found
 
 
