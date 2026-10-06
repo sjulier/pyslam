@@ -77,7 +77,7 @@ cd pyslam
 
 ```bash
 pixi run build      # downloads the environment, builds pySLAM's native modules (about 15 min on a fast
-                    # machine, up to an hour on a laptop) and fetches the ORB vocabulary (a 35 MB download)
+                    # machine, up to an hour on a laptop) and fetches the ORB vocabulary (a 31 MB download)
 pixi run check      # the native modules load and the optimiser tests pass
 pixi run models     # the recommended learned models: SuperPoint, LightGlue, CosPlace (about 0.3 GB)
 ```
