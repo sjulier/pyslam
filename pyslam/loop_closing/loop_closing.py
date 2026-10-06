@@ -359,9 +359,25 @@ class LoopGeometryChecker:
 
                     # TODO: add a more robust error check
 
+                    # A monocular loop's Sim3 corrects the scale drift accumulated around the loop: on KITTI 00
+                    # the genuine ones were between 0.33 and 2.1. A degenerate solution (scale 0.0008 was seen)
+                    # passes the inlier and error checks and then wrecks the map: reject implausible scales.
+                    scale_ok = (
+                        1.0 / Parameters.kLoopClosingMaxSim3Scale
+                        <= scale12
+                        <= Parameters.kLoopClosingMaxSim3Scale
+                    )
+                    if not scale_ok:
+                        LoopClosing.print(
+                            f"LoopGeometryChecker: loop ({current_keyframe.id},{kf.id}) rejected: Sim3 scale {scale12:.4f} "
+                            f"outside [1/{Parameters.kLoopClosingMaxSim3Scale}, {Parameters.kLoopClosingMaxSim3Scale}] "
+                            f"(num_inliers: {num_inliers}, delta_err: {delta_err})"
+                        )
+
                     if (
                         num_inliers > Parameters.kLoopClosingGeometryCheckerMinKpsMatches
                         and delta_err < 0
+                        and scale_ok
                     ):
                         self.success_loop_kf = kf
                         # compute the update the pose of the successful kf
@@ -485,6 +501,7 @@ class LoopCorrector:
         GBA: GlobalBundleAdjustment,
     ):
         self.slam = slam
+        self.num_corrections = 0  # loop corrections done (tracking checks it: see Tracking.num_map_corrections())
         self.loop_geometry_checker: LoopGeometryChecker = loop_geometry_checker
         self.fix_scale = not is_monocular
 
@@ -558,6 +575,18 @@ class LoopCorrector:
             LoopClosing.print(f"LoopCorrector: updating the map...")
             Twc = current_keyframe.Twc()
             Scw = self.loop_geometry_checker.success_loop_kf_sim3_pose
+            # Log what this correction does to the current keyframe (scale: the drift corrected by the loop)
+            try:
+                loop_kf = self.loop_geometry_checker.success_loop_kf
+                center_old = np.asarray(Twc)[0:3, 3]
+                center_new = -(np.asarray(Scw.R).T @ np.asarray(Scw.t).reshape(3)) / Scw.s
+                LoopClosing.print(
+                    f"LoopCorrector: current KF {current_keyframe.kid} (frame {current_keyframe.id}) <-> "
+                    f"loop KF {loop_kf.kid if loop_kf is not None else None} (frame {loop_kf.id if loop_kf is not None else None}), "
+                    f"Sim3 scale {Scw.s:.4f}, current KF moves {np.linalg.norm(center_new - center_old):.3f}"
+                )
+            except Exception as e:
+                LoopClosing.print(f"LoopCorrector: could not log the correction ({e})")
 
             with self.map.update_lock:
                 # Iterate over all current connected keyframes and propagate the sim3 correction obtained on current keyframe
@@ -701,6 +730,7 @@ class LoopCorrector:
 
             # tell local mapping to restart in normal mode
             self.local_mapping.release()
+            self.num_corrections += 1
 
             self.timer.refresh()
             LoopClosing.print(

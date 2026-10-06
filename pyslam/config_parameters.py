@@ -276,6 +276,7 @@ class Parameters:
     kLoopClosingParallelKpsMatching = True
     kLoopClosingParallelKpsMatchingNumWorkers = 2
     kLoopClosingGeometryCheckerMinKpsMatches = 20  # o:20
+    kLoopClosingMaxSim3Scale = 10.0  # a loop's Sim3 scale must be within [1/x, x] (monocular): rejects degenerate solutions
     kLoopClosingTh2 = 10
     kLoopClosingMaxReprojectionDistanceMapSearch = 10  # [pixels]    o:10
     kLoopClosingMinNumMatchedMapPoints = 40
