@@ -17,6 +17,8 @@
 * along with PYSLAM. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations  # gtsam types in annotations are not evaluated (lazy import)
+
 import math
 import numpy as np
 import sys
@@ -26,9 +28,23 @@ import threading
 import multiprocessing as mp
 import traceback
 
-import gtsam
-import gtsam_factors
-from gtsam.symbol_shorthand import X, L
+from pyslam.utilities.system import deferred_module
+
+# GTSAM's python package is imported when one of this module's functions first uses it: all the GTSAM
+# options (Parameters.kOptimization*UseGtsam) are off by default, and SLAM then never does. A missing
+# package is an error only at that point.
+_kGtsamHint = "GTSAM's python package is not built: run `pixi run build`."
+gtsam = deferred_module("gtsam", _kGtsamHint)
+gtsam_factors = deferred_module("gtsam_factors", _kGtsamHint)
+
+
+def X(j):
+    return gtsam.symbol_shorthand.X(j)
+
+
+def L(j):
+    return gtsam.symbol_shorthand.L(j)
+
 
 import g2o
 
