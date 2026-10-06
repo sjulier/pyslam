@@ -201,7 +201,6 @@ class MapPointBase(object):
                 kf_remove_point_match = True
                 if __debug__:
                     assert self == keyframe.get_point_match(idx)
-                    assert not self in keyframe.points  # checking there are no multiple instances
             else:
                 kf_remove_point = True
             try:
@@ -278,12 +277,10 @@ class MapPointBase(object):
             # remove point from frame
             if idx is not None:
                 if __debug__:
-                    assert self == frame.get_point_match(idx)
+                    # the frame may have cleared its slot already (see Frame.clean_outlier_map_points)
+                    point_match = frame.get_point_match(idx)
+                    assert point_match is None or point_match == self
                 frame_remove_point_match = True
-                if __debug__:
-                    assert (
-                        not self in frame.get_points()
-                    )  # checking there are no multiple instances
             else:
                 frame_remove_point = True
             try:
