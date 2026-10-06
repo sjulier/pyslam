@@ -28,8 +28,10 @@ import threading
 import logging
 from logging.handlers import QueueHandler, QueueListener
 
-# import multiprocessing as mp
-import torch.multiprocessing as mp
+# The standard multiprocessing, not torch.multiprocessing: its Queue, Process, Value, ... are the same
+# objects, and torch registers how to send tensors when torch itself is imported. Importing it here
+# made every process that uses this module load torch (about 150 MB), also the window processes.
+import multiprocessing as mp
 
 
 from pathlib import Path

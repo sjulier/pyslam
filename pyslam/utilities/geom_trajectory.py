@@ -19,7 +19,8 @@
 
 import time
 import numpy as np
-import torch.multiprocessing as mp
+# (not torch.multiprocessing: see pyslam/utilities/logging.py)
+import multiprocessing as mp
 
 from .geometry import *
 from .logging import Printer

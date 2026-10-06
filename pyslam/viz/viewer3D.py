@@ -26,7 +26,8 @@ import pyslam.config as config
 
 import time
 import traceback
-import torch.multiprocessing as mp
+# (not torch.multiprocessing: see pyslam/utilities/logging.py)
+import multiprocessing as mp
 import threading
 import queue
 from enum import Enum
