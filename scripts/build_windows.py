@@ -59,6 +59,14 @@ MODULES = {
         "-DGTSAM_BUILD_WITH_WERROR=OFF", "-DGTSAM_BUILD_UNSTABLE=OFF",
     ]),
     "gtsam_factors": ("thirdparty/gtsam_factors", []),
+    # Pangolin and its python module (the 3D viewer), with the environment's GLEW, libpng and libjpeg and
+    # the DLL C runtime (Pangolin's defaults on Windows: download them, static runtime)
+    "pangolin": ("thirdparty/pangolin", [
+        "-DBUILD_PANGOLIN_LIBREALSENSE=OFF", "-DBUILD_PANGOLIN_LIBREALSENSE2=OFF", "-DBUILD_PANGOLIN_OPENNI=OFF",
+        "-DBUILD_PANGOLIN_OPENNI2=OFF", "-DBUILD_PANGOLIN_FFMPEG=OFF", "-DBUILD_PANGOLIN_LIBOPENEXR=OFF",
+        "-DBUILD_EXTERN_GLEW=OFF", "-DBUILD_EXTERN_LIBPNG=OFF", "-DBUILD_EXTERN_LIBJPEG=OFF",
+        "-DMSVC_USE_STATIC_CRT=OFF", "-DBUILD_TESTS=OFF", "-DBUILD_TOOLS=OFF", "-DBUILD_EXAMPLES=OFF",
+    ]),
     "cpp_utils": ("cpp", []),
     "cpp_core": ("pyslam/slam/cpp", []),
 }

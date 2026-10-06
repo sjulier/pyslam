@@ -306,8 +306,6 @@ target_link_libraries(volumetric PRIVATE volumetric_lib)
 # Add glutils module
 #=======================================
 
-# Not on Windows yet: glutils needs an OpenGL loader there (Windows' gl.h is OpenGL 1.1, without glext.h)
-if(NOT WIN32)
 add_library(glutils_lib STATIC 
     glutils/glutils_drawing.cpp)
 target_link_libraries(glutils_lib PRIVATE 
@@ -320,6 +318,11 @@ pybind11_add_module(glutils
     glutils/glutils_module.cpp     
     glutils/glutils_bindings.cpp)
 target_link_libraries(glutils PRIVATE glutils_lib)
+if(WIN32)
+    # Windows' gl.h is OpenGL 1.1: the functions after it come from GLEW (see glutils_gl_includes.h)
+    find_package(GLEW REQUIRED)
+    target_link_libraries(glutils_lib PRIVATE GLEW::GLEW)
+    target_link_libraries(glutils PRIVATE GLEW::GLEW)
 endif()
 
 #=======================================
