@@ -276,7 +276,7 @@ pySLAM's default level (ORB features, the C++ core, loop closing, g2o/GTSAM, the
 
 You need:
 - Windows 10 or 11, 64-bit, on an Intel or AMD processor with **AVX2** (most processors since about 2015; not Windows on ARM). `build` checks for it.
-- An internet connection.
+- About **12 GB of free disk space** and an internet connection.
 - No Visual Studio, no compiler, no WSL2 and no NVIDIA GPU: the environment uses the CPU build of PyTorch.
 
 **1. Install git and pixi.** In PowerShell:
