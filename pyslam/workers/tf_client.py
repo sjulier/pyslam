@@ -17,6 +17,7 @@ import atexit
 import importlib.util
 import os
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
@@ -29,6 +30,7 @@ from pyslam.workers import protocol
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 kWorkerStartTimeout = 600  # [s] the first start may install the pixi environment tf
+kFolderPrefix = "pyslam-tf-"  # the private folders of the workers' sockets, in the temporary directory
 
 
 def has_tensorflow():
@@ -48,6 +50,35 @@ def tf_environment():
     if env:
         return env
     return "tf-cpu" if os.environ.get("PIXI_ENVIRONMENT_NAME", "").endswith("-cpu") else "tf"
+
+
+def sweep_stale_folders(min_age=kWorkerStartTimeout):
+    """Removes the socket folders of workers that are gone (e.g. killed with SIGKILL, or a machine
+    that went down): folders older than min_age whose socket does not accept connections."""
+    tmp = tempfile.gettempdir()
+    try:
+        names = [n for n in os.listdir(tmp) if n.startswith(kFolderPrefix)]
+    except OSError:
+        return
+    for name in names:
+        folder = os.path.join(tmp, name)
+        try:
+            st = os.stat(folder)
+            if st.st_uid != os.getuid() or time.time() - st.st_mtime < min_age:
+                continue
+            sock = os.path.join(folder, "tf.sock")
+            if os.path.exists(sock):
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                try:
+                    s.connect(sock)
+                    continue  # a live worker
+                except OSError:
+                    pass
+                finally:
+                    s.close()
+            shutil.rmtree(folder, ignore_errors=True)
+        except OSError:
+            pass
 
 
 class WorkerError(RuntimeError):
@@ -73,7 +104,8 @@ class TfWorkerClient:
         pixi = find_pixi()
         if pixi is None:
             raise WorkerError("the TensorFlow worker needs pixi (it runs in the pixi environment tf)")
-        self.tmpdir = tempfile.mkdtemp(prefix="pyslam-tf-")
+        sweep_stale_folders()
+        self.tmpdir = tempfile.mkdtemp(prefix=kFolderPrefix)
         address = os.path.join(self.tmpdir, "tf.sock")
         authkey = os.urandom(32)
         env = dict(os.environ, PYSLAM_WORKER_AUTHKEY=authkey.hex())
@@ -82,10 +114,13 @@ class TfWorkerClient:
         cmd = [pixi, "run", "--manifest-path", manifest, "-e", environment,
                "python", "-m", "pyslam.workers.tf_worker", "--address", address]
         print(f"TensorFlow worker: starting it in the pixi environment {environment} ...", flush=True)
-        self.process = subprocess.Popen(cmd, cwd=ROOT, env=env)
+        # in a session of its own, so that a Ctrl-C or a signal to pySLAM's process group does not kill it
+        # before it removes its socket: it exits when the connection closes (tf_worker.py)
+        self.process = subprocess.Popen(cmd, cwd=ROOT, env=env, start_new_session=True)
         time_start = time.time()
         while not os.path.exists(address):
             if self.process.poll() is not None:
+                shutil.rmtree(self.tmpdir, ignore_errors=True)
                 raise WorkerError(
                     f"the TensorFlow worker stopped (exit code {self.process.returncode}): "
                     f"is the pixi environment {environment} installed? (pixi run models-tf installs it and the models)"

@@ -17,7 +17,9 @@ Errors come back as {"error": message, "traceback": text}.
 
 import argparse
 import os
+import signal
 import sys
+import threading
 import traceback
 from multiprocessing.connection import Listener
 
@@ -26,6 +28,10 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 # By default TensorFlow takes almost all the GPU memory when it starts: take it as needed, so that the
 # GPU stays shared with pySLAM's own (torch) models
 os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
+
+# TensorFlow Hub (HDC-DELF) caches its models in the temporary directory by default, where an interrupted
+# download leaves an empty folder that fails every later load, and macOS clears it from time to time
+os.environ.setdefault("TFHUB_CACHE_DIR", os.path.join(os.path.expanduser("~"), ".cache", "pyslam", "tfhub_modules"))
 
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
@@ -50,6 +56,8 @@ def provide_pkg_resources():
 
 
 provide_pkg_resources()
+
+kConnectTimeout = 120  # [s] from listening to pySLAM's connection (pySLAM connects at once)
 
 # The classes the worker may create: name -> (module, library path to set first (config_libs.yaml))
 CLASSES = {
@@ -113,6 +121,15 @@ def serve(conn):
             return
 
 
+def remove_socket(address):
+    """Removes the socket and its private directory (made by tf_client.py for this worker)."""
+    for remove, path in ((os.unlink, address), (os.rmdir, os.path.dirname(address))):
+        try:
+            remove(path)
+        except OSError:
+            pass  # already removed (or the directory is not empty)
+
+
 def main():
     parser = argparse.ArgumentParser(description="pySLAM's TensorFlow worker (run in the pixi environment tf or tf-cpu)")
     parser.add_argument("--address", required=True, help="the Unix socket to listen on")
@@ -120,15 +137,35 @@ def main():
     authkey = bytes.fromhex(os.environ.get("PYSLAM_WORKER_AUTHKEY", ""))
     if not authkey:
         sys.exit("tf_worker: PYSLAM_WORKER_AUTHKEY is not set")
-    with Listener(args.address, family="AF_UNIX", authkey=authkey) as listener:
-        print(f"tf_worker: listening on {args.address}", flush=True)
-        with listener.accept() as conn:
-            serve(conn)
-    print("tf_worker: connection closed, exiting", flush=True)
-    try:  # the private directory of the socket (tf_client.py), if pySLAM exited without removing it
-        os.rmdir(os.path.dirname(args.address))
-    except OSError:
-        pass  # not empty, or already removed
+
+    # The worker owns the socket and its directory: it removes them however it ends (pySLAM may end with
+    # os._exit or a signal, which skip the client's clean-up). It exits when the connection closes, so it
+    # does not need to die with pySLAM's signals: tf_client.py starts it in a session of its own.
+    def on_signal(signum, frame):
+        print(f"tf_worker: signal {signum}, exiting", flush=True)
+        remove_socket(args.address)
+        os._exit(0)
+
+    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(signum, on_signal)
+    connected = threading.Event()
+
+    def watchdog():  # the client that started the worker died before connecting
+        if not connected.wait(timeout=kConnectTimeout):
+            print(f"tf_worker: no connection within {kConnectTimeout} s, exiting", flush=True)
+            remove_socket(args.address)
+            os._exit(1)
+
+    try:
+        with Listener(args.address, family="AF_UNIX", authkey=authkey) as listener:
+            print(f"tf_worker: listening on {args.address}", flush=True)
+            threading.Thread(target=watchdog, daemon=True).start()
+            with listener.accept() as conn:
+                connected.set()
+                serve(conn)
+        print("tf_worker: connection closed, exiting", flush=True)
+    finally:
+        remove_socket(args.address)
     os._exit(0)  # without TensorFlow's teardown, which takes seconds
 
 
