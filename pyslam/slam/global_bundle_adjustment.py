@@ -67,6 +67,7 @@ class GlobalBundleAdjustment:
     print = staticmethod(lambda *args, **kwargs: None)  # Default: no-op
 
     def __init__(self, slam: "Slam", use_multiprocessing=True):
+        self.num_corrections = 0  # map corrections done (tracking checks it: see Tracking.num_map_corrections())
         self.init_print()
         GlobalBundleAdjustment.print(
             f"GlobalBundleAdjustment: starting with use_multiprocessing: {use_multiprocessing}"
@@ -466,6 +467,7 @@ class GlobalBundleAdjustment:
                         map_point.update_position(Rwc @ Xc + twc)
                     map_point.update_normal_and_depth()
 
+                self.num_corrections += 1
                 self._is_correcting.value = 0
 
                 self.local_mapping.release()

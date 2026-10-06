@@ -203,6 +203,7 @@ class Tracking:
         self.mean_pose_opt_chi2_error = None
         self.predicted_pose = None
         self.velocity = None
+        self.last_num_map_corrections = 0  # see num_map_corrections()
 
         self.f_cur: Frame | None = None
         self.idxs_cur = None
@@ -797,8 +798,9 @@ class Tracking:
 
         self.num_kf_ref_tracked_points = num_kf_ref_tracked_points
 
-        is_local_mapping_idle = self.local_mapping.is_idle()
-        local_mapping_queue_size = self.local_mapping.queue_size()
+        # In single-thread mode these come from the simulated mapper (see LocalMapping.charge_sim_step)
+        is_local_mapping_idle = self.local_mapping.is_idle_for_keyframe_decision()
+        local_mapping_queue_size = self.local_mapping.queue_size_for_keyframe_decision()
         print(
             "is_local_mapping_idle: ",
             is_local_mapping_idle,
@@ -1002,6 +1004,15 @@ class Tracking:
             self.last_num_static_stereo_map_points = num_added_points
             self.total_num_static_stereo_map_points += num_added_points
 
+    def num_map_corrections(self):
+        """How many times loop closing has corrected the map (loop corrections and global BA corrections)."""
+        loop_closing = self.slam.loop_closing
+        if loop_closing is None:
+            return 0
+        loop_corrector = getattr(loop_closing, "loop_corrector", None)
+        GBA = getattr(loop_closing, "GBA", None)
+        return getattr(loop_corrector, "num_corrections", 0) + getattr(GBA, "num_corrections", 0)
+
     def wait_if_GBA_correcting(self, timeout=30.0):
         """Wait while the global BA of loop closing corrects the map (see track()). Must be called
         outside 'with self.map.update_lock' blocks: the correction takes that lock."""
@@ -1128,6 +1139,12 @@ class Tracking:
             f"@tracking {self.sensor_type.name}, img id: {img_id}, frame id: {Frame.next_id()}, state: {self.state.name}"
         )
         time_start = time.time()
+
+        if (
+            not Parameters.kLocalMappingOnSeparateThread
+            and Parameters.kLocalMappingSimulateBusyTimeInSingleThread
+        ):
+            self.local_mapping.set_sim_time(timestamp)
 
         # check image size is coherent with camera params
         print(f"img.shape: {img.shape}, camera: {self.camera.height}x{self.camera.width}")
@@ -1338,6 +1355,24 @@ class Tracking:
                 # check for map point replacements in previous frame f_ref (some points might have been replaced by local mapping during point fusion)
                 self.f_ref.check_replaced_map_points()
 
+                # After a loop correction or a global BA correction the map has moved and, with a monocular
+                # camera, been rescaled (KITTI 00: scales 0.3 to 2.2): the motion model's velocity belongs to
+                # the old map, and its prediction was off by about one frame's motion. Bring the previous
+                # frame onto its corrected reference keyframe, and track this frame against the reference
+                # keyframe while the motion model starts again, as after a relocalization.
+                num_map_corrections = self.num_map_corrections()
+                if num_map_corrections != self.last_num_map_corrections:
+                    self.last_num_map_corrections = num_map_corrections
+                    Printer.yellow(
+                        "Tracking: the map was corrected (loop closure or global BA): tracking against the reference keyframe"
+                    )
+                    if len(self.tracking_history.relative_frame_poses) > 0 and self.f_ref.kf_ref is not None:
+                        self.f_ref.update_pose(
+                            self.tracking_history.relative_frame_poses[-1]
+                            * self.f_ref.kf_ref.isometry3d()
+                        )
+                    self.motion_model.reset()
+
                 # set intial guess for current pose optimization
                 if kUseMotionModel and self.motion_model.is_ok:
                     print("using motion model for next pose prediction")
@@ -1464,7 +1499,9 @@ class Tracking:
                     if not Parameters.kLocalMappingOnSeparateThread:
                         self.local_mapping.is_running = True
                         while self.local_mapping.queue_size() > 0:
+                            step_start = time.perf_counter()
                             self.local_mapping.step()
+                            self.local_mapping.charge_sim_step(time.perf_counter() - step_start)
                             for kf in self.map.local_map.get_keyframes():
                                 kf.update_connections()
                             # if self.kf_ref is not None:
