@@ -1462,11 +1462,14 @@ void Vocabulary::fromStream(  std::istream &str ){
     _used_str->read((char*)&m_weighting,sizeof(m_weighting));
 
     createScoringObject();
+    m_descriptor_pool.clear();
     m_nodes.resize(nnodes );
     m_nodes[0].id = 0;
 
-
-
+    // As in load_fromtxt(), the descriptors go into one block (m_descriptor_pool) and the children
+    // of a node are reserved at once, instead of several small heap allocations per node (about a
+    // million nodes in the ORB vocabulary), which are very slow with the macOS allocator.
+    size_t pool_used = 0;
     for(size_t i = 1; i < m_nodes.size(); ++i)
     {
         NodeId nid;
@@ -1475,8 +1478,25 @@ void Vocabulary::fromStream(  std::istream &str ){
         child.id=nid;
         _used_str->read((char*)&child.parent,sizeof(child.parent));
         _used_str->read((char*)&child.weight,sizeof(child.weight));
-        DescManip::fromStream(child.descriptor,*_used_str);
-        m_nodes[child.parent].children.push_back(child.id);
+        // the descriptor, as DescManip::toStream() writes it
+        int type,cols,rows;
+        _used_str->read((char*)&cols,sizeof(cols));
+        _used_str->read((char*)&rows,sizeof(rows));
+        _used_str->read((char*)&type,sizeof(type));
+        const size_t desc_bytes = (size_t)CV_ELEM_SIZE(type) * cols;
+        if (m_descriptor_pool.empty())  // sized once for the whole tree, so it never reallocates
+            m_descriptor_pool.resize((size_t)(nnodes - 1) * desc_bytes);
+        // bytes only: other types would need the alignment that cv::Mat::create() gives them
+        if (CV_MAT_DEPTH(type) == CV_8U && rows == 1 && pool_used + desc_bytes <= m_descriptor_pool.size()) {
+            child.descriptor = cv::Mat(rows, cols, type, m_descriptor_pool.data() + pool_used);
+            pool_used += desc_bytes;
+        } else {
+            child.descriptor.create(rows, cols, type);
+        }
+        _used_str->read((char*)child.descriptor.ptr<char>(0), desc_bytes);
+        Node& parent = m_nodes[child.parent];
+        if (parent.children.empty()) parent.children.reserve(m_k);
+        parent.children.push_back(child.id);
      }
      //    // words
     uint32_t m_words_size;
@@ -1592,6 +1612,7 @@ void Vocabulary::clear(){
     m_scoring_object=0;
     m_nodes.clear();
     m_words.clear();
+    m_descriptor_pool.clear();
 
 }
 int Vocabulary::getDescritorSize()const
