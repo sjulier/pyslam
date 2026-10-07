@@ -207,6 +207,9 @@ class Parameters:
     # Search matches for triangulation by using epipolar lines
     kMinDistanceFromEpipole = 10  # [pixels] Used with search by epipolar lines
 
+    # Tracking
+    kTrackingDebugAndPrintToFile = True  # the step-by-step messages of tracking go to logs/tracking.log (main_slam.py --verbose: to the console)
+
     # Local Mapping
     kLocalMappingParallelKpsMatching = True  # True: use parallel keypoint matching in local mapping, False: use serial keypoint matching
     kLocalMappingParallelKpsMatchingNumWorkers = 2

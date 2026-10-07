@@ -59,7 +59,7 @@ from .playback_throttle import KeyframeDemand
 
 from pyslam.io.dataset_types import SensorType
 
-from pyslam.utilities.logging import Printer, Logging
+from pyslam.utilities.logging import Printer, Logging, FrameLog
 from pyslam.utilities.drawing import draw_feature_matches
 from pyslam.utilities.geometry import poseRt, inv_T
 
@@ -127,6 +127,11 @@ if not kVerbose:
     def print(*args, **kwargs):
         pass
 
+else:
+    # the step-by-step messages go to logs/tracking.log (see FrameLog); warnings and errors
+    # (Printer.orange/yellow/red) stay on the console
+    print = FrameLog.print
+
 
 class TrackingHistory(object):
     def __init__(self):
@@ -148,6 +153,7 @@ class TrackingHistory(object):
 
 class Tracking:
     def __init__(self, slam: "Slam"):
+        FrameLog.start()
 
         if kShowFeatureMatches:
             Frame.is_store_imgs = True
@@ -791,7 +797,7 @@ class Tracking:
         )  # number of inliers map points in f_cur
         # num_f_cur_tracked_points = self.num_matched_map_points if self.num_matched_map_points is not None else 0 # updated in the last self.track_local_map()
         tracking_info_message = f"F({f_cur.id}) #matched points: {num_f_cur_tracked_points}, KF({self.kf_ref.id}) #matched points: {num_kf_ref_tracked_points}"
-        Printer.green(tracking_info_message)
+        print(tracking_info_message)
 
         if kLogKFinfoToFile:
             self.kf_info_logger.info(tracking_info_message)
@@ -941,7 +947,7 @@ class Tracking:
         self.kf_ref = kf_new
         f_cur.kf_ref = kf_new
 
-        Printer.green(
+        print(
             f"Adding new KF with id {kf_new.id}, img shape: {img.shape if img is not None else None}, img_right shape: {img_right.shape if img_right is not None else None}, depth shape: {depth.shape if depth is not None else None}"
         )
         if kLogKFinfoToFile:
@@ -1080,7 +1086,7 @@ class Tracking:
         if check_on_exit:
             is_local_mapping_idle = self.local_mapping.is_idle()
             local_mapping_queue_size = self.local_mapping.queue_size()
-            Printer.green(
+            print(
                 "wait_for_local_mapping - is_local_mapping_idle: ",
                 is_local_mapping_idle,
                 ", local_mapping_queue_size: ",
@@ -1135,7 +1141,7 @@ class Tracking:
         Returns:
             None
         """
-        Printer.cyan(
+        print(
             f"@tracking {self.sensor_type.name}, img id: {img_id}, frame id: {Frame.next_id()}, state: {self.state.name}"
         )
         time_start = time.time()
@@ -1479,7 +1485,7 @@ class Tracking:
                 need_new_kf = self.need_new_keyframe(f_cur)
 
                 if need_new_kf:
-                    Printer.bold_cyan("NEW KF")
+                    print("NEW KF")
                     self.create_new_keyframe(f_cur, img, img_right, depth)
                     print(
                         f"New keyframe created: {f_cur.id}, local_mapping_queue_size: {self.local_mapping.queue_size()}"
@@ -1528,7 +1534,7 @@ class Tracking:
 
         self.update_tracking_history()  # must stay after having updated slam state (self.state)
         self.update_history()
-        Printer.green(
+        print(
             "map: %d points, %d keyframes" % (self.map.num_points(), self.map.num_keyframes())
         )
         # self.update_history()
