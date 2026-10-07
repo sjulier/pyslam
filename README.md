@@ -272,11 +272,11 @@ Follow the instructions in this [file](./docs/MAC.md). The reported procedure wa
 
 ### Windows (native, experimental)
 
-pySLAM's default level (ORB features, the C++ core, loop closing, g2o/GTSAM, the viewers) runs on Windows itself, without WSL2. This is **experimental** and lives only on the branch `feat/windows-native`. It has been tested on one Windows 11 machine so far: if you try it, please report what happens (see below).
+pySLAM's default level (ORB features, the C++ core, loop closing, g2o/GTSAM, the viewers) runs on Windows itself, without WSL2. This is **experimental**: it has been tested on two Windows 11 machines so far, both with Intel processors and with Visual Studio installed (it should not be needed). If you try it, please report what happens (see below).
 
 You need:
 - Windows 10 or 11, 64-bit, on an Intel or AMD processor with **AVX2** (most processors since about 2015; not Windows on ARM). `build` checks for it.
-- About **12 GB of free disk space** and an internet connection.
+- About **15 GB of free disk space** (the installation downloads about 2 GB and takes about 12 GB) and an internet connection.
 - No Visual Studio, no compiler, no WSL2 and no NVIDIA GPU: the environment uses the CPU build of PyTorch.
 
 **1. Install git and pixi.** In PowerShell:
@@ -288,7 +288,7 @@ Open a **new** PowerShell window and check with `pixi --version` (0.81 or later)
 
 **2. Get the code.**
 ```powershell
-git clone --depth 1 --branch feat/windows-native https://github.com/sjulier/pyslam.git
+git clone --depth 1 https://github.com/sjulier/pyslam.git
 cd pyslam
 ```
 
@@ -296,29 +296,31 @@ cd pyslam
 ```powershell
 pixi run -e default-win build    # the environment, the prebuilt C++ modules and the ORB vocabulary
 pixi run -e default-win check    # the C++ modules load and the optimiser tests pass
+pixi run -e default-win doctor   # the machine, the environment, every native module and the data
 ```
 - The first `build` downloads the environment, mostly **without any output**, which is normal.
 - `build` then prints `[native bundle] installed the prebuilt prereq modules` and `... pyslam modules`, and ends with `OK: ... module(s) share the pybind11 internals ABI ...`. Nothing is compiled on your machine.
 - `check` ends with `11 passed` (GTSAM) and `2 passed` (g2o).
+- `doctor` prints one line per check and ends with `READY: 0 failed, 0 warnings`. Include its output when you ask for help.
 
 **4. Run SLAM** on the KITTI 06 video that comes with the repo:
 ```powershell
 pixi run -e default-win slam --headless   # without windows; prints the trajectory error (ATE) at the end
 pixi run -e default-win slam              # with the camera image, the 3D map, plots and loop closing's windows; q quits
 ```
-The headless run ends with an ATE `rmse` of about 14 to 16 m.
+The headless run ends with an ATE `rmse` between about 11 and 19 m (it varies from run to run). The details of every frame are in `logs/tracking.log`; `--verbose` prints them.
 
 **5. Optional: the learned models** (SuperPoint, SuperPoint with the LightGlue matcher, and CosPlace place recognition; about 0.3 GB):
 ```powershell
 pixi run -e default-win models
 ```
-It prints one line per component, `OK` with `cpu`, and ends with `Installed: features-core vpr-core`. They run on the CPU, which is too slow to keep up with the camera.
+It prints one line per component, `OK` with `cpu`, and ends with `Installed: features-core vpr-core`. They run on the CPU, slower than the camera: on one laptop, `pixi run -e default-win slam --headless --features SUPERPOINT` took 6.5 minutes against 3 with ORB features, and tracked every frame (ATE 17.8 m).
 
 If a command stops (for example a download breaks), run the same command again.
 
 **Please report** whether the steps worked, with: the Windows version, the processor and memory (Settings > System > About), whether Visual Studio is installed, and, if a step failed, the command and the last 30 lines of its output.
 
-Not on Windows yet: the other learned features and place recognition models (`models-all-features`, `models-all-vpr`), a GPU build of PyTorch, `pixi run doctor`, and the levels above the default one (depth prediction, semantics, 3D reconstruction). For those, use [WSL2](./docs/TEACHING_SETUP.md).
+Not on Windows yet: the other learned features and place recognition models (`models-all-features`, `models-all-vpr`), a GPU build of PyTorch, the TensorFlow-based features (DELF, ContextDesc, LF-Net, GeoDesc), and the levels above the default one (depth prediction, semantics, 3D reconstruction). For those, use [WSL2](./docs/TEACHING_SETUP.md).
 
 ### Docker
 
@@ -786,6 +788,7 @@ This table report the sparse SLAM submodules along with their generated logs (st
 
 | Module | Log file |
 | --- | --- |
+| `tracking.py` (and the per-frame messages of `main_slam.py` and of the feature manager) | `tracking.log`; with `main_slam.py --verbose` they are printed on the console instead |
 | `local_mapping.py` | `local_mapping.log` |
 | `loop_closing.py` | `loop_closing.log` |
 | `loop_detecting_process.py` | `loop_detecting.log` |

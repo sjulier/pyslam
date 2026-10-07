@@ -45,8 +45,9 @@ On **Linux without an NVIDIA GPU**, use the CPU levels instead: `default-cpu`, `
 |---|---|---|
 | Linux x86-64 with an NVIDIA GPU and a recent driver | CUDA 12.9, from Pascal (GTX 10xx, Titan Xp) to the RTX 50 series | `default`, `depth`, `semantics`, `full`: tested (RTX 5090, driver 575) |
 | Linux x86-64 without an NVIDIA GPU | none | `default-cpu`, `depth-cpu`, `semantics-cpu`, `full-cpu`: tested. EOV-Seg and everything `full` adds need an NVIDIA GPU and are skipped |
-| macOS 14 or later, Apple silicon | the Apple GPU (MPS) | `default`, `depth`, `semantics`, `full` (the 3R models and Gaussian splatting of `full` need an NVIDIA GPU): not tested yet |
-| Windows | via WSL2 (Ubuntu inside Windows): follow the Linux instructions | as Linux: not tested yet |
+| macOS 14 or later, Apple silicon | the Apple GPU (MPS) | `default`, `depth`, `semantics`: tested (MacBook Air M1). EOV-Seg, ODISE and everything `full` adds need an NVIDIA GPU and are skipped |
+| Windows, via WSL2 (Ubuntu inside Windows) | as Linux: follow the Linux instructions | `default`: tested (Windows 11). The other levels: not tested yet |
+| Windows, native (experimental) | none: the CPU build of PyTorch | `default-win` only, the default level without the TensorFlow features: see [Windows (native, experimental)](../README.md#windows-native-experimental) |
 
 You do not need to install the CUDA toolkit or a compiler: both are part of the environment.
 
@@ -136,9 +137,11 @@ python main_semantic_image_segmentation.py
 | `models-vpr` | default | CosPlace place recognition: `scripts/install_extra.sh vpr-core` |
 | `models-all-features` | default | all 19 learned features and matchers: `scripts/install_extra.sh features` |
 | `models-all-vpr` | default | all 5 place recognition models: `scripts/install_extra.sh vpr` |
+| `models-tf` | default | the TensorFlow-based features (DELF, LF-Net, ContextDesc, GeoDesc) and the HDC-DELF place recognition, in their own environment: `scripts/install_extra.sh tf` |
 | `models-depth` | depth | `scripts/install_extra.sh depth` |
 | `models-semantics` | semantics | `scripts/install_extra.sh semantics` |
 | `models-scene3d` | full | `scripts/install_extra.sh scene3d` |
+| `doctor` | default | check the machine, the environment, every native module and the data, one line per check; `doctor --run` also runs SLAM on KITTI 06 without windows |
 | `slam`, `vo`, `feature-matching`, `map-viewer`, `slam-evaluation`, `dense-reconstruction` | default | the main scripts |
 | `depth-prediction` | depth | `main_depth_prediction.py` |
 | `semantic-segmentation` | semantics | `main_semantic_image_segmentation.py` |
@@ -174,9 +177,15 @@ expect the prerequisites to be there (built, or installed by `build`).
 - **Gaussian splatting on another GPU.** Its CUDA extensions are built for the GPUs in the machine.
   To build them for other GPUs, set `PYSLAM_CUDA_ARCHS` and `LIETORCH_CUDA_ARCHS` (for example `61`
   for Pascal, `86` for the RTX 30 series) before `pixi run -e full models-scene3d`.
-- **Not available with pixi**: SURF (non-free); the TensorFlow-based features (DELF, LF-Net,
-  ContextDesc, GeoDesc), which need their own environment; CREStereo's original MegEngine version
-  (the PyTorch port is installed); pytorch3d.
+- **The TensorFlow-based features** (DELF, LF-Net, ContextDesc, GeoDesc, and the HDC-DELF place
+  recognition) have their own environment, because TensorFlow's requirements do not fit the levels:
+  `pixi run models-tf` installs it (`pixi run -e default-cpu models-tf` on Linux without an NVIDIA
+  GPU; about 6 GB) and checks the five components. pySLAM then runs them in a worker process that it
+  starts on first use: `pixi run slam --features CONTEXTDESC`. GeoDesc is a descriptor only, without a
+  SLAM configuration, and HDC-DELF is a loop detector, chosen in the settings file. Not on native
+  Windows.
+- **Not available with pixi**: SURF (non-free); CREStereo's original MegEngine version (the PyTorch
+  port is installed); pytorch3d.
 - **Do not `pip install` into the environment.** A package that is missing belongs in `pixi.toml`.
 - **`pip check`** reports nothing in the `default` and `depth` levels. In `semantics` and `full` it
   reports that detectron2 requires `black`: detectron2's metadata pins that code formatter, which is
@@ -195,5 +204,5 @@ expect the prerequisites to be there (built, or installed by `build`).
   requirements can pull OpenCV, PyTorch or Open3D back to older versions in every level. Then run
   `pixi run check` and the `models*` tasks of the levels you changed.
 - Linux is pinned to CUDA 12.9 (`cuda-version`), whose builds still support Pascal and Volta GPUs.
-- The TensorFlow level (`tf`) only has its packages so far; the features that use it are not
-  connected yet.
+- The TensorFlow environments (`tf`, and `tf-cpu` for the CPU ladder) are not levels: the features
+  that need TensorFlow run in them through a worker process (`pyslam/workers/`).

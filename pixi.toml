@@ -351,7 +351,7 @@ build-orbslam2-features = { cmd = "./build.sh", cwd = "thirdparty/orbslam2_featu
 build-cpp-utils = { cmd = "./build.sh", cwd = "cpp" }
 build-cpp-core = "./build_cpp_core.sh"
 build-pyslam = { depends-on = ["build-orbslam2-features", "build-cpp-utils", "build-cpp-core"] }
-# The ORB vocabulary of the default loop detector (about 100 MB), so that the first SLAM run
+# The ORB vocabulary of the default loop detector (a 31 MB download, 73 MB on disk), so that the first SLAM run
 # does not have to download it
 vocabulary = "python scripts/download_vocabulary.py"
 # `build` installs the prebuilt modules of each part when there is a bundle for this checkout and
