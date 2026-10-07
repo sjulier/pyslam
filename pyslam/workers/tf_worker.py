@@ -17,7 +17,9 @@ Errors come back as {"error": message, "traceback": text}.
 
 import argparse
 import os
+import shutil
 import signal
+import socket
 import sys
 import threading
 import traceback
@@ -78,6 +80,40 @@ def public_attributes(obj):
     return attrs
 
 
+kDownloadTimeout = 60  # [s] without data, a model download fails instead of waiting forever
+
+
+def remove_stale_hub_locks():
+    """Removes TensorFlow Hub download locks left by a process of this machine that is gone (e.g. a
+    download cut by sleep or a kill). The lock file holds "<hostname>.<pid>.<uid>"; TensorFlow Hub
+    would otherwise wait for 10 minutes before taking it over."""
+    cache = os.environ.get("TFHUB_CACHE_DIR")
+    if not cache or not os.path.isdir(cache):
+        return
+    host = socket.gethostname()
+    for name in os.listdir(cache):
+        if not name.endswith(".lock"):
+            continue
+        lock = os.path.join(cache, name)
+        try:
+            with open(lock) as f:
+                owner_host, pid, uid = f.read().strip().rsplit(".", 2)
+            if owner_host != host:
+                continue
+            try:
+                os.kill(int(pid), 0)
+                continue  # its download is still running
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                continue  # another user's process
+            print(f"tf_worker: removing the stale download lock {lock}", flush=True)
+            shutil.rmtree(f"{lock[:-len('.lock')]}.{uid}.tmp", ignore_errors=True)
+            os.remove(lock)
+        except (OSError, ValueError):
+            pass
+
+
 def create(name, args, kwargs):
     if name not in CLASSES:
         raise ValueError(f"tf_worker: unknown class {name} (known: {', '.join(CLASSES)})")
@@ -89,7 +125,16 @@ def create(name, args, kwargs):
 
         config.cfg.set_lib(lib, prepend=True)
     cls = getattr(importlib.import_module(module_name), name)
-    return cls(*args, **kwargs)
+    # A model may download its weights when it is created: no wait without end on a dead connection
+    # (e.g. after the machine slept), and no wait on a lock that a killed download left. The timeout
+    # applies to the sockets created meanwhile only, not to the connection with pySLAM.
+    remove_stale_hub_locks()
+    previous = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(kDownloadTimeout)
+    try:
+        return cls(*args, **kwargs)
+    finally:
+        socket.setdefaulttimeout(previous)
 
 
 def serve(conn):
