@@ -17,7 +17,7 @@
 #ifdef __clang__
 #include <stdint.h>
 #else 
-#include <stdint-gcc.h>
+#include <cstdint>
 #endif 
 
 #include "FORB.h"

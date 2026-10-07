@@ -41,13 +41,13 @@ static inline py::array cvmat_to_numpy(const cv::Mat &m) {
         return py::array();
     CV_Assert(m.isContinuous());
     int ndim = (m.channels() == 1) ? 2 : 3;
-    std::vector<ssize_t> shape, strides;
+    std::vector<py::ssize_t> shape, strides;
     if (ndim == 2) {
         shape = {m.rows, m.cols};
-        strides = {(ssize_t)m.step[0], (ssize_t)m.step[1]};
+        strides = {(py::ssize_t)m.step[0], (py::ssize_t)m.step[1]};
     } else {
         shape = {m.rows, m.cols, m.channels()};
-        strides = {(ssize_t)m.step[0], (ssize_t)m.step[1], (ssize_t)m.elemSize1()};
+        strides = {(py::ssize_t)m.step[0], (py::ssize_t)m.step[1], (py::ssize_t)m.elemSize1()};
     }
 
     switch (m.depth()) {
@@ -229,8 +229,8 @@ template <typename T> inline py::array vector_to_numpy(const std::vector<T> &vec
     size_t total_size = vec.size() * element_size;
 
     // Create numpy array with proper shape and strides
-    std::vector<ssize_t> shape = {static_cast<ssize_t>(vec.size())};
-    std::vector<ssize_t> strides = {static_cast<ssize_t>(element_size)};
+    std::vector<py::ssize_t> shape = {static_cast<py::ssize_t>(vec.size())};
+    std::vector<py::ssize_t> strides = {static_cast<py::ssize_t>(element_size)};
 
     // Determine the format descriptor based on type
     std::string format;
@@ -259,8 +259,8 @@ template <> inline py::array vector_to_numpy(const std::vector<Eigen::Vector3d> 
         return py::array();
     }
 
-    std::vector<ssize_t> shape = {static_cast<ssize_t>(vec.size()), 3};
-    std::vector<ssize_t> strides = {3 * sizeof(double), sizeof(double)};
+    std::vector<py::ssize_t> shape = {static_cast<py::ssize_t>(vec.size()), 3};
+    std::vector<py::ssize_t> strides = {3 * sizeof(double), sizeof(double)};
 
     return py::array(py::buffer_info(const_cast<void *>(static_cast<const void *>(vec.data())),
                                      sizeof(double), py::format_descriptor<double>::format(),
@@ -273,8 +273,8 @@ template <> inline py::array vector_to_numpy(const std::vector<Eigen::Vector3f> 
         return py::array();
     }
 
-    std::vector<ssize_t> shape = {static_cast<ssize_t>(vec.size()), 3};
-    std::vector<ssize_t> strides = {3 * sizeof(float), sizeof(float)};
+    std::vector<py::ssize_t> shape = {static_cast<py::ssize_t>(vec.size()), 3};
+    std::vector<py::ssize_t> strides = {3 * sizeof(float), sizeof(float)};
 
     return py::array(py::buffer_info(const_cast<void *>(static_cast<const void *>(vec.data())),
                                      sizeof(float), py::format_descriptor<float>::format(),
@@ -287,8 +287,8 @@ template <> inline py::array vector_to_numpy(const std::vector<Eigen::Matrix<dou
         return py::array();
     }
 
-    std::vector<ssize_t> shape = {static_cast<ssize_t>(vec.size()), 6};
-    std::vector<ssize_t> strides = {6 * sizeof(double), sizeof(double)};
+    std::vector<py::ssize_t> shape = {static_cast<py::ssize_t>(vec.size()), 6};
+    std::vector<py::ssize_t> strides = {6 * sizeof(double), sizeof(double)};
 
     return py::array(py::buffer_info(const_cast<void *>(static_cast<const void *>(vec.data())),
                                      sizeof(double), py::format_descriptor<double>::format(),
@@ -301,8 +301,8 @@ template <> inline py::array vector_to_numpy(const std::vector<Eigen::Matrix<dou
         return py::array();
     }
 
-    std::vector<ssize_t> shape = {static_cast<ssize_t>(vec.size()), 4, 4};
-    std::vector<ssize_t> strides = {16 * sizeof(double), 4 * sizeof(double), sizeof(double)};
+    std::vector<py::ssize_t> shape = {static_cast<py::ssize_t>(vec.size()), 4, 4};
+    std::vector<py::ssize_t> strides = {16 * sizeof(double), 4 * sizeof(double), sizeof(double)};
 
     return py::array(py::buffer_info(const_cast<void *>(static_cast<const void *>(vec.data())),
                                      sizeof(double), py::format_descriptor<double>::format(),
@@ -340,7 +340,7 @@ template <> inline std::vector<Eigen::Vector3d> numpy_to_vector(const py::array 
     if (info.ndim == 2 && info.shape[1] == 3) {
         std::vector<Eigen::Vector3d> result(info.shape[0]);
         double *data = static_cast<double *>(info.ptr);
-        for (ssize_t i = 0; i < info.shape[0]; ++i) {
+        for (py::ssize_t i = 0; i < info.shape[0]; ++i) {
             result[i] = Eigen::Vector3d(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]);
         }
         return result;
@@ -362,7 +362,7 @@ template <> inline std::vector<Eigen::Vector3f> numpy_to_vector(const py::array 
     if (info.ndim == 2 && info.shape[1] == 3) {
         std::vector<Eigen::Vector3f> result(info.shape[0]);
         float *data = static_cast<float *>(info.ptr);
-        for (ssize_t i = 0; i < info.shape[0]; ++i) {
+        for (py::ssize_t i = 0; i < info.shape[0]; ++i) {
             result[i] = Eigen::Vector3f(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]);
         }
         return result;
@@ -384,7 +384,7 @@ template <> inline std::vector<Eigen::Matrix<double, 6, 1>> numpy_to_vector(cons
     if (info.ndim == 2 && info.shape[1] == 6) {
         std::vector<Eigen::Matrix<double, 6, 1>> result(info.shape[0]);
         double *data = static_cast<double *>(info.ptr);
-        for (ssize_t i = 0; i < info.shape[0]; ++i) {
+        for (py::ssize_t i = 0; i < info.shape[0]; ++i) {
             result[i] = Eigen::Matrix<double, 6, 1>(data + i * 6);
         }
         return result;
@@ -406,7 +406,7 @@ template <> inline std::vector<Eigen::Matrix<double, 4, 4>> numpy_to_vector(cons
     if (info.ndim == 3 && info.shape[1] == 4 && info.shape[2] == 4) {
         std::vector<Eigen::Matrix<double, 4, 4>> result(info.shape[0]);
         double *data = static_cast<double *>(info.ptr);
-        for (ssize_t i = 0; i < info.shape[0]; ++i) {
+        for (py::ssize_t i = 0; i < info.shape[0]; ++i) {
             result[i] = Eigen::Map<Eigen::Matrix<double, 4, 4>>(data + i * 16);
         }
         return result;

@@ -28,8 +28,8 @@ import threading
 import logging
 from logging.handlers import QueueHandler, QueueListener
 
-# import multiprocessing as mp
-import torch.multiprocessing as mp
+# (not torch.multiprocessing: see pyslam/utilities/logging.py)
+import multiprocessing as mp
 
 
 from pathlib import Path
@@ -225,6 +225,41 @@ def lazy_module(name):
     return module
 
 
+class _DeferredModule:
+    """A module imported on the first use of one of its attributes. Unlike lazy_module() it is not in
+    sys.modules before that, where code that looks at every module (inspect.getmodule(), used by
+    warnings and torch among others) makes a LazyLoader module load at once."""
+
+    def __init__(self, name, hint=""):
+        self._deferred_name, self._deferred_hint = name, hint
+
+    def __getattr__(self, attr):
+        if attr.startswith("__") and attr.endswith("__"):
+            raise AttributeError(attr)  # copy, pickle, inspect: do not import for these
+        import importlib
+
+        try:
+            module = importlib.import_module(self._deferred_name)
+        except ModuleNotFoundError as e:
+            if e.name != self._deferred_name or not self._deferred_hint:
+                raise
+            raise ModuleNotFoundError(f"{e} {self._deferred_hint}", name=e.name) from None
+        value = getattr(module, attr)
+        self.__dict__[attr] = value  # next time without __getattr__
+        return value
+
+    def __repr__(self):
+        state = "imported" if self._deferred_name in sys.modules else "not imported yet"
+        return f"<deferred module {self._deferred_name}: {state}>"
+
+
+def deferred_module(name, hint=""):
+    """Return a stand-in for module `name` that imports it when one of its attributes is first used.
+    For optional dependencies that the default configuration never uses: a module that is not
+    installed is then an error (ModuleNotFoundError, with `hint`) only when it is needed."""
+    return _DeferredModule(name, hint)
+
+
 def get_opencv_version():
     opencv_major = int(cv2.__version__.split(".")[0])
     opencv_minor = int(cv2.__version__.split(".")[1])
@@ -252,6 +287,8 @@ def check_if_main_thread(message=""):
 # Set the limit of open files. This is useful when using multiprocessing and socket management
 # returns the error: OSError: [Errno 24] Too many open files.
 def set_rlimit():
+    if sys.platform == "win32":
+        return  # no such limit to raise on Windows (and no resource module)
     import resource
 
     # Check the current soft and hard limits
@@ -314,7 +351,7 @@ def force_kill_all_and_exit(code=0, verbose=True):
             if p.is_alive():
                 if verbose:
                     print(f"[!] Killing stubborn process PID {p.pid}...")
-                os.kill(p.pid, signal.SIGKILL)
+                p.kill()  # SIGKILL; also works on Windows, which has no SIGKILL
         except Exception as e:
             if verbose:
                 print(f"[!] Failed to terminate process PID {p.pid}: {e}")

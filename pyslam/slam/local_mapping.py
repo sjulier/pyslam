@@ -127,6 +127,11 @@ class LocalMapping:
         self.reset_requested = False
         self.reset_mutex = RLock()
 
+        # Simulated busy time for single-thread mode (see Parameters.kLocalMappingSimulateBusyTimeInSingleThread).
+        # Times are on the dataset's clock (frame timestamps), in seconds.
+        self.sim_now = None
+        self.sim_step_intervals = []  # (start, finish) of the simulated steps not yet finished
+
         self.log_file = None
         self.thread_large_BA = None
 
@@ -238,6 +243,7 @@ class LocalMapping:
                 self.total_num_culled_points = 0
                 self.total_num_culled_keyframes = 0
                 self.last_num_triangulated_points = None
+                self.sim_step_intervals = []
                 self.local_mapping_core.reset()
                 LocalMapping.print("LocalMapping: reset_if_requested() ...done")
 
@@ -283,6 +289,43 @@ class LocalMapping:
 
     def queue_size(self):
         return self.queue.qsize()
+
+    # Single-thread mode runs each mapping step inline, so the real queue is always drained and the
+    # mapper always looks idle to the keyframe decision. These simulate a concurrent mapper instead:
+    # each inline step is charged its measured duration on the dataset's clock, serially, so work
+    # that arrives while "busy" forms a backlog as it would with a real mapper thread.
+    def is_simulating_busy_time(self):
+        return (
+            not Parameters.kLocalMappingOnSeparateThread
+            and Parameters.kLocalMappingSimulateBusyTimeInSingleThread
+            and self.sim_now is not None
+        )
+
+    def set_sim_time(self, timestamp):
+        if timestamp is None:
+            return
+        self.sim_now = timestamp
+        self.sim_step_intervals = [iv for iv in self.sim_step_intervals if iv[1] > timestamp]
+
+    def charge_sim_step(self, duration):
+        if self.sim_now is None:
+            return
+        duration *= Parameters.kLocalMappingSimulatedBusyTimeScale
+        last_finish = self.sim_step_intervals[-1][1] if self.sim_step_intervals else self.sim_now
+        start = max(last_finish, self.sim_now)
+        self.sim_step_intervals.append((start, start + duration))
+
+    # What the keyframe decision should see: the simulated mapper when simulating, else the real one.
+    def is_idle_for_keyframe_decision(self):
+        if self.is_simulating_busy_time():
+            return len(self.sim_step_intervals) == 0
+        return self.is_idle()
+
+    def queue_size_for_keyframe_decision(self):
+        if self.is_simulating_busy_time():
+            # steps charged but not yet started on the simulated clock
+            return sum(1 for start, _ in self.sim_step_intervals if start > self.sim_now)
+        return self.queue_size()
 
     def is_idle(self):
         with self.idle_condition:
@@ -397,7 +440,7 @@ class LocalMapping:
     def do_local_mapping(self):
         LocalMapping.print("local mapping: starting...")
 
-        Printer.cyan("@local mapping")
+        LocalMapping.print("@local mapping")
         time_start = time.time()
 
         if self.kf_cur is None:
@@ -528,7 +571,7 @@ class LocalMapping:
         LocalMapping.print(
             f"local optimization (LBA) error^2: {err}, timing: {self.time_local_opt.last_elapsed}"
         )
-        Printer.green("KF(%d) #points: %d " % (self.kf_cur.id, num_kf_ref_tracked_points))
+        LocalMapping.print("KF(%d) #points: %d " % (self.kf_cur.id, num_kf_ref_tracked_points))
 
     def large_window_BA(self):
         Printer.blue("@large BA")

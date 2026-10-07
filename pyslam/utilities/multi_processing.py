@@ -33,7 +33,7 @@ class MultiprocessingManager:
     #       In general, the usage of the multiprocessing Manager() seem to return smoother interactions. For this
     #       reason, we use it by default.
     def __init__(self, use_manager=True, verbose=False):
-        import torch.multiprocessing as mp
+        import multiprocessing as mp  # the same objects as torch.multiprocessing, without loading torch
 
         self.manager = None
         self.start_method = mp.get_start_method()
@@ -45,12 +45,12 @@ class MultiprocessingManager:
 
     @staticmethod
     def is_start_method_spawn():
-        import torch.multiprocessing as mp
+        import multiprocessing as mp  # the same objects as torch.multiprocessing, without loading torch
 
         return mp.get_start_method() == "spawn"
 
     def Queue(self, maxsize=0):
-        import torch.multiprocessing as mp
+        import multiprocessing as mp  # the same objects as torch.multiprocessing, without loading torch
 
         if self.manager is not None:
             # the start method is not 'spawn' => we prefer to use the multiprocessing manager
@@ -63,7 +63,7 @@ class MultiprocessingManager:
                 return mp.Queue()
 
     def Value(self, typecode_or_type, *args, lock=True):
-        import torch.multiprocessing as mp
+        import multiprocessing as mp  # the same objects as torch.multiprocessing, without loading torch
 
         return mp.Value(typecode_or_type=typecode_or_type, *args, lock=lock)
 

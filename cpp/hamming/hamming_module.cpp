@@ -59,7 +59,7 @@ static inline uint32_t hamming_scalar_u8(const uint8_t *a, const uint8_t *b, siz
 
     // remainder bytes (tableless)
     for (; i < nbytes; ++i) {
-        sum += static_cast<uint32_t>(__builtin_popcount(static_cast<unsigned>(a[i] ^ b[i])));
+        sum += popcnt64(static_cast<uint64_t>(a[i] ^ b[i]));
     }
     return sum;
 }
@@ -196,13 +196,13 @@ static py::array_t<uint16_t> hamming_many(py::array query, py::array descs) {
         throw std::invalid_argument(
             "hamming_many(query,descs): query must be (B,), descs must be (N,B)");
     }
-    const ssize_t B = query.shape(0);
+    const py::ssize_t B = query.shape(0);
     if (descs.shape(1) != B) {
         throw std::invalid_argument(
             "hamming_many(query,descs): descs.shape[1] must equal query.shape[0]");
     }
 
-    const ssize_t N = descs.shape(0);
+    const py::ssize_t N = descs.shape(0);
     auto out = py::array_t<uint16_t>(N);
     auto *outp = static_cast<uint16_t *>(out.mutable_data());
 
@@ -210,7 +210,7 @@ static py::array_t<uint16_t> hamming_many(py::array query, py::array descs) {
     const auto *D = static_cast<const uint8_t *>(descs.data());
 
     // Distance fits in uint16 for typical descriptor sizes (e.g., <= 2048 bits).
-    for (ssize_t i = 0; i < N; ++i) {
+    for (py::ssize_t i = 0; i < N; ++i) {
         const uint8_t *di = D + static_cast<size_t>(i) * static_cast<size_t>(B);
         outp[i] = static_cast<uint16_t>(hamming_u8_best(q, di, static_cast<size_t>(B)));
     }
@@ -228,8 +228,8 @@ static py::array_t<uint16_t> hamming_pairwise(py::array a, py::array b) {
         throw std::invalid_argument("hamming_pairwise(a,b): shapes must match");
     }
 
-    const ssize_t N = a.shape(0);
-    const ssize_t B = a.shape(1);
+    const py::ssize_t N = a.shape(0);
+    const py::ssize_t B = a.shape(1);
 
     auto out = py::array_t<uint16_t>(N);
     auto *outp = static_cast<uint16_t *>(out.mutable_data());
@@ -237,7 +237,7 @@ static py::array_t<uint16_t> hamming_pairwise(py::array a, py::array b) {
     const auto *ap = static_cast<const uint8_t *>(a.data());
     const auto *bp = static_cast<const uint8_t *>(b.data());
 
-    for (ssize_t i = 0; i < N; ++i) {
+    for (py::ssize_t i = 0; i < N; ++i) {
         const uint8_t *ai = ap + static_cast<size_t>(i) * static_cast<size_t>(B);
         const uint8_t *bi = bp + static_cast<size_t>(i) * static_cast<size_t>(B);
         outp[i] = static_cast<uint16_t>(hamming_u8_best(ai, bi, static_cast<size_t>(B)));
@@ -301,12 +301,12 @@ static py::array_t<uint16_t> hamming_bits_many(py::object a_obj, py::object b_ob
 
         // Handle case 1: a is 1D, b is 2D -> (N,) distances
         if (a.ndim() == 1 && b.ndim() == 2) {
-            const ssize_t B = a.shape(0);
+            const py::ssize_t B = a.shape(0);
             if (b.shape(1) != B) {
                 throw std::invalid_argument(
                     "hamming_distances(a,b): if a is 1D, b.shape[1] must equal a.shape[0]");
             }
-            const ssize_t N = b.shape(0);
+            const py::ssize_t N = b.shape(0);
 
             auto out = py::array_t<uint16_t>(N);
             auto *outp = static_cast<uint16_t *>(out.mutable_data());
@@ -314,7 +314,7 @@ static py::array_t<uint16_t> hamming_bits_many(py::object a_obj, py::object b_ob
             const auto *ap = static_cast<const uint8_t *>(a.data());
             const auto *bp = static_cast<const uint8_t *>(b.data());
 
-            for (ssize_t i = 0; i < N; ++i) {
+            for (py::ssize_t i = 0; i < N; ++i) {
                 const uint8_t *bi = bp + static_cast<size_t>(i) * static_cast<size_t>(B);
                 outp[i] = static_cast<uint16_t>(hamming_u8_best(ap, bi, static_cast<size_t>(B)));
             }
@@ -327,8 +327,8 @@ static py::array_t<uint16_t> hamming_bits_many(py::object a_obj, py::object b_ob
                 throw std::invalid_argument(
                     "hamming_distances(a,b): if both are 2D, shapes must match");
             }
-            const ssize_t N = a.shape(0);
-            const ssize_t B = a.shape(1);
+            const py::ssize_t N = a.shape(0);
+            const py::ssize_t B = a.shape(1);
 
             auto out = py::array_t<uint16_t>(N);
             auto *outp = static_cast<uint16_t *>(out.mutable_data());
@@ -336,7 +336,7 @@ static py::array_t<uint16_t> hamming_bits_many(py::object a_obj, py::object b_ob
             const auto *ap = static_cast<const uint8_t *>(a.data());
             const auto *bp = static_cast<const uint8_t *>(b.data());
 
-            for (ssize_t i = 0; i < N; ++i) {
+            for (py::ssize_t i = 0; i < N; ++i) {
                 const uint8_t *ai = ap + static_cast<size_t>(i) * static_cast<size_t>(B);
                 const uint8_t *bi = bp + static_cast<size_t>(i) * static_cast<size_t>(B);
                 outp[i] = static_cast<uint16_t>(hamming_u8_best(ai, bi, static_cast<size_t>(B)));
@@ -353,7 +353,7 @@ static py::array_t<uint16_t> hamming_bits_many(py::object a_obj, py::object b_ob
     // ---------------------------------------------------------
     if (py::isinstance<py::sequence>(b_obj)) {
         py::sequence b_seq = py::reinterpret_borrow<py::sequence>(b_obj);
-        const ssize_t N = py::len(b_seq);
+        const py::ssize_t N = py::len(b_seq);
         if (N == 0) {
             throw std::invalid_argument("hamming_distances(a,b): b sequence is empty");
         }
@@ -364,13 +364,13 @@ static py::array_t<uint16_t> hamming_bits_many(py::object a_obj, py::object b_ob
             throw std::invalid_argument(
                 "hamming_distances(a,b): if b is a sequence, a must be 1D (B,) for true zero-copy");
         }
-        const ssize_t B = a.shape(0);
+        const py::ssize_t B = a.shape(0);
         const auto *ap = static_cast<const uint8_t *>(a.data());
 
         auto out = py::array_t<uint16_t>(N);
         auto *outp = static_cast<uint16_t *>(out.mutable_data());
 
-        for (ssize_t i = 0; i < N; ++i) {
+        for (py::ssize_t i = 0; i < N; ++i) {
             py::handle elem_h = b_seq[i];
             py::array bi_arr = borrow_array_no_copy(elem_h, "b[i]");
             require_uint8_c_contig(bi_arr, "b[i]");

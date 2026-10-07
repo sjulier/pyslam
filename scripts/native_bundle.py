@@ -79,6 +79,15 @@ PARTS = {
             "thirdparty/pydbow2/modules/dbow2/lib/*.dylib",
             "thirdparty/pydbow3/lib/*.so",
             "thirdparty/pyibow/lib/*.so",
+            # Windows: python modules are .pyd; g2o's static libraries are .lib (GTSAM's DLLs, import
+            # libraries and CMake files are under thirdparty/gtsam_local/install, above)
+            "thirdparty/gtsam_factors/lib/*.pyd",
+            "thirdparty/g2opy/lib/*.pyd",
+            "thirdparty/g2opy/lib/g2o_*.lib",
+            "thirdparty/pangolin/pypangolin*.pyd",
+            "thirdparty/pydbow2/lib/*.pyd",
+            "thirdparty/pydbow3/lib/*.pyd",
+            "thirdparty/pyibow/lib/*.pyd",
         ],
         "sources": [
             "pixi.lock",
@@ -112,6 +121,9 @@ PARTS = {
             "thirdparty/orbslam2_features/lib/*.so",
             "cpp/lib/*.so",
             "pyslam/slam/cpp/lib/*.so",
+            "thirdparty/orbslam2_features/lib/*.pyd",
+            "cpp/lib/*.pyd",
+            "pyslam/slam/cpp/lib/*.pyd",
         ],
         "sources": [
             "build_cpp_core.sh",
@@ -130,6 +142,22 @@ PARTS = {
 }
 PART_NAMES = ["prereq", "pyslam"]
 
+# Windows: the modules are built by scripts/build_windows.py (part of the key there) with /arch:AVX2
+WINDOWS_BUILD_SCRIPT = "scripts/build_windows.py"
+WINDOWS_MARCH = "avx2"
+
+
+def required_globs(part):
+    """The python extension modules of a part, with this platform's suffix (.pyd on Windows)."""
+    globs = PARTS[part]["required"]
+    if platform_name() == "win-64":
+        globs = [g[:-len(".so")] + ".pyd" for g in globs]
+    return globs
+
+
+def bundle_march():
+    return {"linux-64": BUNDLE_MARCH, "win-64": WINDOWS_MARCH}.get(platform_name(), "default")
+
 
 def manifest_path(part):
     return os.path.join(ROOT, f"thirdparty/.native_bundle_{part}.json")
@@ -146,8 +174,9 @@ ROOT_PLACEHOLDER = "@PYSLAM_NATIVE_BUNDLE_ROOT@"
 # is not set, so that a module rebuilt after a bundle was installed matches the bundle's
 MARCH_FILE = "thirdparty/.pyslam_march"
 
-# Part of the key: increase it when the layout of the bundles changes
-BUNDLE_FORMAT = 2
+# Part of the key: increase it when the layout of the bundles or the way of computing the key changes
+# (3: pixi.lock counts by the packages of the build environment only)
+BUNDLE_FORMAT = 3
 
 
 def log(msg):
@@ -162,13 +191,20 @@ def environment_name():
     return os.environ.get("PIXI_ENVIRONMENT_NAME", "default")
 
 
+def ladder_of(environment):
+    """'cpu' for the CPU environments (*-cpu, and default-win on Windows), 'gpu' for the others."""
+    return "cpu" if environment.endswith(("-cpu", "-win")) else "gpu"
+
+
 def ladder():
     """The modules are built once per ladder of levels: 'gpu' (default, depth, ...) or 'cpu' (*-cpu)."""
-    return "cpu" if environment_name().endswith("-cpu") else "gpu"
+    return ladder_of(environment_name())
 
 
 def build_environment():
     """The environment whose libraries the modules are linked to (the first level of the ladder)."""
+    if platform_name() == "win-64":
+        return "default-win"
     return "default-cpu" if ladder() == "cpu" else "default"
 
 
@@ -178,7 +214,38 @@ def platform_name():
         return "linux-64"
     if system == "Darwin" and machine == "arm64":
         return "osx-arm64"
+    if system == "Windows" and machine in ("AMD64", "x86_64"):
+        return "win-64"
     return None
+
+
+def locked_packages():
+    """The packages that pixi.lock (as committed) gives the build environment on this platform, one per line,
+    or None. Only these count for the key: changes to other environments (e.g. tf) or platforms (e.g.
+    win-64) leave the bundles valid."""
+    r = git("show", "HEAD:pixi.lock")
+    if r.returncode != 0:
+        return None
+    # environments:
+    #   <name>:
+    #     packages:
+    #       <platform>:            (linux-64-cuda, linux-64, osx-arm64-14, ...)
+    #       - conda: <url>
+    environment, platform_key, packages = None, None, {}
+    for line in r.stdout.splitlines():
+        if line.startswith("packages:"):
+            break  # the package details, after the environments
+        if line.startswith("  ") and not line.startswith("   ") and line.rstrip().endswith(":"):
+            environment, platform_key = line.strip()[:-1], None
+        elif line.startswith("      ") and not line.startswith("       ") and line.rstrip().endswith(":"):
+            platform_key = line.strip()[:-1]
+        elif line.startswith("      - ") and environment == build_environment() and platform_key:
+            packages.setdefault(platform_key, []).append(line.strip()[2:])
+    # the lock's platform names extend the system's: linux-64-cuda, osx-arm64-14
+    matches = [k for k in packages if k == platform_name() or k.startswith(platform_name() + "-")]
+    if platform_name() is None or len(matches) != 1:
+        return None
+    return "\n".join(sorted(packages[matches[0]])) + "\n"
 
 
 def source_key(part):
@@ -186,7 +253,8 @@ def source_key(part):
     if git("rev-parse", "--git-dir").returncode != 0:
         return None, "not a git checkout"
     # local changes to the sources mean that the modules of a bundle would not match them
-    status = git("status", "--porcelain", "--untracked-files=no", "--", *PARTS[part]["sources"])
+    sources = PARTS[part]["sources"] + ([WINDOWS_BUILD_SCRIPT] if platform_name() == "win-64" else [])
+    status = git("status", "--porcelain", "--untracked-files=no", "--", *sources)
     if status.returncode != 0:
         return None, "git status failed"
     changed = [line[3:] for line in status.stdout.splitlines() if line.strip()]
@@ -201,12 +269,20 @@ def source_key(part):
             return None, why
         h.update(f"prereq={prereq}\n".encode())
     for path in PARTS[part]["sources"]:
+        if path == "pixi.lock":
+            packages = locked_packages()
+            if packages is None:
+                return None, f"no packages of the environment {build_environment()} for this platform in pixi.lock"
+            h.update(f"packages={hashlib.sha256(packages.encode()).hexdigest()}\n".encode())
+            continue
         r = git("rev-parse", f"HEAD:{path}")
         if r.returncode != 0:
             continue  # a path that does not exist in this version
         h.update(f"{path}={r.stdout.strip()}\n".encode())
-    march = BUNDLE_MARCH if platform_name() == "linux-64" else "default"
-    h.update(f"march={march}\nformat={BUNDLE_FORMAT}\n".encode())
+    if platform_name() == "win-64":
+        r = git("rev-parse", f"HEAD:{WINDOWS_BUILD_SCRIPT}")
+        h.update(f"{WINDOWS_BUILD_SCRIPT}={r.stdout.strip()}\n".encode())
+    h.update(f"march={bundle_march()}\nformat={BUNDLE_FORMAT}\n".encode())
     return h.hexdigest()[:16], None
 
 
@@ -226,7 +302,7 @@ def bundle_files(part):
 
 def built_modules(part):
     """The python extension modules of a part that are in the checkout."""
-    return [g for g in PARTS[part]["required"] if glob.glob(os.path.join(ROOT, g), recursive=True)]
+    return [g for g in required_globs(part) if glob.glob(os.path.join(ROOT, g), recursive=True)]
 
 
 def read_manifest(part):
@@ -368,6 +444,8 @@ def roots():
             candidates.add(root[len("/private"):])
         elif root.split("/")[1:2] in (["tmp"], ["var"], ["etc"]):
             candidates.add("/private" + root)
+    if os.sep == "\\":
+        candidates |= {root.replace("\\", "/") for root in candidates}
     return sorted(candidates, key=len, reverse=True)
 
 
@@ -388,8 +466,8 @@ def placehold_root(staged):
 
 
 def pack(part):
-    if platform_name() not in ("linux-64", "osx-arm64"):
-        sys.exit("pack: only linux-64 and osx-arm64 are supported")
+    if platform_name() is None:
+        sys.exit("pack: only linux-64, osx-arm64 and win-64 are supported")
     # on macOS (Apple silicon) the modules are not built with -march: every machine has the same baseline
     if platform_name() == "linux-64" and os.environ.get("PYSLAM_MARCH") != BUNDLE_MARCH:
         sys.exit(f"pack: build the modules with PYSLAM_MARCH={BUNDLE_MARCH} and set it for this command too")
@@ -397,7 +475,7 @@ def pack(part):
     if key is None:
         sys.exit(f"pack {part}: no key for this checkout ({why}): commit the changes first")
     files = bundle_files(part)
-    missing = [g for g in PARTS[part]["required"] if not glob.glob(os.path.join(ROOT, g), recursive=True)]
+    missing = [g for g in required_globs(part) if not glob.glob(os.path.join(ROOT, g), recursive=True)]
     if missing:
         sys.exit(f"pack {part}: nothing built for " + ", ".join(missing))
 
@@ -425,7 +503,7 @@ def pack(part):
                 sys.exit(f"pack: patchelf failed on {path}: {r.stderr.strip()}")
         elif placehold_root(dst):
             rooted.append(path)
-    manifest = {"part": part, "key": key, "march": BUNDLE_MARCH if platform_name() == "linux-64" else "default",
+    manifest = {"part": part, "key": key, "march": bundle_march(),
                 "platform": platform_name(), "ladder": ladder(), "build_environment": build_environment(),
                 "files": files, "rooted": rooted}
     rel_manifest = os.path.relpath(manifest_path(part), ROOT)
@@ -449,6 +527,11 @@ def pack(part):
 # fetch
 # ---------------------------------------------------------------------------------------------
 def cpu_supports_baseline():
+    if platform_name() == "win-64":
+        import ctypes
+
+        PF_AVX2_INSTRUCTIONS_AVAILABLE = 40
+        return [] if ctypes.windll.kernel32.IsProcessorFeaturePresent(PF_AVX2_INSTRUCTIONS_AVAILABLE) else ["avx2"]
     try:
         with open("/proc/cpuinfo") as f:
             for line in f:
@@ -529,9 +612,9 @@ def no_bundle(part, reason):
 def fetch(part):
     if platform_name() is None:
         return no_bundle(part, f"no bundles for {platform.system()} {platform.machine()}")
-    lacking = cpu_supports_baseline() if platform_name() == "linux-64" else []
+    lacking = cpu_supports_baseline() if platform_name() in ("linux-64", "win-64") else []
     if lacking:
-        return no_bundle(part, f"this CPU lacks {', '.join(lacking)} (the bundles are built for {BUNDLE_MARCH})")
+        return no_bundle(part, f"this CPU lacks {', '.join(lacking)} (the bundles are built for {bundle_march()})")
     remove_old_bundle()
     key, why = source_key(part)
     installed = read_manifest(part)
@@ -598,7 +681,7 @@ def fetch(part):
         with open(full, "rb") as f:
             data = f.read()
         with open(full, "wb") as f:
-            f.write(data.replace(ROOT_PLACEHOLDER.encode(), ROOT.encode()))
+            f.write(data.replace(ROOT_PLACEHOLDER.encode(), ROOT.replace("\\", "/").encode()))
 
     # the bundle's modules must load in this environment: check them before relying on them
     check = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "check_native_modules.py"), "--present"])
@@ -631,7 +714,7 @@ def stale(part):
                     envs = set(re.findall(r"/\.pixi/envs/([^/\s]+)/", f.read()))
             except OSError:
                 continue
-            others = sorted(e for e in envs if ("cpu" if e.endswith("-cpu") else "gpu") != current)
+            others = sorted(e for e in envs if ladder_of(e) != current)
             if others:
                 log(f"removing {os.path.relpath(folder, ROOT)}: configured in the {others[0]} environment")
                 shutil.rmtree(folder, ignore_errors=True)

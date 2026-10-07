@@ -19,58 +19,64 @@
 """
 
 import pyslam  # first: sets the OpenMP thread settings before numpy/torch are imported
-import cv2
 import time
 import os
 import sys
-import numpy as np
 import json
 import threading
 import warnings
 import multiprocessing
-import torch.multiprocessing as mp
 import platform
 
-from pyslam.config import Config, kDefaultConfigPath  # , dump_config_to_json
+# A worker process started with "spawn" (always on Windows and macOS: the windows, loop detection, ...)
+# runs this file again, as "__mp_main__", before it starts. It needs none of the imports below: the
+# module of its own code imports what it uses. Importing all of pySLAM there cost about 0.35 GB and a
+# few seconds for every window.
+if __name__ != "__mp_main__":
+    import cv2
+    import numpy as np
+    import torch.multiprocessing as mp
 
-from pyslam.semantics.semantic_mapping_configs import SemanticMappingConfigs
-from pyslam.semantics.semantic_eval import evaluate_semantic_mapping
+    from pyslam.config import Config, kDefaultConfigPath  # , dump_config_to_json
 
-from pyslam.slam.slam import Slam, SlamState
-from pyslam.slam import PinholeCamera, USE_CPP
-from pyslam.slam.playback_throttle import PlaybackThrottle, is_throttle_enabled
+    from pyslam.semantics.semantic_mapping_configs import SemanticMappingConfigs
+    from pyslam.semantics.semantic_eval import evaluate_semantic_mapping
 
-from pyslam.viz.slam_plot_drawer import SlamPlotDrawerThread
-from pyslam.io.ground_truth import groundtruth_factory, is_valid_groundtruth, need_sim3_alignment
-from pyslam.io.dataset_factory import dataset_factory
-from pyslam.io.dataset_types import SensorType
-from pyslam.io.trajectory_writer import TrajectoryWriter
+    from pyslam.slam.slam import Slam, SlamState
+    from pyslam.slam import PinholeCamera, USE_CPP
+    from pyslam.slam.playback_throttle import PlaybackThrottle, is_throttle_enabled
 
-from pyslam.viz.viewer3D import Viewer3D
-from pyslam.utilities.logging import Printer, LoggerQueue
-from pyslam.utilities.system import force_kill_all_and_exit
-from pyslam.utilities.img_management import ImgWriter
-from pyslam.utilities.evaluation import eval_ate
-from pyslam.utilities.geom_trajectory import find_poses_associations
-from pyslam.utilities.colors import GlColors
-from pyslam.utilities.serialization import SerializableEnumEncoder
-from pyslam.utilities.timer import TimerFps
-from pyslam.viz.cvimage_thread import CvImageViewer
-from pyslam.viz.qimage_thread import QimageViewer
+    from pyslam.viz.slam_plot_drawer import SlamPlotDrawerThread
+    from pyslam.io.ground_truth import groundtruth_factory, is_valid_groundtruth, need_sim3_alignment
+    from pyslam.io.dataset_factory import dataset_factory
+    from pyslam.io.dataset_types import SensorType
+    from pyslam.io.trajectory_writer import TrajectoryWriter
 
-from pyslam.local_features.feature_tracker_configs import FeatureTrackerConfigs
-from pyslam.local_features.feature_tracker import FeatureTrackerTypes
-from pyslam.local_features.feature_types import FeatureDescriptorTypes
+    from pyslam.viz.viewer3D import Viewer3D
+    from pyslam.utilities.logging import Printer, LoggerQueue, FrameLog
+    from pyslam.utilities.system import force_kill_all_and_exit
+    from pyslam.utilities.img_management import ImgWriter
+    from pyslam.utilities.evaluation import eval_ate
+    from pyslam.utilities.geom_trajectory import find_poses_associations
+    from pyslam.utilities.colors import GlColors
+    from pyslam.utilities.serialization import SerializableEnumEncoder
+    from pyslam.utilities.timer import TimerFps
+    from pyslam.viz.cvimage_thread import CvImageViewer
+    from pyslam.viz.qimage_thread import QimageViewer
 
-from pyslam.loop_closing.loop_detector_configs import LoopDetectorConfigs, loop_detector_name_for_features
+    from pyslam.local_features.feature_tracker_configs import FeatureTrackerConfigs
+    from pyslam.local_features.feature_tracker import FeatureTrackerTypes
+    from pyslam.local_features.feature_types import FeatureDescriptorTypes
 
-from pyslam.depth_estimation.depth_estimator_factory import (
-    depth_estimator_factory,
-    DepthEstimatorType,
-)
-from pyslam.utilities.depth import img_from_depth, filter_shadow_points
+    from pyslam.loop_closing.loop_detector_configs import LoopDetectorConfigs, loop_detector_name_for_features
 
-from pyslam.config_parameters import Parameters
+    from pyslam.depth_estimation.depth_estimator_factory import (
+        depth_estimator_factory,
+        DepthEstimatorType,
+    )
+    from pyslam.utilities.depth import img_from_depth, filter_shadow_points
+
+    from pyslam.config_parameters import Parameters
 
 from datetime import datetime
 import traceback
@@ -294,9 +300,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Print the full camera and configuration dumps (JSON)",
+        help="Print the full camera and configuration dumps (JSON), and the step-by-step messages "
+        "of tracking for every frame (otherwise in logs/tracking.log)",
     )
     args = parser.parse_args()
+    if args.verbose:
+        Parameters.kTrackingDebugAndPrintToFile = False
 
     config_path = sequence_config_path(args, parser)  # --video, --images or --tum, if given
     if config_path:
@@ -581,7 +590,7 @@ if __name__ == "__main__":
             if not is_paused or do_step:
 
                 if dataset.is_ok:
-                    print("..................................")
+                    FrameLog.print("..................................")
                     img = dataset.getImageColor(img_id)
                     depth = dataset.getDepth(img_id)
                     img_right = (
@@ -599,7 +608,9 @@ if __name__ == "__main__":
                         else -1
                     )
 
-                    print(f"image: {img_id}, timestamp: {timestamp}, duration: {frame_duration}")
+                    FrameLog.print(
+                        f"image: {img_id}, timestamp: {timestamp}, duration: {frame_duration}"
+                    )
 
                     if img is not None:
 
@@ -653,6 +664,14 @@ if __name__ == "__main__":
 
                     img_id += 1
                     num_frames += 1
+                    if FrameLog.is_to_file() and num_frames % 100 == 0:
+                        # the details of every frame are in logs/tracking.log
+                        print(
+                            f"frame {img_id}"
+                            + (f"/{num_total_frames}" if num_total_frames else "")
+                            + f": {slam.tracking.state.name}, map: {slam.map.num_points()} points, "
+                            f"{slam.map.num_keyframes()} keyframes"
+                        )
                 else:
                     time.sleep(0.1)  # img is None
                     # Printer.yellow("sleeping for 0.1 seconds - img is None")

@@ -61,6 +61,7 @@ See the demo **video** for release v2.10.0
     - [Main requirements](#main-requirements)
     - [Ubuntu](#ubuntu)
     - [macOS](#macos)
+    - [Windows (native, experimental)](#windows-native-experimental)
     - [Docker](#docker)
     - [How to install non-free OpenCV modules](#how-to-install-non-free-opencv-modules)
     - [Troubleshooting and performance issues](#troubleshooting-and-performance-issues)
@@ -236,6 +237,7 @@ Refer to these links for further details about the specific install procedures t
 - **Ubuntu**  [=>](#ubuntu)
 - **macOS** [=>](#macos)  
 - **Windows+WSL2** [=>](https://github.com/luigifreda/pyslam/issues/51)
+- **Windows, native (experimental, no WSL2)** [=>](#windows-native-experimental)
 - **Docker** [=>](#docker)
 
 Once you completed the install procedure you can jump the [usage section](#usage).
@@ -267,6 +269,56 @@ The install process creates a new Python virtual environment `pyslam`.
 
 Follow the instructions in this [file](./docs/MAC.md). The reported procedure was tested under *Sequoia 15.1.1* and *Xcode 16.1*.
 
+
+### Windows (native, experimental)
+
+pySLAM's default level (ORB features, the C++ core, loop closing, g2o/GTSAM, the viewers) runs on Windows itself, without WSL2. This is **experimental** and lives only on the branch `feat/windows-native`. It has been tested on one Windows 11 machine so far: if you try it, please report what happens (see below).
+
+You need:
+- Windows 10 or 11, 64-bit, on an Intel or AMD processor with **AVX2** (most processors since about 2015; not Windows on ARM). `build` checks for it.
+- About **12 GB of free disk space** and an internet connection.
+- No Visual Studio, no compiler, no WSL2 and no NVIDIA GPU: the environment uses the CPU build of PyTorch.
+
+**1. Install git and pixi.** In PowerShell:
+```powershell
+winget install --id Git.Git -e
+powershell -ExecutionPolicy ByPass -c "irm -useb https://pixi.sh/install.ps1 | iex"
+```
+Open a **new** PowerShell window and check with `pixi --version` (0.81 or later) and `git --version`.
+
+**2. Get the code.**
+```powershell
+git clone --depth 1 --branch feat/windows-native https://github.com/sjulier/pyslam.git
+cd pyslam
+```
+
+**3. Build and check.** Every `pixi run` command on Windows takes `-e default-win`:
+```powershell
+pixi run -e default-win build    # the environment, the prebuilt C++ modules and the ORB vocabulary
+pixi run -e default-win check    # the C++ modules load and the optimiser tests pass
+```
+- The first `build` downloads the environment, mostly **without any output**, which is normal.
+- `build` then prints `[native bundle] installed the prebuilt prereq modules` and `... pyslam modules`, and ends with `OK: ... module(s) share the pybind11 internals ABI ...`. Nothing is compiled on your machine.
+- `check` ends with `11 passed` (GTSAM) and `2 passed` (g2o).
+
+**4. Run SLAM** on the KITTI 06 video that comes with the repo:
+```powershell
+pixi run -e default-win slam --headless   # without windows; prints the trajectory error (ATE) at the end
+pixi run -e default-win slam              # with the camera image, the 3D map, plots and loop closing's windows; q quits
+```
+The headless run ends with an ATE `rmse` of about 14 to 16 m.
+
+**5. Optional: the learned models** (SuperPoint, SuperPoint with the LightGlue matcher, and CosPlace place recognition; about 0.3 GB):
+```powershell
+pixi run -e default-win models
+```
+It prints one line per component, `OK` with `cpu`, and ends with `Installed: features-core vpr-core`. They run on the CPU, which is too slow to keep up with the camera.
+
+If a command stops (for example a download breaks), run the same command again.
+
+**Please report** whether the steps worked, with: the Windows version, the processor and memory (Settings > System > About), whether Visual Studio is installed, and, if a step failed, the command and the last 30 lines of its output.
+
+Not on Windows yet: the other learned features and place recognition models (`models-all-features`, `models-all-vpr`), a GPU build of PyTorch, `pixi run doctor`, and the levels above the default one (depth prediction, semantics, 3D reconstruction). For those, use [WSL2](./docs/TEACHING_SETUP.md).
 
 ### Docker
 

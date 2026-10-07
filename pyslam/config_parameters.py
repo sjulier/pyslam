@@ -64,6 +64,12 @@ class Parameters:
 
     # SLAM tracking-mapping threads
     kLocalMappingOnSeparateThread = True  # True: move local mapping on a separate thread, False: tracking and then local mapping in a single thread
+    # Single-thread only: inline local mapping always looks idle to the keyframe decision, so nearly
+    # every frame becomes a keyframe. With this on, each inline mapping step marks the mapper busy
+    # for its measured duration on the dataset's own clock (frame timestamps), so the keyframe
+    # cadence matches a mapper running concurrently in real time.
+    kLocalMappingSimulateBusyTimeInSingleThread = True
+    kLocalMappingSimulatedBusyTimeScale = 1.0  # scales the measured step time (e.g. >1 emulates a slower machine)
     kTrackingWaitForLocalMappingToGetIdle = False  # True: wait for local mapping to get idle before starting tracking, False: tracking and then local mapping in a single thread in a standard way
     # Playback throttle: when playing a dataset, slow down if local mapping cannot keep up.
     # Signal: the fraction of the recent frames in which tracking was weak, i.e. the frame matched
@@ -201,6 +207,9 @@ class Parameters:
     # Search matches for triangulation by using epipolar lines
     kMinDistanceFromEpipole = 10  # [pixels] Used with search by epipolar lines
 
+    # Tracking
+    kTrackingDebugAndPrintToFile = True  # the step-by-step messages of tracking go to logs/tracking.log (main_slam.py --verbose: to the console)
+
     # Local Mapping
     kLocalMappingParallelKpsMatching = True  # True: use parallel keypoint matching in local mapping, False: use serial keypoint matching
     kLocalMappingParallelKpsMatchingNumWorkers = 2
@@ -270,6 +279,7 @@ class Parameters:
     kLoopClosingParallelKpsMatching = True
     kLoopClosingParallelKpsMatchingNumWorkers = 2
     kLoopClosingGeometryCheckerMinKpsMatches = 20  # o:20
+    kLoopClosingMaxSim3Scale = 10.0  # a loop's Sim3 scale must be within [1/x, x] (monocular): rejects degenerate solutions
     kLoopClosingTh2 = 10
     kLoopClosingMaxReprojectionDistanceMapSearch = 10  # [pixels]    o:10
     kLoopClosingMinNumMatchedMapPoints = 40

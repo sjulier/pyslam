@@ -232,9 +232,15 @@ class LoopDetectorVprBase(LoopDetectorBase):
 
             trust_torch_hub_repos([torch_hub_repos[global_descriptor_name.lower()]])
         if global_descriptor_name.lower() == "hdc-delf":
-            from feature_extraction.feature_extractor_holistic import HDCDELF
+            from pyslam.workers.tf_client import has_tensorflow, RemoteObject
 
-            global_feature_extractor = HDCDELF()
+            if has_tensorflow():
+                from feature_extraction.feature_extractor_holistic import HDCDELF
+
+                global_feature_extractor = HDCDELF()
+            else:
+                # TensorFlow is not installed here: HDC-DELF runs in the TensorFlow worker
+                global_feature_extractor = RemoteObject("HDCDELF")
         elif global_descriptor_name.lower() == "alexnet":
             from feature_extraction.feature_extractor_holistic import AlexNetConv3Extractor
 

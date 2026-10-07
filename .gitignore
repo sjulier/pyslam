@@ -62,6 +62,7 @@ map.json
 data/ORBvoc.txt
 data/ORBvoc.dbow2
 data/ORBvoc.dbow3
+data/ORBvoc.dbow3.bin
 data/orbvoc.dbow3
 data/ORBvoc_test.txt 
 data/VLADvoc_orb.txt

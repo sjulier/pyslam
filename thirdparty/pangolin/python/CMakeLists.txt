@@ -37,8 +37,9 @@ endif()
 # include(pybind11Tools)
 
 
+# the bundled pybind11 directly, not through the symbolic link external/pybind11
 add_subdirectory(
-  ${PROJECT_SOURCE_DIR}/external/pybind11
+  ${PROJECT_SOURCE_DIR}/../pybind11
   ${CMAKE_BINARY_DIR}/external/pybind11_build
 )
 

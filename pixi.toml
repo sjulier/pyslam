@@ -18,7 +18,8 @@
 # `pixi run` without -e uses default. On Linux without an NVIDIA GPU use the CPU
 # ladder: default-cpu, depth-cpu, semantics-cpu, full-cpu. macOS uses the names above (MPS).
 #
-# Windows is supported through WSL2 (linux-64).
+# Windows: through WSL2 (linux-64), or natively (win-64, experimental): the default level only, with
+# CPU torch, in its own environment: `pixi run -e default-win <task>`.
 #
 # Rules:
 # - conda-forge for everything available there; PyPI only for packages that are
@@ -36,6 +37,7 @@ platforms = [
   "linux-64",
   { name = "osx-arm64-14", platform = "osx-arm64", macos = "14.0" },  # Qt 6 (opencv, pyside6, open3d) needs macOS >= 14
   { name = "linux-64-cuda", platform = "linux-64", cuda = "12" },
+  "win-64",
 ]
 version = "2.10.8"
 
@@ -76,6 +78,24 @@ requests = "*"
 gdown = "*"
 mcap = "*"
 
+[target.win-64.activation.env]
+# pySLAM prints non-ASCII characters; the default encoding of redirected output on Windows cannot
+PYTHONUTF8 = "1"
+# as [activation.env] above, in the syntax of Windows' shell
+PYTHONPATH = "%PIXI_PROJECT_ROOT%\\thirdparty\\gtsam_local\\install\\python"
+
+[target.win-64.tasks]
+# Windows has no bash: scripts/build_windows.py does what scripts/pixi_build.sh and the build.sh scripts do
+build = "python scripts/build_windows.py"
+# ... and scripts/install_extra_windows.py what scripts/install_extra.sh does, for the recommended models
+models = "python scripts/install_extra_windows.py features-core vpr-core"
+models-features = "python scripts/install_extra_windows.py features-core"
+models-vpr = "python scripts/install_extra_windows.py vpr-core"
+
+[target.win-64.dependencies]
+# The solver otherwise picks the headless build, which has no windows (cv2.imshow)
+opencv = { version = ">=4.12,<5", build = "qt6*" }
+
 [target.linux-64.dependencies]
 # Whatever pulls in CUDA (torch, faiss, tensorflow) uses the CUDA 12.9 builds,
 # which still support Pascal/Volta GPUs
@@ -100,11 +120,16 @@ flann = "*"
 glew = "*"
 spdlog = "*"
 qhull = "*"
-qhull-static = "*"  # libqhullcpp for cpp/volumetric (replaces scripts/install_qhull.sh)
 nlohmann_json = "*"  # replaces scripts/install_json_nlohmann.sh
 pyparsing = ">=3.2.5"
 pybind11-stubgen = ">=2.5.1"
 libopencv = ">=4.12,<5"
+
+[feature.build.target.unix.dependencies]
+qhull-static = "*"  # libqhullcpp for cpp/volumetric (replaces scripts/install_qhull.sh); no win-64 package
+
+[feature.build.target.win-64.dependencies]
+git = "*"  # the build clones GTSAM
 
 [feature.build.target.linux-64.dependencies]
 # `compilers` 2.x no longer pulls these in. Their activation scripts set CC, CXX,
@@ -193,6 +218,15 @@ platforms = ["linux-64"]
 [feature.cpu.target.linux-64.dependencies]
 pytorch = { version = "*", build = "*cpu*" }
 
+# Windows (native): CPU-only torch. Its own feature and environment (default-win), not win-64 in the cpu
+# feature: the environments of a solve group are solved together, and the levels above the default one
+# need packages that conda-forge does not have for Windows.
+[feature.cpu-win]
+platforms = ["win-64"]
+
+[feature.cpu-win.target.win-64.dependencies]
+pytorch = { version = "*", build = "*cpu*" }
+
 # ---------------------------------------------------------------------------
 # (i.a) depth and stereo inference (Depth Anything v2/v3, Depth Pro,
 # RAFT-Stereo, CREStereo)
@@ -267,9 +301,28 @@ wandb = "*"
 tensorflow = "*"
 tensorflow-hub = "*"
 tf-keras = "*"
+# imported by the feature code that runs in the TensorFlow worker (pyslam/workers/tf_worker.py)
+numba = "*"   # pyslam.utilities.features (GeoDesc)
+pandas = "*"  # DELF's package imports its training code
 
 [feature.tf.pypi-dependencies]
 tf-slim = "==1.1.0"
+evo = "*"  # pyslam.utilities.geometry (LF-Net); as in the feature slam, from PyPI
+
+# TensorFlow with CUDA on Linux with an NVIDIA GPU (DELF: ~0.02 s per frame against ~0.3 s on the CPU);
+# macOS: conda-forge's TensorFlow runs on the CPU
+[feature.tf-gpu]
+platforms = ["linux-64-cuda", "osx-arm64-14"]
+
+[feature.tf-gpu.target.linux-64.dependencies]
+tensorflow = { version = "*", build = "*cuda*" }
+
+# CPU-only TensorFlow on Linux
+[feature.tf-nogpu]
+platforms = ["linux-64"]
+
+[feature.tf-nogpu.target.linux-64.dependencies]
+tensorflow = { version = "*", build = "*cpu*" }
 
 # ---------------------------------------------------------------------------
 # dev tools
@@ -317,6 +370,9 @@ models-vpr = "bash scripts/install_extra.sh vpr-core"
 # All 19 learned features and matchers, and all 5 place recognition models (about 3.4 GB)
 models-all-features = "bash scripts/install_extra.sh features"
 models-all-vpr = "bash scripts/install_extra.sh vpr"
+# The TensorFlow-based features (DELF, LF-Net, ContextDesc, GeoDesc) and HDC-DELF: they run in the
+# pixi environment tf (installed on first use), in a worker process that pySLAM starts (pyslam/workers)
+models-tf = "bash scripts/install_extra.sh tf"
 # Check the installation
 check-abi = "python scripts/check_pybind11_abi.py"
 check-native = "python scripts/check_native_modules.py"  # every native module loads (works in every level)
@@ -366,5 +422,10 @@ default-cpu   = { features = ["build", "slam", "torch", "cpu", "dev"], solve-gro
 depth-cpu     = { features = ["build", "slam", "torch", "cpu", "depth", "dev"], solve-group = "cpu" }
 semantics-cpu = { features = ["build", "slam", "torch", "cpu", "depth", "semantics", "dev"], solve-group = "cpu" }
 full-cpu      = { features = ["build", "slam", "torch", "cpu", "depth", "semantics", "recon3d", "dev"], solve-group = "cpu" }
-# TensorFlow features, used through a worker process
-tf = { features = ["tf"] }
+# The TensorFlow-based features, in their own environment (their protobuf and friends do not fit the
+# ladder): pySLAM runs them in a worker process (pyslam/workers), tf from the GPU ladder, tf-cpu from
+# the CPU ladder
+tf     = { features = ["tf", "tf-gpu"] }
+tf-cpu = { features = ["tf", "tf-nogpu"] }
+# Windows (native), experimental: the default level with CPU torch
+default-win = { features = ["build", "slam", "torch", "cpu-win", "dev"], solve-group = "win" }

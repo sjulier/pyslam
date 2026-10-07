@@ -13,10 +13,12 @@ Each component runs in its own process on the bundled KITTI 06 test images:
 - semantic segmentation models: create the SemanticSegmentationType entry and segment kitti06-12;
 - scene-from-views models: create the SceneFromViewsType entry and reconstruct kitti06-12, -13, -14;
   Gaussian splatting: run its three CUDA extensions (both skipped, with the reason, on a machine
-  without an NVIDIA GPU).
+  without an NVIDIA GPU);
+- TensorFlow-based features and place recognition: as the local features and the VPR detectors; in an
+  environment without TensorFlow they run in the TensorFlow worker (pyslam/workers), device "tfw".
 
 usage: python scripts/extras_check.py <extra> [COMPONENT ...]   (run from anywhere)
-       <extra>: features, features-core, vpr, vpr-core, depth, semantics, scene3d (see install_extra.sh)
+       <extra>: features, features-core, vpr, vpr-core, depth, semantics, scene3d, tf (see install_extra.sh)
 
 A component whose model weights could not be downloaded (no network, a server that does not answer,
 a download quota) is reported as UNTRIED, not as failed: run the check again later.
@@ -46,7 +48,11 @@ EXTRA_COMPONENTS = {
     ],
     "semantics": ["DEEPLABV3", "SEGFORMER", "YOLO", "RFDETR", "CLIP", "DETIC", "EOV_SEG", "ODISE"],
     "scene3d": ["MAST3R", "DUST3R", "MVDUST3R", "VGGT", "VGGT_ROBUST", "FAST3R", "GAUSSIAN_SPLATTING"],
+    "tf": ["DELF", "LFNET", "CONTEXTDESC", "GEODESC", "HDC_DELF"],
 }
+
+# The TensorFlow-based components are local features, except these place recognition detectors
+TF_VPR_COMPONENTS = ("HDC_DELF",)
 
 # Code run in a child process for one component. It prints one JSON line prefixed by RESULT.
 _CHILD = r'''
@@ -64,10 +70,23 @@ try:
     data = os.path.join(os.getcwd(), "test", "data")
     read = lambda f: cv2.imread(os.path.join(data, f))
     t0 = time.time()
+    uses_tf = kind.startswith("tf-")
+    if uses_tf:
+        kind = kind[3:]
+        try:
+            import tensorflow as tf
+        except ImportError:
+            tf = None  # TensorFlow is not installed here: the model runs in the TensorFlow worker
     if kind == "features":
         from pyslam.local_features.feature_tracker import feature_tracker_factory
         from pyslam.local_features.feature_tracker_configs import FeatureTrackerConfigs
-        config = dict(getattr(FeatureTrackerConfigs, name))
+        if name == "GEODESC":  # a descriptor only, without a ready-made configuration: SIFT keypoints + GeoDesc
+            from pyslam.local_features.feature_types import FeatureDetectorTypes, FeatureDescriptorTypes
+            config = dict(FeatureTrackerConfigs.ORB2)
+            config["detector_type"] = FeatureDetectorTypes.SIFT
+            config["descriptor_type"] = FeatureDescriptorTypes.GEODESC
+        else:
+            config = dict(getattr(FeatureTrackerConfigs, name))
         config["num_features"] = 2000
         tracker = feature_tracker_factory(**config)
         img1, img2 = read("kitti06-12-color.png"), read("kitti06-17-color.png")
@@ -180,7 +199,14 @@ try:
         if not same > diff:
             raise RuntimeError(out["result"] + " does not hold")
     out["seconds"] = round(time.time() - t0, 1)
-    if torch.cuda.is_available() and torch.cuda.max_memory_allocated() > 0:
+    tf_on_gpu = False
+    if uses_tf and tf is None:
+        out["device"] = "tfw"  # in the TensorFlow worker (pyslam/workers/tf_worker.py)
+        out["status"] = "OK"
+        raise SystemExit
+    if uses_tf and tf.config.list_physical_devices("GPU"):
+        tf_on_gpu = tf.config.experimental.get_memory_info("GPU:0")["peak"] > 0
+    if tf_on_gpu or (torch.cuda.is_available() and torch.cuda.max_memory_allocated() > 0):
         out["device"] = "cuda"
     elif torch.backends.mps.is_available() and torch.mps.current_allocated_memory() > 0:
         out["device"] = "mps"
@@ -216,7 +242,7 @@ def check(kind, name, timeout_s=3600):
     t0 = time.time()
     try:
         proc = subprocess.run(  # features-core is checked like features, vpr-core like vpr
-            [sys.executable, "-c", _CHILD, kind.split("-")[0], name], cwd=ROOT_DIR, capture_output=True,
+            [sys.executable, "-c", _CHILD, kind.removesuffix("-core"), name], cwd=ROOT_DIR, capture_output=True,
             text=True, errors="replace", timeout=timeout_s,
         )
         lines = [l for l in proc.stdout.splitlines() if "RESULT {" in l]
@@ -239,7 +265,10 @@ def main():
     for name in names:
         if tty:  # show what is running (a first run may be downloading model weights)
             print(f"  {name:22s} ...", end="\r", flush=True)
-        r = check(kind, name)
+        child_kind = kind
+        if kind == "tf":
+            child_kind = "tf-vpr" if name in TF_VPR_COMPONENTS else "tf-features"
+        r = check(child_kind, name)
         if r["status"] == "OK":
             print(f"  {name:22s} OK    {r['device']:4s} {r['seconds']:6.1f} s  {r['result']}", flush=True)
         elif r["status"] == "SKIP":

@@ -31,6 +31,7 @@ from .feature_types import FeatureDetectorTypes, FeatureDescriptorTypes, Feature
 
 from pyslam.utilities.logging import Printer
 from pyslam.utilities.system import import_from, import_from_lazy
+from pyslam.workers.tf_client import tf_class
 from pyslam.utilities.features import (
     unpackSiftOctaveKps,
     UnpackOctaveMethod,
@@ -60,7 +61,9 @@ XfeatFeature2D = import_from_lazy("pyslam.local_features.feature_xfeat", "XFeat2
 TfeatFeature2D = import_from_lazy("pyslam.local_features.feature_tfeat", "TfeatFeature2D")
 Orbslam2Feature2D = import_from_lazy("pyslam.local_features.feature_orbslam2", "Orbslam2Feature2D")
 HardnetFeature2D = import_from_lazy("pyslam.local_features.feature_hardnet", "HardnetFeature2D")
-GeodescFeature2D = import_from_lazy("pyslam.local_features.feature_geodesc", "GeodescFeature2D")
+# The TensorFlow-based features run in the TensorFlow worker when TensorFlow is not installed here
+# (pyslam/workers/tf_client.py)
+GeodescFeature2D = tf_class("pyslam.local_features.feature_geodesc", "GeodescFeature2D")
 SosnetFeature2D = import_from_lazy("pyslam.local_features.feature_sosnet", "SosnetFeature2D")
 if False:
     L2NetKerasFeature2D = import_from(
@@ -69,11 +72,9 @@ if False:
 L2NetFeature2D = import_from_lazy("pyslam.local_features.feature_l2net", "L2NetFeature2D")
 LogpolarFeature2D = import_from_lazy("pyslam.local_features.feature_logpolar", "LogpolarFeature2D")
 D2NetFeature2D = import_from_lazy("pyslam.local_features.feature_d2net", "D2NetFeature2D")
-DelfFeature2D = import_from_lazy("pyslam.local_features.feature_delf", "DelfFeature2D")
-ContextDescFeature2D = import_from_lazy(
-    "pyslam.local_features.feature_contextdesc", "ContextDescFeature2D"
-)
-LfNetFeature2D = import_from_lazy("pyslam.local_features.feature_lfnet", "LfNetFeature2D")
+DelfFeature2D = tf_class("pyslam.local_features.feature_delf", "DelfFeature2D")
+ContextDescFeature2D = tf_class("pyslam.local_features.feature_contextdesc", "ContextDescFeature2D")
+LfNetFeature2D = tf_class("pyslam.local_features.feature_lfnet", "LfNetFeature2D")
 R2d2Feature2D = import_from_lazy("pyslam.local_features.feature_r2d2", "R2d2Feature2D")
 KeyNetDescFeature2D = import_from_lazy("pyslam.local_features.feature_keynet", "KeyNetDescFeature2D")
 DiskFeature2D = import_from_lazy("pyslam.local_features.feature_disk", "DiskFeature2D")
@@ -108,6 +109,12 @@ if not kVerbose:
 
     def print(*args, **kwargs):
         pass
+
+else:
+    from pyslam.utilities.logging import FrameLog
+
+    # the number of features of each frame: to logs/tracking.log when SLAM tracking is running
+    print = FrameLog.print
 
 
 class KeyPointFilterTypes(Enum):

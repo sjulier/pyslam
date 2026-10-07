@@ -50,8 +50,8 @@ import sys
 sys.path.append("../")
 from pyslam.config import Config
 
-# import multiprocessing as mp
-import torch.multiprocessing as mp
+# (not torch.multiprocessing: see pyslam/utilities/logging.py)
+import multiprocessing as mp
 from pyslam.utilities.multi_processing import MultiprocessingManager
 from pyslam.utilities.logging import Logging
 from pyslam.utilities.system import locally_configure_qt_environment

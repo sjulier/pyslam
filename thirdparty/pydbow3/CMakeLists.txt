@@ -64,9 +64,9 @@ if(BUILD_WITH_MARCH_NATIVE)
     endif()
 endif() 
 
-add_subdirectory(modules/pybind11)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../pybind11" pybind11)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/pyslam_pybind11.cmake")
-pyslam_use_bundled_pybind11("${CMAKE_CURRENT_SOURCE_DIR}/modules/pybind11")
+pyslam_use_bundled_pybind11("${CMAKE_CURRENT_SOURCE_DIR}/../pybind11")
 
 find_package(OpenCV REQUIRED)
 
