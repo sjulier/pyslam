@@ -174,8 +174,9 @@ ROOT_PLACEHOLDER = "@PYSLAM_NATIVE_BUNDLE_ROOT@"
 # is not set, so that a module rebuilt after a bundle was installed matches the bundle's
 MARCH_FILE = "thirdparty/.pyslam_march"
 
-# Part of the key: increase it when the layout of the bundles changes
-BUNDLE_FORMAT = 2
+# Part of the key: increase it when the layout of the bundles or the way of computing the key changes
+# (3: pixi.lock counts by the packages of the build environment only)
+BUNDLE_FORMAT = 3
 
 
 def log(msg):
@@ -218,6 +219,35 @@ def platform_name():
     return None
 
 
+def locked_packages():
+    """The packages that pixi.lock (as committed) gives the build environment on this platform, one per line,
+    or None. Only these count for the key: changes to other environments (e.g. tf) or platforms (e.g.
+    win-64) leave the bundles valid."""
+    r = git("show", "HEAD:pixi.lock")
+    if r.returncode != 0:
+        return None
+    # environments:
+    #   <name>:
+    #     packages:
+    #       <platform>:            (linux-64-cuda, linux-64, osx-arm64-14, ...)
+    #       - conda: <url>
+    environment, platform_key, packages = None, None, {}
+    for line in r.stdout.splitlines():
+        if line.startswith("packages:"):
+            break  # the package details, after the environments
+        if line.startswith("  ") and not line.startswith("   ") and line.rstrip().endswith(":"):
+            environment, platform_key = line.strip()[:-1], None
+        elif line.startswith("      ") and not line.startswith("       ") and line.rstrip().endswith(":"):
+            platform_key = line.strip()[:-1]
+        elif line.startswith("      - ") and environment == build_environment() and platform_key:
+            packages.setdefault(platform_key, []).append(line.strip()[2:])
+    # the lock's platform names extend the system's: linux-64-cuda, osx-arm64-14
+    matches = [k for k in packages if k == platform_name() or k.startswith(platform_name() + "-")]
+    if platform_name() is None or len(matches) != 1:
+        return None
+    return "\n".join(sorted(packages[matches[0]])) + "\n"
+
+
 def source_key(part):
     """A key for what a part's native modules are built from, or None (and why) if it cannot be computed."""
     if git("rev-parse", "--git-dir").returncode != 0:
@@ -239,6 +269,12 @@ def source_key(part):
             return None, why
         h.update(f"prereq={prereq}\n".encode())
     for path in PARTS[part]["sources"]:
+        if path == "pixi.lock":
+            packages = locked_packages()
+            if packages is None:
+                return None, f"no packages of the environment {build_environment()} for this platform in pixi.lock"
+            h.update(f"packages={hashlib.sha256(packages.encode()).hexdigest()}\n".encode())
+            continue
         r = git("rev-parse", f"HEAD:{path}")
         if r.returncode != 0:
             continue  # a path that does not exist in this version
