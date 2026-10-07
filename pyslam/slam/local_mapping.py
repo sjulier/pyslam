@@ -440,7 +440,7 @@ class LocalMapping:
     def do_local_mapping(self):
         LocalMapping.print("local mapping: starting...")
 
-        Printer.cyan("@local mapping")
+        LocalMapping.print("@local mapping")
         time_start = time.time()
 
         if self.kf_cur is None:
@@ -571,7 +571,7 @@ class LocalMapping:
         LocalMapping.print(
             f"local optimization (LBA) error^2: {err}, timing: {self.time_local_opt.last_elapsed}"
         )
-        Printer.green("KF(%d) #points: %d " % (self.kf_cur.id, num_kf_ref_tracked_points))
+        LocalMapping.print("KF(%d) #points: %d " % (self.kf_cur.id, num_kf_ref_tracked_points))
 
     def large_window_BA(self):
         Printer.blue("@large BA")

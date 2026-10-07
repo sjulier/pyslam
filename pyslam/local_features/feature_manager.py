@@ -109,6 +109,12 @@ if not kVerbose:
     def print(*args, **kwargs):
         pass
 
+else:
+    from pyslam.utilities.logging import FrameLog
+
+    # the number of features of each frame: to logs/tracking.log when SLAM tracking is running
+    print = FrameLog.print
+
 
 class KeyPointFilterTypes(Enum):
     NONE = 0

@@ -698,9 +698,10 @@ class PoseOptimizerGTSAM:
 
             self.initial = result  # restart from latest computations
 
-        print(
-            f"pose optimization: available {self.num_factors} points, found {num_bad_point_edges} bad points"
-        )
+        if verbose:
+            print(
+                f"pose optimization: available {self.num_factors} points, found {num_bad_point_edges} bad points"
+            )
         num_valid_points = self.num_factors - num_bad_point_edges
         if num_valid_points < 10:
             Printer.red("pose_optimization: not enough edges!")
@@ -923,9 +924,10 @@ class PoseOptimizerGTSAM_Tcw:
 
             self.initial = result  # restart from latest computations
 
-        print(
-            f"pose optimization: available {self.num_factors} points, found {num_bad_point_edges} bad points"
-        )
+        if verbose:
+            print(
+                f"pose optimization: available {self.num_factors} points, found {num_bad_point_edges} bad points"
+            )
         num_valid_points = self.num_factors - num_bad_point_edges
         if num_valid_points < 10:
             Printer.red("pose_optimization: not enough edges!")

@@ -241,6 +241,47 @@ class Logging(object):
         return logger
 
 
+class FrameLog:
+    """The step-by-step messages of tracking (several lines per frame).
+
+    They go to logs/tracking.log, as the messages of local mapping and loop closing go to their own
+    files, once a Tracking object exists and Parameters.kTrackingDebugAndPrintToFile is set. Otherwise
+    (main_slam.py --verbose, or a script without SLAM tracking) they are printed to the console.
+    """
+
+    is_active = False  # set by Tracking
+    _logger = None
+
+    @staticmethod
+    def start():
+        FrameLog.is_active = True
+
+    @staticmethod
+    def is_to_file():
+        from pyslam.config_parameters import Parameters
+
+        return FrameLog.is_active and Parameters.kTrackingDebugAndPrintToFile
+
+    @staticmethod
+    def print(*args, **kwargs):
+        if not FrameLog.is_to_file():
+            print(*args, **kwargs)
+            return
+        if FrameLog._logger is None:
+            from pyslam.config_parameters import Parameters
+
+            # a process other than the main one adds to the file instead of starting it again
+            mode = "w" if mp.current_process().name == "MainProcess" else "a"
+            FrameLog._logger = Logging.setup_file_logger(
+                "tracking_logger",
+                os.path.join(Parameters.kLogsFolder, "tracking.log"),
+                mode=mode,
+                formatter=Logging.simple_log_formatter,
+            )
+            FrameLog._logger.propagate = False
+        FrameLog._logger.info(" ".join(str(arg) for arg in args))
+
+
 class SingletonBase:
     _instances = {}
 
