@@ -225,6 +225,41 @@ def lazy_module(name):
     return module
 
 
+class _DeferredModule:
+    """A module imported on the first use of one of its attributes. Unlike lazy_module() it is not in
+    sys.modules before that, where code that looks at every module (inspect.getmodule(), used by
+    warnings and torch among others) makes a LazyLoader module load at once."""
+
+    def __init__(self, name, hint=""):
+        self._deferred_name, self._deferred_hint = name, hint
+
+    def __getattr__(self, attr):
+        if attr.startswith("__") and attr.endswith("__"):
+            raise AttributeError(attr)  # copy, pickle, inspect: do not import for these
+        import importlib
+
+        try:
+            module = importlib.import_module(self._deferred_name)
+        except ModuleNotFoundError as e:
+            if e.name != self._deferred_name or not self._deferred_hint:
+                raise
+            raise ModuleNotFoundError(f"{e} {self._deferred_hint}", name=e.name) from None
+        value = getattr(module, attr)
+        self.__dict__[attr] = value  # next time without __getattr__
+        return value
+
+    def __repr__(self):
+        state = "imported" if self._deferred_name in sys.modules else "not imported yet"
+        return f"<deferred module {self._deferred_name}: {state}>"
+
+
+def deferred_module(name, hint=""):
+    """Return a stand-in for module `name` that imports it when one of its attributes is first used.
+    For optional dependencies that the default configuration never uses: a module that is not
+    installed is then an error (ModuleNotFoundError, with `hint`) only when it is needed."""
+    return _DeferredModule(name, hint)
+
+
 def get_opencv_version():
     opencv_major = int(cv2.__version__.split(".")[0])
     opencv_minor = int(cv2.__version__.split(".")[1])

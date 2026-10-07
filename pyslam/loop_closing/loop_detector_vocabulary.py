@@ -41,7 +41,7 @@ kDataFolder = kRootFolder + "/data"
 
 
 # NOTE: At present, under mac, boost serialization is very slow, we use txt files instead.
-# Windows uses them too: the binary files written on Linux cannot be read there (the size of long differs).
+# Windows uses them too: the boost archives written on Linux cannot be read there (the size of long differs).
 def dbow2_orb_vocabulary_factory(*args, **kwargs):
     use_text_vocabulary = platform.system() in ("Darwin", "Windows")
     if use_text_vocabulary:
@@ -50,13 +50,9 @@ def dbow2_orb_vocabulary_factory(*args, **kwargs):
         return DBow2OrbVocabularyData(*args, **kwargs)
 
 
-# NOTE: at present, under mac, boost serialization is very slow, we use txt files instead.
+# One file for Linux, macOS and Windows: DBoW3's own binary format (see DBow3OrbVocabularyDataBin).
 def dbow3_orb_vocabulary_factory(*args, **kwargs):
-    use_text_vocabulary = platform.system() in ("Darwin", "Windows")
-    if use_text_vocabulary:
-        return DBowOrbVocabularyDataTxt(*args, **kwargs)
-    else:
-        return DBow3OrbVocabularyData(*args, **kwargs)
+    return DBow3OrbVocabularyDataBin(*args, **kwargs)
 
 
 # Sizes in bytes of the vocabulary files that pySLAM downloads. A file with another size is an
@@ -65,6 +61,7 @@ kVocabularyFileSizes = {
     "ORBvoc.txt": 145250924,
     "ORBvoc.dbow2": 105381767,
     "ORBvoc.dbow3": 105381669,
+    "ORBvoc.dbow3.bin": 72698865,
 }
 
 
@@ -146,7 +143,7 @@ class VocabularyData(Serializable):
             os.replace(part, self.vocab_file_path)
             return True
         except Exception as e:  # noqa: BLE001  (network errors, a corrupt or missing file)
-            Printer.yellow(f"VocabularyData: download from {url} failed ({e}): trying {self.url_type}")
+            Printer.yellow(f"VocabularyData: download from {url} failed ({e})")
             if os.path.exists(part):
                 os.remove(part)
             return False
@@ -224,6 +221,56 @@ class DBow3OrbVocabularyData(VocabularyData):
         super().__init__(
             vocab_file_path, descriptor_type, descriptor_dimension, url_vocabulary, url_type
         )
+
+
+# The ORB vocabulary in DBoW3's own binary format (Vocabulary::save() without compression): the same
+# file is read on Linux, macOS and Windows, where the boost archive ORBvoc.dbow3 can only be read on
+# the system that wrote it. It comes from the release; if that fails, it is written here from one of
+# the older files.
+@register_class
+class DBow3OrbVocabularyDataBin(VocabularyData):
+    kOrbVocabFile = kDataFolder + "/ORBvoc.dbow3.bin"
+
+    def __init__(
+        self,
+        vocab_file_path=kOrbVocabFile,
+        descriptor_type=FeatureDescriptorTypes.ORB2,
+        descriptor_dimension=32,
+        url_vocabulary=kVocabularyReleaseUrl,
+        url_type="release",
+    ):
+        super().__init__(
+            vocab_file_path, descriptor_type, descriptor_dimension, url_vocabulary, url_type
+        )
+
+    def check_download(self):
+        self.set_aside_incomplete_file()
+        self.copy_from_mirror()
+        if not os.path.exists(self.vocab_file_path):
+            self.download_from_release()
+        if not os.path.exists(self.vocab_file_path):
+            self.convert_from_older_file()
+        super().check_download()
+
+    def convert_from_older_file(self):
+        """Write the file from ORBvoc.dbow3 if it is here (Linux only), else from ORBvoc.txt."""
+        older = DBow3OrbVocabularyData()
+        if platform.system() != "Linux" or not os.path.exists(older.vocab_file_path):
+            older = DBowOrbVocabularyDataTxt()
+        older.check_download()
+        import pyslam.config as config
+        from pyslam.utilities.system import import_native_module
+
+        config.cfg.set_lib("pydbow3")
+        dbow3 = import_native_module("pydbow3", "run thirdparty/pydbow3/build.sh")
+        Printer.blue(
+            f"VocabularyData: writing {self.vocab_file_path} from {older.vocab_file_path}"
+        )
+        voc = dbow3.Vocabulary()
+        voc.load(older.vocab_file_path, use_boost=older.vocab_file_path.endswith(".dbow3"))
+        part = self.vocab_file_path + ".part"
+        voc.save(part, binary_compressed=False)
+        os.replace(part, self.vocab_file_path)
 
 
 @register_class

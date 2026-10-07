@@ -284,12 +284,12 @@ def check_native_modules(r):
 
 def check_data(r):
     r.section("Data")
-    # the default loop detector's vocabulary: the text file on macOS, the DBoW3 binary elsewhere
-    # (pyslam.loop_closing.loop_detector_vocabulary), with the size pySLAM expects for a complete download
+    # the default loop detector's vocabulary (pyslam.loop_closing.loop_detector_vocabulary), with the
+    # size pySLAM expects for a complete download
     ok, out = run_python(textwrap.dedent("""
-        import json, platform
+        import json, os
         from pyslam.loop_closing import loop_detector_vocabulary as v
-        name = "ORBvoc.txt" if platform.system() == "Darwin" else "ORBvoc.dbow3"
+        name = os.path.basename(v.dbow3_orb_vocabulary_factory().vocab_file_path)
         print(json.dumps({"path": v.kDataFolder + "/" + name, "size": v.kVocabularyFileSizes.get(name)}))
         """), timeout=120)
     try:
@@ -297,11 +297,11 @@ def check_data(r):
     except ValueError:
         vocab = None
     if vocab is None:
-        vocab = {"path": os.path.join(ROOT_DIR, "data", "ORBvoc.txt" if sys.platform == "darwin" else "ORBvoc.dbow3"), "size": None}
+        vocab = {"path": os.path.join(ROOT_DIR, "data", "ORBvoc.dbow3.bin"), "size": None}
     path, expected = vocab["path"], vocab["size"]
     name = os.path.basename(path)
     if not os.path.exists(path):
-        r.add("WARN", "ORB vocabulary", f"{name} missing: run `pixi run vocabulary` (about 100 MB) before the first SLAM run")
+        r.add("WARN", "ORB vocabulary", f"{name} missing: run `pixi run vocabulary` (a 31 MB download) before the first SLAM run")
     elif expected and os.path.getsize(path) != expected:
         r.add("FAIL", "ORB vocabulary", f"{name} is {os.path.getsize(path) / 1e6:.0f} MB, expected {expected / 1e6:.0f} MB: an interrupted download; delete it and run `pixi run vocabulary`")
     else:

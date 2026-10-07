@@ -597,8 +597,10 @@ PoseOptimizationResult OptimizerG2o::pose_optimization(FramePtr &frame, bool ver
         }
     }
 
-    std::cout << "pose_optimization: available " << num_point_edges << " points, found "
-              << num_bad_point_edges << " bad points" << std::endl;
+    if (verbose) {
+        std::cout << "pose_optimization: available " << num_point_edges << " points, found "
+                  << num_bad_point_edges << " bad points" << std::endl;
+    }
 
     result.num_valid_points = num_point_edges - num_bad_point_edges;
     if (result.num_valid_points < 10) {
@@ -789,9 +791,11 @@ std::pair<double, double> OptimizerG2o::local_bundle_adjustment(
         return {-1.0, 0.0};
     }
 
-    std::cout << "local_bundle_adjustment: starting optimization with " << graph_keyframes.size()
-              << " keyframes, " << graph_points.size() << " points, " << num_edges << " edges"
-              << std::endl;
+    if (verbose) {
+        std::cout << "local_bundle_adjustment: starting optimization with "
+                  << graph_keyframes.size() << " keyframes, " << graph_points.size() << " points, "
+                  << num_edges << " edges" << std::endl;
+    }
 
     // Initial optimization
     optimizer.initializeOptimization();

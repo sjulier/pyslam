@@ -41,6 +41,7 @@ from .loop_detector_base import LoopDetectorBase
 # main_slam.py, even with the default DBOW3.
 from .loop_detector_vocabulary import (
     DBow3OrbVocabularyData,
+    DBow3OrbVocabularyDataBin,
     DBow2OrbVocabularyData,
     VladOrbVocabularyData,
     dbow2_orb_vocabulary_factory,
@@ -187,7 +188,6 @@ class LoopDetectorConfigs:
         vocabulary_data=dbow2_orb_vocabulary_factory(),
     )  # Must be a vocabulary built with the frontend local descriptor type
 
-    # NOTE: Under mac, loading the DBOW2 vocabulary may be very slow (both from text and from boost archive).
     DBOW3 = dict(
         global_descriptor_type=GlobalDescriptorType.DBOW3,
         local_feature_manager_config=None,  # If None the frontend local descriptors will be re-used (must be compatible with the used descriptor aggregator and loaded vocabulary)
@@ -297,7 +297,7 @@ def loop_detector_factory(
     global_descriptor_type=GlobalDescriptorType.DBOW3,
     local_feature_manager_config=None,  # If None the frontend local descriptors will be re-used (depending on the used descriptor aggregator and vocabulary)
     local_descriptor_aggregation_type=LocalDescriptorAggregationType.DBOW3,
-    vocabulary_data=DBow3OrbVocabularyData(),
+    vocabulary_data=DBow3OrbVocabularyDataBin(),
     slam_info=SlamFeatureManagerInfo(),
 ):
 
