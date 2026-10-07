@@ -51,7 +51,7 @@ inline bool is_uint8_dtype(const py::dtype &dt) {
         return true;
     }
     // Fallback: check itemsize and kind for compatibility
-    const ssize_t itemsize = dt.itemsize();
+    const py::ssize_t itemsize = dt.itemsize();
     const char kind = py::cast<char>(dt.attr("kind"));
     return (kind == 'u' && itemsize == 1);
 }
@@ -61,7 +61,7 @@ inline bool is_float32_dtype(const py::dtype &dt) {
         return true;
     }
     // Fallback: check itemsize and kind for compatibility
-    const ssize_t itemsize = dt.itemsize();
+    const py::ssize_t itemsize = dt.itemsize();
     const char kind = py::cast<char>(dt.attr("kind"));
     return (kind == 'f' && itemsize == 4);
 }
@@ -71,7 +71,7 @@ inline bool is_float64_dtype(const py::dtype &dt) {
         return true;
     }
     // Fallback: check itemsize and kind for compatibility
-    const ssize_t itemsize = dt.itemsize();
+    const py::ssize_t itemsize = dt.itemsize();
     const char kind = py::cast<char>(dt.attr("kind"));
     return (kind == 'f' && itemsize == 8);
 }
@@ -82,14 +82,14 @@ inline bool is_int32_dtype(const py::dtype &dt) {
     }
     // Fallback: check itemsize and kind for compatibility
     // int32 is typically 4 bytes with signed integer kind 'i'
-    const ssize_t itemsize = dt.itemsize();
+    const py::ssize_t itemsize = dt.itemsize();
     const char kind = py::cast<char>(dt.attr("kind"));
     return (kind == 'i' && itemsize == 4);
 }
 
 // Helper function to get dtype description for error messages
 inline std::string dtype_description(const py::dtype &dt) {
-    const ssize_t itemsize = dt.itemsize();
+    const py::ssize_t itemsize = dt.itemsize();
     const char kind = py::cast<char>(dt.attr("kind"));
     return "kind=" + std::string(1, kind) + " itemsize=" + std::to_string(itemsize);
 }

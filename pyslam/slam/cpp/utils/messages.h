@@ -131,10 +131,17 @@ inline void log_impl(std::ostream &os, std::string_view color, std::string_view 
 #endif
 
 // ---------- Assertions ----------
+// Branch hint; MSVC has no __builtin_expect
+#if defined(__GNUC__) || defined(__clang__)
+#define MSG_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#else
+#define MSG_UNLIKELY(x) (x)
+#endif
+
 #ifndef NDEBUG
 #define MSG_ASSERT(condition, message)                                                             \
     do {                                                                                           \
-        if (__builtin_expect(!(condition), 0)) { /* [[unlikely]] alt */                            \
+        if (MSG_UNLIKELY(!(condition))) { /* [[unlikely]] alt */                            \
             ::detail::log_impl(::detail::err_stream(), IoColor::red, "ASSERT: ", #condition);      \
             ::detail::log_impl(::detail::err_stream(), IoColor::red,                               \
                                "WHERE: ", __FILE__ ":" + std::to_string(__LINE__));                \
@@ -153,7 +160,7 @@ inline void log_impl(std::ostream &os, std::string_view color, std::string_view 
 
 #define MSG_FORCED_ASSERT(condition, message)                                                      \
     do {                                                                                           \
-        if (__builtin_expect(!(condition), 0)) { /* [[unlikely]] alt */                            \
+        if (MSG_UNLIKELY(!(condition))) { /* [[unlikely]] alt */                            \
             ::detail::log_impl(::detail::err_stream(), IoColor::red, "ASSERT: ", #condition);      \
             ::detail::log_impl(::detail::err_stream(), IoColor::red,                               \
                                "WHERE: ", __FILE__ ":" + std::to_string(__LINE__));                \

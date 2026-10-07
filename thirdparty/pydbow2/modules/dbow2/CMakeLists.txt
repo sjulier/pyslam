@@ -111,7 +111,12 @@ ${Boost_LIBRARIES}
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 include_directories(${OpenCV_INCLUDE_DIRS})
-add_library(DBoW2 SHARED ${SRCS_DBOW2} ${SRCS_DUTILS})
+if(WIN32)
+  # static: DBoW2's classes have no export declarations, which a DLL would need
+  add_library(DBoW2 STATIC ${SRCS_DBOW2} ${SRCS_DUTILS})
+else()
+  add_library(DBoW2 SHARED ${SRCS_DBOW2} ${SRCS_DUTILS})
+endif()
 target_link_libraries(DBoW2 ${EXTERNAL_CORE_LIBS})
 
 

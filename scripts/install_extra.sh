@@ -64,12 +64,37 @@ function list_extras() {
 # init_submodules <path> ...: fetch only the given git submodules (recursively), each at its recorded
 # commit and without its history (--depth 1; git fetches the commit directly when it is not at the tip
 # of a branch). If that fails, e.g. with a server that does not allow fetching a commit directly, the
-# whole history is fetched.
+# whole history is fetched. A fetch that fails is tried again after a pause (5, 15 and 30 s: four
+# attempts in all), since most failures are a connection to GitHub that drops for a moment;
+# PYSLAM_SUBMODULE_RETRY_PAUSES="<s> <s> ..." sets other pauses ("" for a single attempt).
 function init_submodules() {
     print_blue "Fetching submodules: $*"
-    git submodule update --init --recursive --depth 1 -- "$@" \
-        || git submodule update --init --recursive -- "$@" \
-        || { print_red "ERROR: could not fetch submodules: $*"; exit 3; }
+    local pauses="${PYSLAM_SUBMODULE_RETRY_PAUSES-5 15 30}"
+    local num_attempts=$(( $(echo $pauses | wc -w) + 1 )) attempt=1 pause log
+    log="$(mktemp)"
+    for pause in $pauses ""; do
+        # git's output is kept in a file: on a failure git repeats the same error for its own retry and
+        # again for the fallback, about eight times per attempt, which buries the messages below
+        if git submodule update --init --recursive --depth 1 -- "$@" > "$log" 2>&1 \
+            || git submodule update --init --recursive -- "$@" >> "$log" 2>&1; then
+            cat "$log"
+            rm -f "$log"
+            return 0
+        fi
+        if grep -qE "^(fatal|error):" "$log"; then
+            grep -E "^(fatal|error):" "$log" | sort -u | sed 's/^/    git: /'
+        else
+            tail -n 5 "$log" | sed 's/^/    git: /'
+        fi
+        [ -n "$pause" ] || break
+        print_yellow "Fetching the submodules failed (attempt $attempt of $num_attempts; git's message is above): trying again in $pause s ..."
+        sleep "$pause"
+        attempt=$((attempt + 1))
+    done
+    rm -f "$log"
+    print_red "ERROR: could not fetch submodules after $num_attempts attempt(s): $*"
+    print_red "Check the network connection and run the same command again: what is already installed is kept."
+    exit 3
 }
 
 # apply_patch <thirdparty dir> <patch file in thirdparty/>: apply unless it is already applied

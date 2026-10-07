@@ -664,8 +664,9 @@ if __name__ == "__main__":
 
                     img_id += 1
                     num_frames += 1
-                    if FrameLog.is_to_file() and num_frames % 100 == 0:
-                        # the details of every frame are in logs/tracking.log
+                    if FrameLog.is_to_file() and (num_frames == 1 or num_frames % 100 == 0):
+                        # the first frame (tracking has started), then every 100 frames; the details of
+                        # every frame are in logs/tracking.log
                         print(
                             f"frame {img_id}"
                             + (f"/{num_total_frames}" if num_total_frames else "")

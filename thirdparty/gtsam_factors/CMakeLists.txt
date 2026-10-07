@@ -76,7 +76,11 @@ endif()
 # GTSAM_DIR and GTSAM_INCLUDE_DIR are cache entries, so clear them in case a previous
 # configure resolved them to a system copy.
 get_filename_component(GTSAM_LOCAL_ROOT "${PROJECT_SOURCE_DIR}/../gtsam_local" ABSOLUTE)
-set(GTSAM_CONFIG_DIR "${GTSAM_LOCAL_ROOT}/install/lib/cmake/GTSAM")
+if(WIN32)
+  set(GTSAM_CONFIG_DIR "${GTSAM_LOCAL_ROOT}/install/CMake")  # where GTSAM installs its CMake files on Windows
+else()
+  set(GTSAM_CONFIG_DIR "${GTSAM_LOCAL_ROOT}/install/lib/cmake/GTSAM")
+endif()
 unset(GTSAM_DIR CACHE)
 unset(GTSAM_INCLUDE_DIR CACHE)
 find_package(GTSAM CONFIG PATHS "${GTSAM_CONFIG_DIR}" NO_DEFAULT_PATH)
@@ -131,7 +135,8 @@ include_directories(
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
-add_subdirectory(pybind11)
+# GTSAM's own pybind11, directly (not through a symbolic link)
+add_subdirectory("${GTSAM_LOCAL_ROOT}/wrap/pybind11" pybind11)
 
 pybind11_add_module(
   gtsam_factors 

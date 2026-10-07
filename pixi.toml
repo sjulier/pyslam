@@ -18,7 +18,8 @@
 # `pixi run` without -e uses default. On Linux without an NVIDIA GPU use the CPU
 # ladder: default-cpu, depth-cpu, semantics-cpu, full-cpu. macOS uses the names above (MPS).
 #
-# Windows is supported through WSL2 (linux-64).
+# Windows: through WSL2 (linux-64), or natively (win-64, experimental): the default level only, with
+# CPU torch, in its own environment: `pixi run -e default-win <task>`.
 #
 # Rules:
 # - conda-forge for everything available there; PyPI only for packages that are
@@ -36,6 +37,7 @@ platforms = [
   "linux-64",
   { name = "osx-arm64-14", platform = "osx-arm64", macos = "14.0" },  # Qt 6 (opencv, pyside6, open3d) needs macOS >= 14
   { name = "linux-64-cuda", platform = "linux-64", cuda = "12" },
+  "win-64",
 ]
 version = "2.10.8"
 
@@ -76,6 +78,24 @@ requests = "*"
 gdown = "*"
 mcap = "*"
 
+[target.win-64.activation.env]
+# pySLAM prints non-ASCII characters; the default encoding of redirected output on Windows cannot
+PYTHONUTF8 = "1"
+# as [activation.env] above, in the syntax of Windows' shell
+PYTHONPATH = "%PIXI_PROJECT_ROOT%\\thirdparty\\gtsam_local\\install\\python"
+
+[target.win-64.tasks]
+# Windows has no bash: scripts/build_windows.py does what scripts/pixi_build.sh and the build.sh scripts do
+build = "python scripts/build_windows.py"
+# ... and scripts/install_extra_windows.py what scripts/install_extra.sh does, for the recommended models
+models = "python scripts/install_extra_windows.py features-core vpr-core"
+models-features = "python scripts/install_extra_windows.py features-core"
+models-vpr = "python scripts/install_extra_windows.py vpr-core"
+
+[target.win-64.dependencies]
+# The solver otherwise picks the headless build, which has no windows (cv2.imshow)
+opencv = { version = ">=4.12,<5", build = "qt6*" }
+
 [target.linux-64.dependencies]
 # Whatever pulls in CUDA (torch, faiss, tensorflow) uses the CUDA 12.9 builds,
 # which still support Pascal/Volta GPUs
@@ -100,11 +120,16 @@ flann = "*"
 glew = "*"
 spdlog = "*"
 qhull = "*"
-qhull-static = "*"  # libqhullcpp for cpp/volumetric (replaces scripts/install_qhull.sh)
 nlohmann_json = "*"  # replaces scripts/install_json_nlohmann.sh
 pyparsing = ">=3.2.5"
 pybind11-stubgen = ">=2.5.1"
 libopencv = ">=4.12,<5"
+
+[feature.build.target.unix.dependencies]
+qhull-static = "*"  # libqhullcpp for cpp/volumetric (replaces scripts/install_qhull.sh); no win-64 package
+
+[feature.build.target.win-64.dependencies]
+git = "*"  # the build clones GTSAM
 
 [feature.build.target.linux-64.dependencies]
 # `compilers` 2.x no longer pulls these in. Their activation scripts set CC, CXX,
@@ -191,6 +216,15 @@ cuda-libraries-dev = "*"
 platforms = ["linux-64"]
 
 [feature.cpu.target.linux-64.dependencies]
+pytorch = { version = "*", build = "*cpu*" }
+
+# Windows (native): CPU-only torch. Its own feature and environment (default-win), not win-64 in the cpu
+# feature: the environments of a solve group are solved together, and the levels above the default one
+# need packages that conda-forge does not have for Windows.
+[feature.cpu-win]
+platforms = ["win-64"]
+
+[feature.cpu-win.target.win-64.dependencies]
 pytorch = { version = "*", build = "*cpu*" }
 
 # ---------------------------------------------------------------------------
@@ -317,7 +351,7 @@ build-orbslam2-features = { cmd = "./build.sh", cwd = "thirdparty/orbslam2_featu
 build-cpp-utils = { cmd = "./build.sh", cwd = "cpp" }
 build-cpp-core = "./build_cpp_core.sh"
 build-pyslam = { depends-on = ["build-orbslam2-features", "build-cpp-utils", "build-cpp-core"] }
-# The ORB vocabulary of the default loop detector (about 100 MB), so that the first SLAM run
+# The ORB vocabulary of the default loop detector (a 31 MB download, 73 MB on disk), so that the first SLAM run
 # does not have to download it
 vocabulary = "python scripts/download_vocabulary.py"
 # `build` installs the prebuilt modules of each part when there is a bundle for this checkout and
@@ -393,3 +427,5 @@ full-cpu      = { features = ["build", "slam", "torch", "cpu", "depth", "semanti
 # the CPU ladder
 tf     = { features = ["tf", "tf-gpu"] }
 tf-cpu = { features = ["tf", "tf-nogpu"] }
+# Windows (native), experimental: the default level with CPU torch
+default-win = { features = ["build", "slam", "torch", "cpu-win", "dev"], solve-group = "win" }

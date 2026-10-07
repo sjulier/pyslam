@@ -2003,9 +2003,10 @@ pyslam::Frame::unproject_point_3d<float>(int idx, bool transform_in_world) const
 template std::pair<Vec3<double>, bool>
 pyslam::Frame::unproject_point_3d<double>(int idx, bool transform_in_world) const;
 
+// (no default arguments in an explicit instantiation: MSVC rejects them)
 template float pyslam::Frame::compute_points_median_depth(MatNx3Ref<float> points3d,
-                                                          const float percentile = 0.5f) const;
+                                                          const float percentile) const;
 template double pyslam::Frame::compute_points_median_depth(MatNx3Ref<double> points3d,
-                                                           const double percentile = 0.5) const;
+                                                           const double percentile) const;
 
 } // namespace pyslam

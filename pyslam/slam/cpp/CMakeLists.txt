@@ -76,7 +76,7 @@ endif()
 # In order to set RPATH (instead of RUNPATH) for gtsam libraries linking issues.
 # On Linux we can ask the linker to emit DT_RPATH instead of DT_RUNPATH using
 # --disable-new-dtags, but this option is not supported by the macOS linker.
-if(SET_RPATH AND NOT APPLE)
+if(SET_RPATH AND NOT APPLE AND NOT WIN32)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--disable-new-dtags")
 elseif(SET_RPATH AND APPLE)
   message(STATUS "SET_RPATH is ON but skipping -Wl,--disable-new-dtags on macOS (unsupported by Apple ld)")
@@ -267,7 +267,7 @@ include_directories(${PYSLAM_SEMANTICS_SRC})
 
 
 # json
-set(CMAKE_PREFIX_PATH ${PYSLAM_ROOT}/thirdparty/json/install/share/cmake/nlohmann_json/)
+list(APPEND CMAKE_PREFIX_PATH ${PYSLAM_ROOT}/thirdparty/json/install/share/cmake/nlohmann_json/)
 set(JSON_DIR ${PYSLAM_ROOT}/thirdparty/json/install/)
 message(STATUS "set custom json folder: ${JSON_DIR}")
 find_package(nlohmann_json REQUIRED)
@@ -346,7 +346,16 @@ set(G2O_ROOT "${PYSLAM_ROOT}/thirdparty/g2opy")
 set(G2O_INCLUDE_DIRS "${G2O_ROOT};${G2O_ROOT}/build/")  # the second for g2o/config.h
 
 # find all the libs in the g2o lib directory
-file(GLOB G2O_LIBRARIES "${G2O_ROOT}/lib/*.a")
+if(WIN32)
+    # MSVC: static libraries are .lib; g2o.lib is the import library of the python module. The solvers
+    # need the SuiteSparse DLLs' import libraries.
+    file(GLOB G2O_LIBRARIES "${G2O_ROOT}/lib/g2o_*.lib")
+    find_library(PYSLAM_CHOLMOD_LIBRARY cholmod REQUIRED)
+    find_library(PYSLAM_CXSPARSE_LIBRARY cxsparse REQUIRED)
+    list(APPEND G2O_LIBRARIES ${PYSLAM_CHOLMOD_LIBRARY} ${PYSLAM_CXSPARSE_LIBRARY} opengl32)
+else()
+    file(GLOB G2O_LIBRARIES "${G2O_ROOT}/lib/*.a")
+endif()
 # exclude g2o.cython* 
 list(FILTER G2O_LIBRARIES EXCLUDE REGEX "g2o.cython.*")
 # G2O_LIBRARIES already contains full paths, so we can use them directly
@@ -363,7 +372,11 @@ message(STATUS "G2O_LIBRARIES: ${G2O_LIBRARIES}")
 # GTSAM_DIR and GTSAM_INCLUDE_DIR are cache entries, so clear them in case a previous
 # configure resolved them to a system copy.
 set(GTSAM_ROOT "${PYSLAM_ROOT}/thirdparty/gtsam_local")
-set(GTSAM_CONFIG_DIR "${GTSAM_ROOT}/install/lib/cmake/GTSAM")
+if(WIN32)
+    set(GTSAM_CONFIG_DIR "${GTSAM_ROOT}/install/CMake")  # where GTSAM installs its CMake files on Windows
+else()
+    set(GTSAM_CONFIG_DIR "${GTSAM_ROOT}/install/lib/cmake/GTSAM")
+endif()
 set(GTSAM_LIB_DIR ${GTSAM_ROOT}/install/lib)
 unset(GTSAM_DIR CACHE)
 unset(GTSAM_INCLUDE_DIR CACHE)
