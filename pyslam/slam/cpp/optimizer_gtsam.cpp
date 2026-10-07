@@ -664,8 +664,10 @@ class PoseOptimizerGTSAM {
             initial = current_values; // Use current result for next iteration
         }
 
-        std::cout << "pose_optimization: available " << num_factors << " points, found "
-                  << num_bad_point_edges << " bad points" << std::endl;
+        if (verbose) {
+            std::cout << "pose_optimization: available " << num_factors << " points, found "
+                      << num_bad_point_edges << " bad points" << std::endl;
+        }
 
         int num_valid_points = num_factors - (num_factors - num_inliers);
         if (num_valid_points < 10) {

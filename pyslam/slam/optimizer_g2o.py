@@ -540,9 +540,10 @@ def pose_optimization(frame, verbose=False, rounds=10):
             # is_ok = False
             break
 
-    print(
-        f"pose optimization: available {num_point_edges} points, found {num_bad_point_edges} bad points"
-    )
+    if verbose:
+        print(
+            f"pose optimization: available {num_point_edges} points, found {num_bad_point_edges} bad points"
+        )
     num_valid_points = (
         num_point_edges - num_bad_point_edges
     )  # len([e for e in opt.edges() if e.level() == 0])
@@ -761,9 +762,10 @@ def local_bundle_adjustment(
     if abort_flag.value:
         return -1, 0
 
-    print(
-        f"local_bundle_adjustment: starting optimization with {len(graph_keyframes)} keyframes, {len(graph_points)} points, {num_edges} edges"
-    )
+    if verbose:
+        print(
+            f"local_bundle_adjustment: starting optimization with {len(graph_keyframes)} keyframes, {len(graph_points)} points, {num_edges} edges"
+        )
 
     # initial optimization
     opt.initialize_optimization()

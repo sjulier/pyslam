@@ -21,7 +21,7 @@ import math
 import numpy as np
 
 from pyslam.utilities.features import descriptor_sigma_mad, descriptor_sigma_mad_v2
-from pyslam.utilities.logging import Printer
+from pyslam.utilities.logging import Printer, FrameLog
 
 from .feature_tracker_shared import FeatureTrackerShared
 
@@ -75,7 +75,7 @@ class SLAMDynamicConfig:
                     min(self.descriptor_distance_sigma, self.descriptor_distance_max),
                     self.descriptor_distance_min,
                 )
-            print("descriptor sigma: ", self.descriptor_distance_sigma)
+            FrameLog.print("descriptor sigma: ", self.descriptor_distance_sigma)
             # dynamicall update the static parameter descriptor distance
             Parameters.kMaxDescriptorDistance = self.descriptor_distance_sigma
             FeatureTrackerShared.update_cpp_module_dynamic_config_parameters()

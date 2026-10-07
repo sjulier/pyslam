@@ -53,7 +53,7 @@ if __name__ != "__mp_main__":
     from pyslam.io.trajectory_writer import TrajectoryWriter
 
     from pyslam.viz.viewer3D import Viewer3D
-    from pyslam.utilities.logging import Printer, LoggerQueue
+    from pyslam.utilities.logging import Printer, LoggerQueue, FrameLog
     from pyslam.utilities.system import force_kill_all_and_exit
     from pyslam.utilities.img_management import ImgWriter
     from pyslam.utilities.evaluation import eval_ate
@@ -300,9 +300,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Print the full camera and configuration dumps (JSON)",
+        help="Print the full camera and configuration dumps (JSON), and the step-by-step messages "
+        "of tracking for every frame (otherwise in logs/tracking.log)",
     )
     args = parser.parse_args()
+    if args.verbose:
+        Parameters.kTrackingDebugAndPrintToFile = False
 
     config_path = sequence_config_path(args, parser)  # --video, --images or --tum, if given
     if config_path:
@@ -587,7 +590,7 @@ if __name__ == "__main__":
             if not is_paused or do_step:
 
                 if dataset.is_ok:
-                    print("..................................")
+                    FrameLog.print("..................................")
                     img = dataset.getImageColor(img_id)
                     depth = dataset.getDepth(img_id)
                     img_right = (
@@ -605,7 +608,9 @@ if __name__ == "__main__":
                         else -1
                     )
 
-                    print(f"image: {img_id}, timestamp: {timestamp}, duration: {frame_duration}")
+                    FrameLog.print(
+                        f"image: {img_id}, timestamp: {timestamp}, duration: {frame_duration}"
+                    )
 
                     if img is not None:
 
@@ -659,6 +664,14 @@ if __name__ == "__main__":
 
                     img_id += 1
                     num_frames += 1
+                    if FrameLog.is_to_file() and num_frames % 100 == 0:
+                        # the details of every frame are in logs/tracking.log
+                        print(
+                            f"frame {img_id}"
+                            + (f"/{num_total_frames}" if num_total_frames else "")
+                            + f": {slam.tracking.state.name}, map: {slam.map.num_points()} points, "
+                            f"{slam.map.num_keyframes()} keyframes"
+                        )
                 else:
                     time.sleep(0.1)  # img is None
                     # Printer.yellow("sleeping for 0.1 seconds - img is None")
