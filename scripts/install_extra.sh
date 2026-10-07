@@ -70,15 +70,28 @@ function list_extras() {
 function init_submodules() {
     print_blue "Fetching submodules: $*"
     local pauses="${PYSLAM_SUBMODULE_RETRY_PAUSES-5 15 30}"
-    local num_attempts=$(( $(echo $pauses | wc -w) + 1 )) attempt=1 pause
+    local num_attempts=$(( $(echo $pauses | wc -w) + 1 )) attempt=1 pause log
+    log="$(mktemp)"
     for pause in $pauses ""; do
-        git submodule update --init --recursive --depth 1 -- "$@" && return 0
-        git submodule update --init --recursive -- "$@" && return 0
+        # git's output is kept in a file: on a failure git repeats the same error for its own retry and
+        # again for the fallback, about eight times per attempt, which buries the messages below
+        if git submodule update --init --recursive --depth 1 -- "$@" > "$log" 2>&1 \
+            || git submodule update --init --recursive -- "$@" >> "$log" 2>&1; then
+            cat "$log"
+            rm -f "$log"
+            return 0
+        fi
+        if grep -qE "^(fatal|error):" "$log"; then
+            grep -E "^(fatal|error):" "$log" | sort -u | sed 's/^/    git: /'
+        else
+            tail -n 5 "$log" | sed 's/^/    git: /'
+        fi
         [ -n "$pause" ] || break
         print_yellow "Fetching the submodules failed (attempt $attempt of $num_attempts; git's message is above): trying again in $pause s ..."
         sleep "$pause"
         attempt=$((attempt + 1))
     done
+    rm -f "$log"
     print_red "ERROR: could not fetch submodules after $num_attempts attempt(s): $*"
     print_red "Check the network connection and run the same command again: what is already installed is kept."
     exit 3

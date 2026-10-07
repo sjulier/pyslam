@@ -57,11 +57,22 @@ def init_submodules(paths):
     print(f"Fetching submodules: {' '.join(paths)}", flush=True)
     pauses = [float(p) for p in os.environ.get("PYSLAM_SUBMODULE_RETRY_PAUSES", "5 15 30").split()]
     num_attempts = len(pauses) + 1
+    update = ["git", "submodule", "update", "--init", "--recursive"]
     for attempt in range(1, num_attempts + 1):
-        if git("submodule", "update", "--init", "--recursive", "--depth", "1", "--", *paths):
-            return
-        if git("submodule", "update", "--init", "--recursive", "--", *paths):
-            return
+        # git's output is captured: on a failure git repeats the same error for its own retry and
+        # again for the fallback, about eight times per attempt, which buries the messages below
+        output = ""
+        for command in (update + ["--depth", "1", "--", *paths], update + ["--", *paths]):
+            result = subprocess.run(command, cwd=ROOT_DIR, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, errors="replace")
+            output += result.stdout or ""
+            if result.returncode == 0:
+                print(output, end="", flush=True)
+                return
+        lines = output.splitlines()
+        errors = sorted({line for line in lines if line.startswith(("fatal:", "error:"))})
+        for line in errors or lines[-5:]:
+            print(f"    git: {line}", flush=True)
         if attempt < num_attempts:
             pause = pauses[attempt - 1]
             print(f"Fetching the submodules failed (attempt {attempt} of {num_attempts}; git's message "
