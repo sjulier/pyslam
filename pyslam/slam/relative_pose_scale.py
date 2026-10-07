@@ -40,6 +40,7 @@ from pyslam.config_parameters import Parameters
 
 kNumAnchorCovisibleKeyFrames = 8  # the reference keyframe, its parent and up to this many covisible keyframes
 kMinAnchorSpread = 1e-9  # [map units^2] below it, the anchors cannot give a scale
+kMinAnchorsForScale = 3  # with two keyframes (one of them maybe just moved by local BA) the ratio is too noisy
 
 
 class RelativePoseAnchors:
@@ -75,7 +76,7 @@ class RelativePoseAnchors:
     def scale(self):
         """The local scale change since the frame was tracked (1.0 if the anchors cannot tell)."""
         then, now = self._matched_positions()
-        if len(then) < 2:
+        if len(then) < kMinAnchorsForScale:
             return 1.0
         spread_then = ((then - then.mean(axis=0)) ** 2).sum()
         if spread_then < kMinAnchorSpread:

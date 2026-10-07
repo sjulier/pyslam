@@ -1394,7 +1394,7 @@ class Tracking:
                     )
                     if len(self.tracking_history.relative_frame_poses) > 0 and self.f_ref.kf_ref is not None:
                         self.f_ref.update_pose(
-                            self.tracking_history.relative_pose(-1)
+                            self.tracking_history.relative_frame_poses[-1]
                             * self.f_ref.kf_ref.isometry3d()
                         )
                     self.motion_model.reset()
@@ -1404,7 +1404,7 @@ class Tracking:
                     print("using motion model for next pose prediction")
                     # update f_ref pose according to its reference keyframe (the pose of the reference keyframe could have been updated by local mapping)
                     self.f_ref.update_pose(
-                        self.tracking_history.relative_pose(-1)
+                        self.tracking_history.relative_frame_poses[-1]
                         * self.f_ref.kf_ref.isometry3d()
                     )
                     if Parameters.kUseVisualOdometryPoints:
