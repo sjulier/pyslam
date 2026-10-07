@@ -272,11 +272,11 @@ Follow the instructions in this [file](./docs/MAC.md). The reported procedure wa
 
 ### Windows (native, experimental)
 
-pySLAM's default level (ORB features, the C++ core, loop closing, g2o/GTSAM, the viewers) runs on Windows itself, without WSL2. This is **experimental**: it has been tested on two Windows 11 machines so far, both with Visual Studio installed (it should not be needed). If you try it, please report what happens (see below).
+pySLAM's default level (ORB features, the C++ core, loop closing, g2o/GTSAM, the viewers) runs on Windows itself, without WSL2. This is **experimental**: it has been tested on two Windows 11 machines so far, both with Intel processors and with Visual Studio installed (it should not be needed). If you try it, please report what happens (see below).
 
 You need:
 - Windows 10 or 11, 64-bit, on an Intel or AMD processor with **AVX2** (most processors since about 2015; not Windows on ARM). `build` checks for it.
-- About **12 GB of free disk space** and an internet connection.
+- About **15 GB of free disk space** (the installation downloads about 2 GB and takes about 12 GB) and an internet connection.
 - No Visual Studio, no compiler, no WSL2 and no NVIDIA GPU: the environment uses the CPU build of PyTorch.
 
 **1. Install git and pixi.** In PowerShell:
@@ -314,7 +314,7 @@ The headless run ends with an ATE `rmse` between about 11 and 19 m (it varies fr
 ```powershell
 pixi run -e default-win models
 ```
-It prints one line per component, `OK` with `cpu`, and ends with `Installed: features-core vpr-core`. They run on the CPU, which is too slow to keep up with the camera.
+It prints one line per component, `OK` with `cpu`, and ends with `Installed: features-core vpr-core`. They run on the CPU, slower than the camera: on one laptop, `pixi run -e default-win slam --headless --features SUPERPOINT` took 6.5 minutes against 3 with ORB features, and tracked every frame (ATE 17.8 m).
 
 If a command stops (for example a download breaks), run the same command again.
 
@@ -788,6 +788,7 @@ This table report the sparse SLAM submodules along with their generated logs (st
 
 | Module | Log file |
 | --- | --- |
+| `tracking.py` (and the per-frame messages of `main_slam.py` and of the feature manager) | `tracking.log`; with `main_slam.py --verbose` they are printed on the console instead |
 | `local_mapping.py` | `local_mapping.log` |
 | `loop_closing.py` | `loop_closing.log` |
 | `loop_detecting_process.py` | `loop_detecting.log` |
