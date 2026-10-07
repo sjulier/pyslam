@@ -172,8 +172,7 @@ inline int binary_descriptor_distance(const cv::Mat &a, const cv::Mat &b) noexce
     const uint8_t *pb8 = reinterpret_cast<const uint8_t *>(pb + n64);
     const size_t rem = nbytes - n64 * sizeof(uint64_t);
     for (size_t i = 0; i < rem; ++i) {
-        dist += static_cast<int>(
-            __builtin_popcount(static_cast<unsigned>(pa8[i] ^ pb8[i]))); // small tail
+        dist += popcount64(static_cast<uint64_t>(pa8[i] ^ pb8[i])); // small tail
     }
     return dist;
 }

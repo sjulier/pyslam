@@ -223,9 +223,9 @@ include_directories(
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
-add_subdirectory(pybind11)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/pybind11" pybind11)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/pyslam_pybind11.cmake")
-pyslam_use_bundled_pybind11("${CMAKE_CURRENT_SOURCE_DIR}/pybind11")
+pyslam_use_bundled_pybind11("${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/pybind11")
 
 
 include_directories(casters)
@@ -318,6 +318,12 @@ pybind11_add_module(glutils
     glutils/glutils_module.cpp     
     glutils/glutils_bindings.cpp)
 target_link_libraries(glutils PRIVATE glutils_lib)
+if(WIN32)
+    # Windows' gl.h is OpenGL 1.1: the functions after it come from GLEW (see glutils_gl_includes.h)
+    find_package(GLEW REQUIRED)
+    target_link_libraries(glutils_lib PRIVATE GLEW::GLEW)
+    target_link_libraries(glutils PRIVATE GLEW::GLEW)
+endif()
 
 #=======================================
 # Add trajectory_tools module

@@ -1,4 +1,7 @@
-set(CORE_LIBS cpp_core_lib ${CPP_CORE_LINK_LIBRARIES} ${Python_LIBRARIES} pthread)
+set(CORE_LIBS cpp_core_lib ${CPP_CORE_LINK_LIBRARIES} ${Python_LIBRARIES})
+if(NOT WIN32)
+    list(APPEND CORE_LIBS pthread)
+endif()
 
 
 set(TESTS 

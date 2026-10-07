@@ -287,6 +287,8 @@ def check_if_main_thread(message=""):
 # Set the limit of open files. This is useful when using multiprocessing and socket management
 # returns the error: OSError: [Errno 24] Too many open files.
 def set_rlimit():
+    if sys.platform == "win32":
+        return  # no such limit to raise on Windows (and no resource module)
     import resource
 
     # Check the current soft and hard limits
@@ -349,7 +351,7 @@ def force_kill_all_and_exit(code=0, verbose=True):
             if p.is_alive():
                 if verbose:
                     print(f"[!] Killing stubborn process PID {p.pid}...")
-                os.kill(p.pid, signal.SIGKILL)
+                p.kill()  # SIGKILL; also works on Windows, which has no SIGKILL
         except Exception as e:
             if verbose:
                 print(f"[!] Failed to terminate process PID {p.pid}: {e}")

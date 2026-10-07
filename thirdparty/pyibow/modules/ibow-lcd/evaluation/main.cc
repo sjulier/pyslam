@@ -40,7 +40,7 @@ void getFilenames(const std::string& directory,
     copy(directory_iterator(dir), directory_iterator(), back_inserter(entries));
     sort(entries.begin(), entries.end());
     for (auto it = entries.begin(); it != entries.end(); it++) {
-        std::string ext = it->extension().c_str();
+        std::string ext = it->extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
         if (ext == ".png" || ext == ".jpg" ||

@@ -37,7 +37,7 @@ namespace {
 void DrawPoints(py::array_t<double> points) {
     auto r = points.unchecked<2>();
     glBegin(GL_POINTS);
-    for (ssize_t i = 0; i < r.shape(0); ++i) {
+    for (py::ssize_t i = 0; i < r.shape(0); ++i) {
         glVertex3d(r(i, 0), r(i, 1), r(i, 2));
     }
     glEnd();
@@ -49,7 +49,7 @@ void DrawPoints(py::array_t<double> points, py::array_t<double> colors) {
     auto rc = colors.unchecked<2>();
 
     glBegin(GL_POINTS);
-    for (ssize_t i = 0; i < r.shape(0); ++i) {
+    for (py::ssize_t i = 0; i < r.shape(0); ++i) {
         glColor3f(rc(i, 0), rc(i, 1), rc(i, 2));
         glVertex3d(r(i, 0), r(i, 1), r(i, 2));
     }
@@ -108,7 +108,7 @@ void DrawMesh(py::array_t<double> vertices, py::array_t<int> triangles, py::arra
     auto t = triangles.unchecked<2>();  // Shape: (num_triangles, 3)
 
     glBegin(GL_TRIANGLES);
-    for (ssize_t i = 0; i < t.shape(0); ++i) {
+    for (py::ssize_t i = 0; i < t.shape(0); ++i) {
         for (int j = 0; j < 3; ++j) {  // Each triangle has 3 vertices
             int idx = t(i, j);         // Get vertex index
             glColor3f(c(idx, 0), c(idx, 1), c(idx, 2));  // Set vertex color
@@ -126,7 +126,7 @@ void DrawMonochromeMesh(py::array_t<double> vertices, py::array_t<int> triangles
     glColor3f(r, g, b);  // Set the constant color for the entire mesh
 
     glBegin(GL_TRIANGLES);
-    for (ssize_t i = 0; i < t.shape(0); ++i) {
+    for (py::ssize_t i = 0; i < t.shape(0); ++i) {
         for (int j = 0; j < 3; ++j) {  // Each triangle has 3 vertices
             int idx = t(i, j);         // Get vertex index
             glVertex3d(v(idx, 0), v(idx, 1), v(idx, 2)); // Set vertex position
@@ -200,7 +200,7 @@ void DrawCameras(py::array_t<double> cameras, float w=1.0, float h_ratio=0.75, f
     float h = w * h_ratio;
     float z = w * z_ratio;
 
-    for (ssize_t i = 0; i < r.shape(0); ++i) {
+    for (py::ssize_t i = 0; i < r.shape(0); ++i) {
         glPushMatrix();
         // glMultMatrixd(r.data(i, 0, 0));
         glMultTransposeMatrixd(r.data(i, 0, 0));
@@ -272,7 +272,7 @@ void DrawCamera(py::array_t<double> camera, float w=1.0, float h_ratio=0.75, flo
 void DrawLine(py::array_t<double> points, float point_size=0) {
     auto r = points.unchecked<2>();
     glBegin(GL_LINES);
-    for (ssize_t i = 0; i < r.shape(0)-1; ++i) {
+    for (py::ssize_t i = 0; i < r.shape(0)-1; ++i) {
         glVertex3d(r(i, 0), r(i, 1), r(i, 2));
         glVertex3d(r(i+1, 0), r(i+1, 1), r(i+1, 2));
     }
@@ -281,7 +281,7 @@ void DrawLine(py::array_t<double> points, float point_size=0) {
     if(point_size > 0) {
         glPointSize(point_size);
         glBegin(GL_POINTS);
-        for (ssize_t i = 0; i < r.shape(0); ++i) {
+        for (py::ssize_t i = 0; i < r.shape(0); ++i) {
             glVertex3d(r(i, 0), r(i, 1), r(i, 2));
         }
         glEnd();
@@ -294,7 +294,7 @@ void DrawLines(py::array_t<double> points, float point_size=0) {
     auto r = points.unchecked<2>();
 
     glBegin(GL_LINES);
-    for (ssize_t i = 0; i < r.shape(0); ++i) {
+    for (py::ssize_t i = 0; i < r.shape(0); ++i) {
         glVertex3d(r(i, 0), r(i, 1), r(i, 2));
         glVertex3d(r(i, 3), r(i, 4), r(i, 5));
     }
@@ -303,7 +303,7 @@ void DrawLines(py::array_t<double> points, float point_size=0) {
     if(point_size > 0) {
         glPointSize(point_size);
         glBegin(GL_POINTS);
-        for (ssize_t i = 0; i < r.shape(0); ++i) {
+        for (py::ssize_t i = 0; i < r.shape(0); ++i) {
             glVertex3d(r(i, 0), r(i, 1), r(i, 2));
             glVertex3d(r(i, 3), r(i, 4), r(i, 5));
         }
@@ -316,7 +316,7 @@ void DrawLines(py::array_t<double> points, py::array_t<double> points2, float po
     auto r = points.unchecked<2>();
     auto r2 = points2.unchecked<2>();
     glBegin(GL_LINES);
-    for (ssize_t i = 0; i < std::min(r.shape(0), r2.shape(0)); ++i) {
+    for (py::ssize_t i = 0; i < std::min(r.shape(0), r2.shape(0)); ++i) {
         glVertex3d(r(i, 0), r(i, 1), r(i, 2));
         glVertex3d(r2(i, 0), r2(i, 1), r2(i, 2));
     }
@@ -325,7 +325,7 @@ void DrawLines(py::array_t<double> points, py::array_t<double> points2, float po
     if(point_size > 0) {
         glPointSize(point_size);
         glBegin(GL_POINTS);
-        for (ssize_t i = 0; i < std::min(r.shape(0), r2.shape(0)); ++i) {
+        for (py::ssize_t i = 0; i < std::min(r.shape(0), r2.shape(0)); ++i) {
             glVertex3d(r(i, 0), r(i, 1), r(i, 2));
             glVertex3d(r2(i, 0), r2(i, 1), r2(i, 2));
         }
@@ -338,7 +338,7 @@ void DrawBoxes(py::array_t<double> cameras, py::array_t<double> sizes) {
     auto r = cameras.unchecked<3>();
     auto rs = sizes.unchecked<2>();
 
-    for (ssize_t i = 0; i < r.shape(0); ++i) {
+    for (py::ssize_t i = 0; i < r.shape(0); ++i) {
         glPushMatrix();
         // glMultMatrixd(r.data(i, 0, 0));
         glMultTransposeMatrixd(r.data(i, 0, 0));

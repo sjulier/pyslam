@@ -39,7 +39,7 @@ std::array<double, kMatrixElementCount> ExtractPoseMatrix(const py::array_t<T, F
 }
 
 inline std::size_t ComputeAlignment(const py::buffer_info &info) {
-    const ssize_t row_stride = info.strides[0] >= 0 ? info.strides[0] : -info.strides[0];
+    const pybind11::ssize_t row_stride = info.strides[0] >= 0 ? info.strides[0] : -info.strides[0];
     for (int align : {8, 4, 2, 1}) {
         if (row_stride % align == 0) {
             return static_cast<std::size_t>(align);

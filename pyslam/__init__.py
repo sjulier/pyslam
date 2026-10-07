@@ -9,6 +9,14 @@ import sys
 # import pyslam first. A value set in the environment takes precedence.
 os.environ.setdefault("KMP_BLOCKTIME", "0")
 
+if sys.platform == "win32":
+    # Windows has no RPATH: tell the loader where the DLLs of the native modules built in the source tree
+    # are (GTSAM's, which cpp_core, gtsam and gtsam_factors link)
+    _gtsam_bin = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "thirdparty", "gtsam_local", "install", "bin")
+    if os.path.isdir(_gtsam_bin):
+        os.add_dll_directory(_gtsam_bin)
+
 if sys.platform == "darwin":
     # Some models use ops that Apple MPS does not implement (e.g. torchvision's deform_conv2d in ALIKED):
     # let torch run just those ops on the CPU. This must be set before torch is imported.

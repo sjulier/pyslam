@@ -30,6 +30,11 @@ MODULE_GLOBS = [
     "pyslam/slam/cpp/lib/*.cpython*.so",
 ]
 
+if os.name == "nt":  # python extension modules are .pyd on Windows, without "cpython" in the name
+    MODULE_GLOBS = [g.replace(".cpython*.so", "*.pyd").replace(".so", ".pyd") for g in MODULE_GLOBS]
+    # GTSAM's package also holds gtsam_py.pyd, the module under its build name: not importable by that name
+    MODULE_GLOBS = [g.replace("gtsam/gtsam*.pyd", "gtsam/gtsam.pyd") for g in MODULE_GLOBS]
+
 
 def main():
     verbose = "-v" in sys.argv
@@ -53,7 +58,10 @@ def main():
         if name == "gtsam":  # a package: import it by its name, from the folder above
             folder = os.path.dirname(folder)
         # gtsam first: gtsam_factors and cpp_core use its types
-        code = f"import sys; sys.path.insert(0, {folder!r}); import gtsam; import {name}"
+        # (the gtsam package is in the tree; on PYTHONPATH under pixi, added here for other environments)
+        gtsam_dir = os.path.join(ROOT, "thirdparty", "gtsam_local", "install", "python")
+        code = (f"import sys; sys.path.insert(0, {gtsam_dir!r}); sys.path.insert(0, {folder!r}); "
+                f"import gtsam; import {name}")
         r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=ROOT)
         ok = r.returncode == 0
         if verbose or not ok:

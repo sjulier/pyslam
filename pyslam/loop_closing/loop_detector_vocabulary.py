@@ -41,8 +41,9 @@ kDataFolder = kRootFolder + "/data"
 
 
 # NOTE: At present, under mac, boost serialization is very slow, we use txt files instead.
+# Windows uses them too: the boost archives written on Linux cannot be read there (the size of long differs).
 def dbow2_orb_vocabulary_factory(*args, **kwargs):
-    use_text_vocabulary = platform.system() == "Darwin"
+    use_text_vocabulary = platform.system() in ("Darwin", "Windows")
     if use_text_vocabulary:
         return DBowOrbVocabularyDataTxt(*args, **kwargs)
     else:

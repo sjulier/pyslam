@@ -21,6 +21,11 @@
 
 #if defined(__APPLE__)
 #include <OpenGL/gl.h>
+#elif defined(_WIN32)
+// Windows' gl.h is OpenGL 1.1: GLEW declares the rest and loads it (Pangolin calls glewInit() when it
+// creates the window)
+#include <windows.h>
+#include <GL/glew.h>
 #else
 #ifndef GL_GLEXT_PROTOTYPES
 #define GL_GLEXT_PROTOTYPES
