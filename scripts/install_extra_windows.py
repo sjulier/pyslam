@@ -18,6 +18,7 @@ same command again later).
 import os
 import subprocess
 import sys
+import time
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -49,12 +50,26 @@ def git(*args, cwd=ROOT_DIR, quiet=False):
 
 def init_submodules(paths):
     """Fetch only the given submodules, each at its recorded commit and without its history; with
-    the whole history if the server does not allow that."""
+    the whole history if the server does not allow that. A fetch that fails is tried again after a
+    pause (5, 15 and 30 s: four attempts in all), since most failures are a connection to GitHub
+    that drops for a moment; PYSLAM_SUBMODULE_RETRY_PAUSES="<s> <s> ..." sets other pauses ("" for a
+    single attempt). The same as init_submodules() of install_extra.sh."""
     print(f"Fetching submodules: {' '.join(paths)}", flush=True)
-    if not git("submodule", "update", "--init", "--recursive", "--depth", "1", "--", *paths):
-        if not git("submodule", "update", "--init", "--recursive", "--", *paths):
-            print(f"ERROR: could not fetch submodules: {' '.join(paths)}")
-            sys.exit(3)
+    pauses = [float(p) for p in os.environ.get("PYSLAM_SUBMODULE_RETRY_PAUSES", "5 15 30").split()]
+    num_attempts = len(pauses) + 1
+    for attempt in range(1, num_attempts + 1):
+        if git("submodule", "update", "--init", "--recursive", "--depth", "1", "--", *paths):
+            return
+        if git("submodule", "update", "--init", "--recursive", "--", *paths):
+            return
+        if attempt < num_attempts:
+            pause = pauses[attempt - 1]
+            print(f"Fetching the submodules failed (attempt {attempt} of {num_attempts}; git's message "
+                  f"is above): trying again in {pause:g} s ...", flush=True)
+            time.sleep(pause)
+    print(f"ERROR: could not fetch submodules after {num_attempts} attempt(s): {' '.join(paths)}")
+    print("Check the network connection and run the same command again: what is already installed is kept.")
+    sys.exit(3)
 
 
 def apply_patch(folder, patch_name):
