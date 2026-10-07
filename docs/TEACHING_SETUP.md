@@ -11,8 +11,9 @@ everybody gets the same versions. It does not touch conda or the rest of your sy
 need to install CUDA or a compiler.
 
 > **Do the installation before the lab.** It downloads about 6 GB with an NVIDIA GPU (the environment,
-> 17 GB once unpacked; about 2 GB without one) and compiles pySLAM's C++ modules, which takes from
-> 15 minutes to over an hour.
+> 17 GB once unpacked; about 2 GB without one) and installs pySLAM's C++ modules: ready-made where
+> there is a prebuilt copy for your system, otherwise compiled, which takes from 15 minutes to over
+> an hour.
 
 ## Supported systems
 
@@ -22,7 +23,7 @@ need to install CUDA or a compiler.
 | **Linux** (x86-64), without an NVIDIA GPU | tested: add `-e default-cpu` to every `pixi run` command below |
 | **macOS** (Apple silicon, macOS 14 or later) | tested. Learned features use the Apple GPU |
 | **Windows**, via **WSL2** (Ubuntu inside Windows) | the recommended way on Windows, then as Linux: tested (Windows 11, WSL2, Titan Xp), including the GPU and the windows of `pixi run slam` |
-| **Windows**, native (no WSL2) | **experimental**: the default level with ORB features, on the CPU. Tested on two Windows 11 machines only: see [Native Windows](#native-windows-experimental) for what differs and what has not been tested yet |
+| **Windows**, native (no WSL2) | **experimental**: the default level, on the CPU. Tested on two Windows 11 machines only: see [Native Windows](#native-windows-experimental) for what differs and what has not been tested yet |
 
 You need about **30 GB of free disk space** (less without an NVIDIA GPU) and an internet connection.
 If pySLAM's C++ modules have to be compiled on your machine (see step 3), that also needs about
@@ -31,13 +32,14 @@ If pySLAM's C++ modules have to be compiled on your machine (see step 3), that a
 ### Native Windows (experimental)
 
 pySLAM also runs on Windows itself, without WSL2. It is meant for laptops that are too small for
-WSL2, which keeps part of the computer's memory for itself: on one laptop, SLAM on KITTI 06 used
-about 4 GB with its windows and 2.6 GB with `--headless`. If WSL2 works on your machine, use WSL2:
-it is the tested way, and the only one with a GPU and with the later levels of the course.
+WSL2, which by default gets only half of the computer's memory: natively, on one laptop, SLAM on
+KITTI 06 used about 4 GB with its windows and 2.6 GB with `--headless`. If WSL2 works on your
+machine, use WSL2: it is the tested way, and the only one with a GPU and with the later levels of the
+course.
 
 You need Windows 10 or 11 (64-bit) on an Intel or AMD processor with AVX2 (most processors since
-about 2015; not Windows on ARM), and about 12 GB of free disk space. You do **not** need Visual
-Studio, a compiler or an NVIDIA GPU.
+about 2015; not Windows on ARM), and about 15 GB of free disk space: the installation downloads about
+2 GB and takes about 12 GB. You do **not** need Visual Studio, a compiler or an NVIDIA GPU.
 
 The steps are those of this page, with these differences:
 
@@ -50,9 +52,12 @@ The steps are those of this page, with these differences:
   `pixi run -e default-win check`, `pixi run -e default-win models`,
   `pixi run -e default-win slam --headless`, `pixi run -e default-win doctor`.
 - **Nothing is compiled**: `build` installs pySLAM's C++ modules ready-made (about 40 MB of
-  downloads). Without them it stops with a message, since there is no compiler.
-- **PyTorch runs on the CPU.** `models` installs SuperPoint, LightGlue and CosPlace, but they cannot
-  keep up with the camera: use ORB features, or `--speed 0.2`.
+  downloads). If there is no ready-made copy for your version of pySLAM, `build` needs Microsoft's
+  compiler, and stops with a message when it does not find it.
+- **PyTorch runs on the CPU.** `models` installs SuperPoint, LightGlue and CosPlace. SLAM with them
+  is slower than the camera: on one laptop, `slam --headless --features SUPERPOINT` on KITTI 06 took
+  6.5 minutes against 3 with ORB features, and tracked every frame. If tracking is lost, slow the
+  playback down with `--speed 0.2` or `--throttle` (see the next section).
 
 Not available on native Windows: a GPU for PyTorch, the other learned features and place recognition
 models (`models-all-features`, `models-all-vpr`), the TensorFlow-based features, and the levels
@@ -63,8 +68,7 @@ above the default one (depth prediction, semantic segmentation, 3D reconstructio
 - a machine **without Visual Studio**: both test machines had it installed. pySLAM should not need
   it, but this has not been shown;
 - an **AMD** processor, **Windows 10**, and a machine with 8 GB of memory or less;
-- a clone made by Git for Windows with its conversion of line endings switched on;
-- SLAM with SuperPoint or the other learned features (only their installation is checked);
+- SLAM with LightGlue (only its installation is checked; SuperPoint with CosPlace has been run once);
 - `pixi run vo`, `pixi run feature-matching`, `pixi run slam-evaluation` and the other main scripts:
   only `pixi run slam`, with and without its windows, has been run.
 
@@ -254,7 +258,8 @@ windows instead, where `q` quits.
 - **Error messages tell you what to do.** If a component is not installed or not built, pySLAM says
   which one and which command installs or builds it.
 - **Not available**: SURF (non-free). The TensorFlow-based features (DELF, LF-Net, ContextDesc,
-  GeoDesc) are not in the default level.
+  GeoDesc) are not in the default level: `pixi run models-tf` installs them in an environment of
+  their own (about 6 GB; Linux and macOS, see [PIXI.md](./PIXI.md#good-to-know)).
 
 ## Troubleshooting
 
