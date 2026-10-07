@@ -389,7 +389,9 @@ def read_tail(path, num_bytes=20000):
 
 def slam_progress(log_tail, seconds):
     """One line saying where a main_slam.py run is, from the end of its log."""
-    # "frame N/1101: ..." every 100 frames; "img id: N" for every frame with --verbose
+    # "frame N/1101: ..." at the first frame and every 100 frames; "img id: N" for every frame with
+    # --verbose. A line may start with the colour reset of the message before it.
+    log_tail = ANSI.sub("", log_tail)
     frames = [a or b for a, b in re.findall(r"img id: (\d+)|^frame (\d+)", log_tail, flags=re.M)]
     if "SLAM: quitting" in log_tail or "Dataset end" in log_tail:
         stage = "the sequence is done: computing the trajectory error"

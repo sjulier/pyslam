@@ -308,7 +308,7 @@ pixi run -e default-win doctor   # the machine, the environment, every native mo
 pixi run -e default-win slam --headless   # without windows; prints the trajectory error (ATE) at the end
 pixi run -e default-win slam              # with the camera image, the 3D map, plots and loop closing's windows; q quits
 ```
-The headless run ends with an ATE `rmse` of about 11 to 16 m (it varies from run to run). The details of every frame are in `logs/tracking.log`; `--verbose` prints them.
+The headless run ends with an ATE `rmse` between about 11 and 19 m (it varies from run to run). The details of every frame are in `logs/tracking.log`; `--verbose` prints them.
 
 **5. Optional: the learned models** (SuperPoint, SuperPoint with the LightGlue matcher, and CosPlace place recognition; about 0.3 GB):
 ```powershell
