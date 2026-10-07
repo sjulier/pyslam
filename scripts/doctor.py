@@ -29,6 +29,7 @@ import time
 from datetime import datetime
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+IS_WINDOWS = sys.platform == "win32"  # native Windows (experimental): the environment default-win
 GB = 1024**3
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
@@ -41,6 +42,9 @@ class Report:
         print(f"\n== {title}", flush=True)
 
     def add(self, status, name, detail=""):
+        if IS_WINDOWS:  # the commands that the messages name, as they are typed on Windows
+            detail = re.sub(r"pixi run build(-[a-z0-9-]+)?", "pixi run build", detail)
+            detail = detail.replace("pixi run ", "pixi run -e default-win ")
         self.items.append({"status": status, "name": name, "detail": detail})
         print(f"  {status:<4}  {name}" + (f": {detail}" if detail else ""), flush=True)
 
@@ -67,6 +71,8 @@ def run_python(code, timeout=180, isolated=False):
     err = [l for l in (ANSI.sub("", l).strip() for l in p.stderr.splitlines()) if l]
     if p.returncode < 0:
         return False, f"crashed (signal {-p.returncode})" + (f": {err[-1]}" if err else "")
+    if IS_WINDOWS and p.returncode >= 0xC0000000:  # an NTSTATUS, e.g. 0xC0000005 (access violation)
+        return False, f"crashed (exit code 0x{p.returncode:08X})" + (f": {err[-1]}" if err else "")
     if p.returncode == 0:
         return True, out[-1] if out else ""
     return False, err[-1] if err else (out[-1] if out else f"exit code {p.returncode}")
@@ -109,10 +115,35 @@ def is_wsl():
         return False
 
 
+def windows_memory_total_and_available():
+    import ctypes
+
+    class MemoryStatusEx(ctypes.Structure):
+        _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong)] + [
+            (name, ctypes.c_ulonglong)
+            for name in ("ullTotalPhys", "ullAvailPhys", "ullTotalPageFile", "ullAvailPageFile",
+                         "ullTotalVirtual", "ullAvailVirtual", "ullAvailExtendedVirtual")]
+
+    status = MemoryStatusEx()
+    status.dwLength = ctypes.sizeof(MemoryStatusEx)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        raise OSError("GlobalMemoryStatusEx failed")
+    return status.ullTotalPhys, status.ullAvailPhys
+
+
+def windows_has_avx2():
+    import ctypes
+
+    PF_AVX2_INSTRUCTIONS_AVAILABLE = 40
+    return bool(ctypes.windll.kernel32.IsProcessorFeaturePresent(PF_AVX2_INSTRUCTIONS_AVAILABLE))
+
+
 def memory_total_and_available():
     if sys.platform == "darwin":
         total = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout)
         return total, None
+    if IS_WINDOWS:
+        return windows_memory_total_and_available()
     info = {}
     with open("/proc/meminfo") as f:
         for line in f:
@@ -146,13 +177,34 @@ def check_machine(r):
         ok = arch == "x86_64"
         r.add("OK" if ok else "WARN", "WSL2" if is_wsl() else "Linux",
               f"{distro} on {arch}" + ("" if ok else " (the course setup is tested on x86-64)"))
+    elif system == "Windows":
+        # native Windows is experimental: the default level only, with the CPU build of PyTorch
+        build = platform.version()  # e.g. 10.0.26200; Windows 11 is 10.0.22000 and later
+        try:
+            release = "11" if int(build.split(".")[-1]) >= 22000 else platform.release()
+        except ValueError:
+            release = platform.release()
+        version = f"{release} ({build})"
+        ok = arch.lower() in ("amd64", "x86_64")
+        r.add("OK" if ok else "FAIL", "Windows (native, experimental)",
+              f"{version} on {arch}" + ("" if ok else " (the Windows environment is for Intel and AMD processors, x86-64)"))
+        if ok:
+            avx2 = windows_has_avx2()
+            r.add("OK" if avx2 else "FAIL", "CPU instructions",
+                  "AVX2" if avx2 else "no AVX2: pySLAM's prebuilt modules for Windows need it")
     else:
-        r.add("FAIL", "operating system", f"{system}: pySLAM runs on macOS, Linux and WSL2 (Ubuntu inside Windows)")
+        r.add("FAIL", "operating system", f"{system}: pySLAM runs on macOS, Linux, WSL2 (Ubuntu inside Windows) and Windows")
 
     total, available = memory_total_and_available()
     detail = f"{total / GB:.0f} GB" + (f" ({available / GB:.0f} GB free)" if available else "")
     status = "OK"
-    if total < 12 * GB:
+    if IS_WINDOWS:
+        # nothing is built on Windows (the modules are prebuilt); SLAM with its windows used about 4 GB
+        # on KITTI 06, and 2.6 GB with --headless
+        if total < 8 * GB:
+            status = "WARN"
+            detail += " - little memory for SLAM with its windows (about 4 GB): `pixi run slam --headless` needs less"
+    elif total < 12 * GB:
         status = "WARN"
         detail += " - building GTSAM needs about 12 GB of free memory (PYSLAM_BUILD_JOBS=1 builds one file at a time)"
         if is_wsl():
@@ -227,6 +279,9 @@ def check_gpu(r):
         r.add("OK", "torch device", f"CUDA {info['cuda']}: {info['name']}, {info['memory_gb']:.0f} GB, {info['arch']} (torch {info['torch']})")
     elif info["kind"] == "mps":
         r.add("OK", "torch device", f"Apple GPU (MPS), torch {info['torch']}")
+    elif IS_WINDOWS:
+        # the Windows environment has the CPU build of PyTorch: nothing is wrong with the installation
+        r.add("OK", "torch device", f"CPU only (torch {info['torch']}), as the Windows environment is: learned features will be slow")
     else:
         r.add("WARN", "torch device", f"CPU only (torch {info['torch']}): learned features and depth models will be slow")
 
@@ -334,7 +389,10 @@ def read_tail(path, num_bytes=20000):
 
 def slam_progress(log_tail, seconds):
     """One line saying where a main_slam.py run is, from the end of its log."""
-    frames = re.findall(r"img id: (\d+)", log_tail)
+    # "frame N/1101: ..." at the first frame and every 100 frames; "img id: N" for every frame with
+    # --verbose. A line may start with the colour reset of the message before it.
+    log_tail = ANSI.sub("", log_tail)
+    frames = [a or b for a, b in re.findall(r"img id: (\d+)|^frame (\d+)", log_tail, flags=re.M)]
     if "SLAM: quitting" in log_tail or "Dataset end" in log_tail:
         stage = "the sequence is done: computing the trajectory error"
     elif frames:
@@ -348,6 +406,14 @@ def stop_process_group(p, grace=10.0):
     """Stop a process started with start_new_session=True and everything it started (main_slam.py runs
     loop closing and other parts in processes of their own): SIGTERM, then SIGKILL after grace seconds."""
     if p.poll() is not None:
+        return
+    if IS_WINDOWS:
+        # Windows has no process groups to signal: taskkill ends the process and all it started
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+        try:
+            p.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            pass
         return
     for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, 5.0)):
         try:
@@ -383,6 +449,7 @@ def run_slam(r, log_path):
         with open(log_path, "w") as log:
             # unbuffered, so that the log (and the progress read from it) follows the run. A process group
             # of its own, so that stopping it also stops the processes it starts.
+            # (on Windows, start_new_session has no effect: stop_process_group() uses the process tree)
             p = subprocess.Popen([sys.executable, "-u", "main_slam.py", "--headless"], cwd=ROOT_DIR, stdout=log,
                                  stderr=subprocess.STDOUT, text=True, start_new_session=True)
             try:
