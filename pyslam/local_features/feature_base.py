@@ -22,7 +22,10 @@ import sys
 import pyslam.config as config
 
 import numpy as np
-import torch
+try:
+    import torch  # noqa: F401
+except ImportError:  # an environment without torch (the TensorFlow worker: pyslam/workers/tf_worker.py)
+    pass
 
 import cv2
 from threading import RLock
