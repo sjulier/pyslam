@@ -308,11 +308,17 @@ pixi run -e default-win slam              # with the camera image, the 3D map, p
 ```
 The headless run ends with an ATE `rmse` of about 14 to 16 m.
 
+**5. Optional: the learned models** (SuperPoint, SuperPoint with the LightGlue matcher, and CosPlace place recognition; about 0.3 GB):
+```powershell
+pixi run -e default-win models
+```
+It prints one line per component, `OK` with `cpu`, and ends with `Installed: features-core vpr-core`. They run on the CPU, which is too slow to keep up with the camera.
+
 If a command stops (for example a download breaks), run the same command again.
 
-**Please report** whether the four steps worked, with: the Windows version, the processor and memory (Settings > System > About), whether Visual Studio is installed, and, if a step failed, the command and the last 30 lines of its output.
+**Please report** whether the steps worked, with: the Windows version, the processor and memory (Settings > System > About), whether Visual Studio is installed, and, if a step failed, the command and the last 30 lines of its output.
 
-Not on Windows yet: `pixi run models` (SuperPoint and the other learned features), `pixi run doctor`, and the levels above the default one (depth prediction, semantics, 3D reconstruction). For those, use [WSL2](./docs/TEACHING_SETUP.md).
+Not on Windows yet: the other learned features and place recognition models (`models-all-features`, `models-all-vpr`), a GPU build of PyTorch, `pixi run doctor`, and the levels above the default one (depth prediction, semantics, 3D reconstruction). For those, use [WSL2](./docs/TEACHING_SETUP.md).
 
 ### Docker
 

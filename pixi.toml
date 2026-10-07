@@ -87,6 +87,10 @@ PYTHONPATH = "%PIXI_PROJECT_ROOT%\\thirdparty\\gtsam_local\\install\\python"
 [target.win-64.tasks]
 # Windows has no bash: scripts/build_windows.py does what scripts/pixi_build.sh and the build.sh scripts do
 build = "python scripts/build_windows.py"
+# ... and scripts/install_extra_windows.py what scripts/install_extra.sh does, for the recommended models
+models = "python scripts/install_extra_windows.py features-core vpr-core"
+models-features = "python scripts/install_extra_windows.py features-core"
+models-vpr = "python scripts/install_extra_windows.py vpr-core"
 
 [target.win-64.dependencies]
 # The solver otherwise picks the headless build, which has no windows (cv2.imshow)
