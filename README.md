@@ -751,6 +751,14 @@ SAVE_TRAJECTORY:
   basename: trajectory           # Basename of the trajectory saving output
 ```
 
+##### Final trajectory and the map's scale changes
+
+As in ORB-SLAM2/3, tracking stores each frame's pose *relative to its reference keyframe*, and the final trajectory is that relative pose times the keyframe's final pose. In monocular SLAM the map's scale changes after a frame was tracked: a loop correction applies a Sim3 (on KITTI 06 a scale of about 2 near the loop, spread along the loop by the pose graph), and bundle adjustment moves it too. The keyframes follow these changes; the stored relative translations do not, so between keyframes the frames over- or undershoot (short and long steps alternate near a loop). ORB-SLAM3 rescales the stored relative poses only when the whole map is rescaled by one factor (IMU initialisation, map merging); ORB-SLAM2 never does.
+
+pySLAM also records, when a frame is tracked, the positions of a few keyframes around its reference keyframe (the keyframe, its parent and its best covisible keyframes). At the end, their positions then and now give the local scale change, and the frame's relative translation is scaled by it; a frame whose reference keyframe was culled is moved with the similarity transform of those keyframes (`pyslam/slam/relative_pose_scale.py`). Set `Parameters.kTrajectoryRescaleRelativePoses = False` for the ORB-SLAM2/3 behaviour.
+
+To compare the two, each run also saves the trajectory with the relative poses as tracked (`trajectory_final_as_tracked.txt`, next to `trajectory_final.txt`) and prints its ATE, which is also written to `other_metrics_info.txt` (`ate_rmse_relative_poses_as_tracked`). On KITTI 06 the difference in ATE is small (about 0.15 m of 12 m: the error is mostly monocular scale drift), but the shape of the trajectory between keyframes is not.
+
 ---
 
 ### Graph optimization engines

@@ -856,6 +856,40 @@ if __name__ == "__main__":
             final_trajectory_writer.write_full_trajectory(est_poses, timestamps)
             final_trajectory_writer.close_file()
 
+        # The same run's trajectory with the frames' relative poses as tracked, as ORB-SLAM2/3 (they do not
+        # follow the map's later scale changes): saved next to it with its ATE, to compare (see
+        # pyslam/slam/relative_pose_scale.py)
+        ate_rmse_as_tracked = None
+        if Parameters.kTrajectoryRescaleRelativePoses:
+            Parameters.kTrajectoryRescaleRelativePoses = False
+            try:
+                est_poses_as_tracked, timestamps_as_tracked, ids_as_tracked = slam.get_final_trajectory()
+            finally:
+                Parameters.kTrajectoryRescaleRelativePoses = True
+            if final_trajectory_writer:
+                writer = TrajectoryWriter(
+                    format_type=config.trajectory_saving_settings["format_type"],
+                    filename=trajectory_final_file_path.replace(".txt", "_as_tracked.txt"),
+                )
+                writer.write_full_trajectory(est_poses_as_tracked, timestamps_as_tracked)
+                writer.close_file()
+            if has_groundtruth:
+                assoc = find_poses_associations(timestamps_as_tracked, est_poses_as_tracked, gt_timestamps, gt_poses)
+                ape_as_tracked, _ = eval_ate(
+                    poses_est=assoc[1],
+                    poses_gt=assoc[2],
+                    frame_ids=ids_as_tracked,
+                    curr_frame_id=img_id,
+                    is_final=is_final,
+                    is_monocular=eval_ate_correct_scale,
+                    save_dir=None,
+                )
+                ate_rmse_as_tracked = ape_as_tracked.get("rmse")
+                Printer.green(
+                    f"ATE rmse with the relative poses as tracked (ORB-SLAM2/3): {ate_rmse_as_tracked:.4f} "
+                    f"(this run's trajectory: {ape_stats.get('rmse'):.4f})"
+                )
+
         other_metrics_file_path = os.path.join(metrics_save_dir, "other_metrics_info.txt")
         with open(other_metrics_file_path, "w") as f:
             f.write(f"num_total_frames: {num_total_frames}\n")
@@ -865,6 +899,8 @@ if __name__ == "__main__":
             # the frames with a pose in the final trajectory: the trajectory errors are over these only
             f.write(f"num_tracked_frames: {len(est_poses)}\n")
             f.write(f"percent_tracked: {len(est_poses)/num_total_frames*100:.2f}\n")
+            if ate_rmse_as_tracked is not None:
+                f.write(f"ate_rmse_relative_poses_as_tracked: {ate_rmse_as_tracked:.6f}\n")
             f.write(f"playback_max_speed: {playback_throttle.speed_str(playback_throttle.max_speed)}\n")
             f.write(f"playback_lowest_speed: {playback_throttle.speed_str(playback_throttle.lowest_speed)}\n")
             f.write(f"playback_num_slowdowns: {playback_throttle.num_decreases}\n")

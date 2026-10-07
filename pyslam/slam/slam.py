@@ -29,6 +29,7 @@ import weakref
 import ujson as json
 
 from pyslam.config_parameters import Parameters
+from pyslam.slam.relative_pose_scale import frame_Twc_after_culled_reference
 
 from pyslam.slam import (
     Frame,
@@ -616,31 +617,52 @@ class Slam(object):
 
         tracking_history = self.tracking.tracking_history
 
-        # For each frame we have a reference keyframe (ref_kf), the timestamp (timestamp) and the SLAM state (state)
-        for rel_pose, ref_kf, timestamp, id, state in zip(
-            tracking_history.relative_frame_poses,
-            tracking_history.kf_references,
-            tracking_history.timestamps,
-            tracking_history.ids,
-            tracking_history.slam_states,
+        # For each frame we have a reference keyframe (ref_kf), the timestamp (timestamp) and the SLAM state (state).
+        # The relative poses are taken in the map's current scale (see relative_pose_scale.py).
+        num_culled_moved, culled_spanning_tree = 0, []
+        for i, (ref_kf, timestamp, id, state) in enumerate(
+            zip(
+                tracking_history.kf_references,
+                tracking_history.timestamps,
+                tracking_history.ids,
+                tracking_history.slam_states,
+            )
         ):
             if state != SlamState.OK:
                 continue
 
-            keyframe = ref_kf
-            Tcr = np.eye(4, dtype=np.float32)
-            # If the reference keyframe was culled, traverse the spanning tree to get a suitable keyframe.
-            while keyframe.is_bad():
-                Tcr = Tcr @ keyframe.Tcp()
-                keyframe = keyframe.parent
+            anchors = tracking_history.anchors[i] if i < len(tracking_history.anchors) else None
+            Twc = None
+            if ref_kf.is_bad():
+                # the reference keyframe was culled: move the frame with the keyframes around it
+                Twc_world = frame_Twc_after_culled_reference(
+                    tracking_history.relative_frame_poses[i].matrix(), anchors
+                )
+                if Twc_world is not None:
+                    Twc = inv_T(inv_T(Twc_world) @ Two)
+                    num_culled_moved += 1
+                else:
+                    culled_spanning_tree.append(id)
+            if Twc is None:
+                keyframe = ref_kf
+                Tcr = np.eye(4, dtype=np.float32)
+                # If the reference keyframe was culled, traverse the spanning tree to get a suitable keyframe.
+                while keyframe.is_bad():
+                    Tcr = Tcr @ keyframe.Tcp()
+                    keyframe = keyframe.parent
 
-            Trw = Tcr @ keyframe.Tcw() @ Two
+                Trw = Tcr @ keyframe.Tcw() @ Two
 
-            Tcw = rel_pose.matrix() @ Trw
-            Twc = inv_T(Tcw)
+                Tcw = tracking_history.relative_pose(i).matrix() @ Trw
+                Twc = inv_T(Tcw)
 
             poses.append(Twc)
             timestamps.append(timestamp)
             ids.append(id)
 
+        print(
+            f"Final trajectory: {num_culled_moved + len(culled_spanning_tree)} frames with a culled reference "
+            f"keyframe: {num_culled_moved} moved with the keyframes around it, {len(culled_spanning_tree)} "
+            f"through the spanning tree {culled_spanning_tree[:20]}"
+        )
         return poses, timestamps, ids

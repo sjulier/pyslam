@@ -280,6 +280,10 @@ class Parameters:
     kLoopClosingParallelKpsMatchingNumWorkers = 2
     kLoopClosingGeometryCheckerMinKpsMatches = 20  # o:20
     kLoopClosingMaxSim3Scale = 10.0  # a loop's Sim3 scale must be within [1/x, x] (monocular): rejects degenerate solutions
+    # The frames' poses relative to their reference keyframes follow the map's later scale changes (loop
+    # correction, BA) in the final trajectory; False: as ORB-SLAM2/3, which keep them in the scale they were
+    # tracked in (see pyslam/slam/relative_pose_scale.py)
+    kTrajectoryRescaleRelativePoses = True
     kLoopClosingTh2 = 10
     kLoopClosingMaxReprojectionDistanceMapSearch = 10  # [pixels]    o:10
     kLoopClosingMinNumMatchedMapPoints = 40

@@ -32,6 +32,7 @@ import cv2
 import g2o
 
 from pyslam.config_parameters import Parameters
+from pyslam.slam.relative_pose_scale import RelativePoseAnchors, rescaled_relative_pose
 
 from .frame import match_frames
 from .feature_tracker_shared import FeatureTrackerShared
@@ -142,6 +143,9 @@ class TrackingHistory(object):
         self.timestamps = []  # list of frame timestamps
         self.ids = []
         self.slam_states = []  # list of slam states
+        # the keyframes around each reference keyframe and their positions when the frame was tracked:
+        # they give the relative pose's translation in the map's later scale (relative_pose_scale.py)
+        self.anchors = []
 
     def reset(self):
         self.relative_frame_poses.clear()
@@ -149,6 +153,16 @@ class TrackingHistory(object):
         self.timestamps.clear()
         self.ids.clear()
         self.slam_states.clear()
+        self.anchors.clear()
+
+    def relative_pose(self, i):
+        """Entry i's pose w.r.t. its reference keyframe (g2o.Isometry3d), with its translation in the map's
+        current scale (Parameters.kTrajectoryRescaleRelativePoses)."""
+        Tcr = self.relative_frame_poses[i]
+        if not Parameters.kTrajectoryRescaleRelativePoses or i >= len(self.anchors):
+            return Tcr
+        T = rescaled_relative_pose(Tcr.matrix(), self.anchors[i])
+        return g2o.Isometry3d(T[:3, :3], T[:3, 3])
 
 
 class Tracking:
@@ -750,6 +764,11 @@ class Tracking:
             )  # pose of current frame w.r.t. current reference keyframe kf_ref
             self.tracking_history.relative_frame_poses.append(isometry3d_Tcr)
             self.tracking_history.kf_references.append(self.kf_ref)
+            self.tracking_history.anchors.append(
+                RelativePoseAnchors(
+                    self.kf_ref, self.tracking_history.anchors[-1] if self.tracking_history.anchors else None
+                )
+            )
             self.tracking_history.timestamps.append(self.f_cur.timestamp)
             self.tracking_history.ids.append(self.f_cur.id)
         else:
@@ -758,6 +777,7 @@ class Tracking:
                     self.tracking_history.relative_frame_poses[-1]
                 )
                 self.tracking_history.kf_references.append(self.tracking_history.kf_references[-1])
+                self.tracking_history.anchors.append(self.tracking_history.anchors[-1])
                 self.tracking_history.timestamps.append(self.tracking_history.timestamps[-1])
                 self.tracking_history.ids.append(self.tracking_history.ids[-1])
         self.tracking_history.slam_states.append(self.state)
