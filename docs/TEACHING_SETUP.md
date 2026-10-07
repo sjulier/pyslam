@@ -67,7 +67,10 @@ above the default one (depth prediction, semantic segmentation, 3D reconstructio
 
 - a machine **without Visual Studio**: both test machines had it installed. pySLAM should not need
   it, but this has not been shown;
-- an **AMD** processor, **Windows 10**, and a machine with 8 GB of memory or less;
+- the kind of laptop it is meant for, with a slow processor, few cores and 8 GB of memory or less:
+  the test machines are a 20-core laptop with 32 GB and a workstation. This is the main reason it is
+  called experimental;
+- an **AMD** processor and **Windows 10**;
 - SLAM with LightGlue (only its installation is checked; SuperPoint with CosPlace has been run once);
 - `pixi run vo`, `pixi run feature-matching`, `pixi run slam-evaluation` and the other main scripts:
   only `pixi run slam`, with and without its windows, has been run.
