@@ -186,6 +186,39 @@ def check_macos_power(r):
         r.add("OK", "Low Power Mode", f"off{on_source}")
 
 
+def hidden_entries(folder, flags_of=None):
+    """The entries under folder (macOS) that carry the BSD 'hidden' flag (chflags hidden), at most 3 levels down."""
+    import stat
+    flags_of = flags_of or (lambda path: getattr(os.lstat(path), "st_flags", 0))
+    hidden = []
+    for top, dirs, files in os.walk(folder):
+        if os.path.relpath(top, folder).count(os.sep) >= 2:
+            dirs[:] = []
+        for name in dirs + files:
+            path = os.path.join(top, name)
+            try:
+                if flags_of(path) & stat.UF_HIDDEN:
+                    hidden.append(path)
+            except OSError:
+                pass
+    return hidden
+
+
+def check_macos_qt_plugins(r):
+    # Qt lists its plugin folders without hidden entries: with the BSD 'hidden' flag on the environment's
+    # files (seen on a Mac where every entry of .pixi had it; the cause is unknown), cv2.imshow stops with
+    # "Could not find the Qt platform plugin cocoa", although the plugin is there and loads.
+    plugins = os.path.join(sys.prefix, "lib", "qt6", "plugins")
+    if not os.path.isdir(plugins):
+        return
+    hidden = hidden_entries(plugins)
+    if hidden:
+        r.add("FAIL", "Qt plugins", f"{len(hidden)} file(s) of {plugins} are marked hidden, so Qt cannot find its "
+              f"platform plugin (\"Could not find the Qt platform plugin cocoa\"): run `chflags -R nohidden {os.path.join(ROOT_DIR, '.pixi')}`")
+    else:
+        r.add("OK", "Qt plugins", "not hidden")
+
+
 def git_commit():
     try:
         p = subprocess.run(["git", "-C", ROOT_DIR, "log", "-1", "--format=%h %cs"], capture_output=True, text=True)
@@ -281,6 +314,8 @@ def check_environment(r):
         r.add("WARN", "pyslam package", f"the active Python imports pyslam from {out}, not from this checkout: its native modules may not match")
     else:
         r.add("OK", "pyslam package", "installed from this checkout (editable)")
+    if platform.system() == "Darwin":
+        check_macos_qt_plugins(r)
     return commit
 
 

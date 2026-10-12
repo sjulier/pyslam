@@ -337,6 +337,16 @@ this will solve the problem.
  
 --- 
 
+### _qt.qpa.plugin: Could not find the Qt platform plugin "cocoa" in ""_ (macOS)
+
+If the plugin is there (`.pixi/envs/default/lib/qt6/plugins/platforms/libqcocoa.dylib`), check whether the environment's files are marked hidden: Qt lists its plugin folders without hidden entries. `pixi run doctor` reports it ("Qt plugins"); `ls -lO .pixi/envs/default/lib/qt6/plugins/platforms` shows `hidden` next to each file. Clear the flag (from the pySLAM folder):
+```
+chflags -R nohidden .pixi
+```
+On one Mac every entry of `.pixi` (and `.git`) had the flag; the cause is unknown (Finder or a sync tool are suspects).
+
+--- 
+
 ### SURF error
 
 In order to use [non-free OpenCV features](https://stackoverflow.com/questions/50467696/pycharm-installation-of-non-free-opencv-modules-for-operations-like-sift-surf) (i.e. **SURF**, etc.), you need to install the module `opencv-contrib-python` built with the enabled option `OPENCV_ENABLE_NONFREE`. 
