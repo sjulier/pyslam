@@ -555,6 +555,9 @@ class SlamEvaluationManager:
 
         # The trajectory errors: only for a dataset with ground truth
         if not os.path.exists(iteration_metrics_path):
+            if iteration_metrics.get("num_tracked_frames") == 0:
+                Printer.yellow(f"{dataset_name}: SLAM never initialised: no trajectory error (0% tracked)")
+                return
             Printer.yellow(
                 f"{dataset_name}: no trajectory error ({iteration_metrics_path} is missing: "
                 f"a dataset without ground truth, or the trajectory could not be evaluated)"
