@@ -17,297 +17,399 @@
 * You should have received a copy of the GNU General Public License
 * along with PYSLAM. If not, see <http://www.gnu.org/licenses/>.
 """
+
+# Semantic segmentation of one image, or of every frame of a sequence, with one of pySLAM's
+# segmentation methods: the class of every pixel, in the method's colours, and a one-line summary
+# (the classes found, their shares of the image, and the time per image). With --save, the label
+# maps of a sequence are written for main_slam.py --semantic-mask.
+#
+#   pixi run semantic-segmentation --list
+#   pixi run semantic-segmentation --method DEEPLABV3 --test kitti          (DeepLabV3 runs at the default level)
+#   pixi run -e semantics semantic-segmentation --method SEGFORMER --image photo.jpg
+#   pixi run -e semantics semantic-segmentation --method SEGFORMER --video data/videos/kitti06/video_color.mp4 --save labels/kitti06
+
 import pyslam  # first: sets the OpenMP thread settings before numpy/torch are imported
+import argparse
+import csv
+import importlib.util
+import json
 import os
 import sys
+import time
 
-
-from pyslam.config import Config
-
-config = Config()
-
-from pyslam.utilities.file_management import gdrive_download_lambda
-from pyslam.utilities.system import getchar
-from pyslam.utilities.logging import Printer
-from pyslam.utilities.img_management import (
-    float_to_color,
-    convert_float_to_colored_uint8_image,
-    LoopCandidateImgs,
-    ImgWriter,
-)
-
-import math
 import cv2
 import numpy as np
 
-from pyslam.io.dataset_factory import dataset_factory
-from pyslam.slam.frame import Frame, FeatureTrackerShared
-from pyslam.local_features.feature_tracker import feature_tracker_factory
-from pyslam.local_features.feature_tracker_configs import FeatureTrackerConfigs
+kScriptPath = os.path.realpath(__file__)
+kScriptFolder = os.path.dirname(kScriptPath)
 
-from pyslam.semantics.semantic_segmentation_factory import semantic_segmentation_factory
-from pyslam.semantics.semantic_segmentation_types import SemanticSegmentationType
-from pyslam.semantics.semantic_color_utils import labels_color_map_factory
-from pyslam.semantics.semantic_types import SemanticFeatureType, SemanticDatasetType
+# The methods (SemanticSegmentationType entries): what each gives
+kMethods = {
+    "DEEPLABV3": "a class for every pixel: 21 object classes (Pascal VOC). DeepLabV3 with a ResNet-50 (default level)",
+    "SEGFORMER": "a class for every pixel: 19 street classes (Cityscapes). SegFormer-B0, a transformer",
+    "CLIP": "a class for every pixel, from text: the best matching of the 19 Cityscapes class names. CLIP ViT-L/14",
+    "YOLO": "the pixels of each object it detects, nothing elsewhere: 80 object classes (COCO). YOLO26-S",
+    "RFDETR": "the pixels of each object it detects, nothing elsewhere: 80 object classes (COCO). RF-DETR Seg-S",
+    "DETIC": "the pixels of each object it detects, nothing elsewhere: 1203 object classes (LVIS). Detic, Swin-B",
+    "EOV_SEG": "a class for every pixel, open vocabulary. EOV-Seg (NVIDIA GPU only)",
+    "ODISE": "a class for every pixel, open vocabulary. ODISE (NVIDIA GPU only)",
+}
+# These give label 0 to every pixel which is in no object, and label 0 is also their first class
+# (YOLO: person; Detic: aerosol can). Their instance map tells the two apart: it is 0 outside the objects.
+kObjectsOnly = ("YOLO", "RFDETR", "DETIC")
+# The set of classes each method really uses (the detectors keep their own, whatever they are asked for)
+kClassSets = {"SEGFORMER": "Cityscapes", "DEEPLABV3": "Pascal VOC", "CLIP": "Cityscapes", "YOLO": "COCO",
+              "RFDETR": "COCO", "DETIC": "LVIS", "EOV_SEG": "open vocabulary", "ODISE": "open vocabulary"}
+kCudaOnly = ("EOV_SEG", "ODISE")
+kDefaultLevel = ("DEEPLABV3",)  # the others need the semantics level (pixi run -e semantics ...)
+# A module of the semantics level which each of the other methods needs (checked before anything is imported)
+kNeeds = {"SEGFORMER": "transformers", "CLIP": "open_clip", "YOLO": "ultralytics", "RFDETR": "supervision",
+          "DETIC": "detectron2", "EOV_SEG": "detectron2", "ODISE": "detectron2"}
+kNoObject = "no object"
 
-from pyslam.config_parameters import Parameters
+# The images of --test
+kTests = {
+    "kitti": "test/data/kitti06-12-color.png",  # frame 12 of the KITTI 06 video
+    "kitti_next": "test/data/kitti06-17-color.png",  # half a second later
+    "desk": "data/images/desk_detic.jpeg",
+    "churchill": "test/data/churchill/1.ppm",
+    "box": "test/data/box_in_scene.png",
+    "mars": "test/data/mars1.png",
+}
 
 
-Parameters.kLoopClosingDebugAndPrintToFile = False
-Parameters.kLoopClosingDebugWithSimmetryMatrix = True
-Parameters.kLoopClosingDebugWithLoopDetectionImages = True
+def main():
+    from pyslam.io.sequence_options import add_sequence_options, has_sequence_options, sequence_config_path
 
-check_disconnected_instances = True
-check_output = True
+    parser = argparse.ArgumentParser(
+        description="Semantic segmentation of one image, or of every frame of a sequence, with one "
+        "of pySLAM's segmentation methods",
+        epilog="examples: pixi run semantic-segmentation --method DEEPLABV3 --test kitti; "
+        "pixi run -e semantics semantic-segmentation --method SEGFORMER --image photo.jpg; "
+        "pixi run -e semantics semantic-segmentation --method SEGFORMER "
+        "--video data/videos/kitti06/video_color.mp4 --save labels/kitti06",
+    )
+    parser.add_argument(
+        "--method", default="DEEPLABV3", metavar="NAME", help="the segmentation method (default DEEPLABV3; see --list)"
+    )
+    parser.add_argument("--test", default="kitti", choices=sorted(kTests), help="the image (default kitti)")
+    parser.add_argument("--image", metavar="FILE", help="an image file of your own, instead of --test")
+    parser.add_argument(
+        "--grey", action="store_true", help="turn the image (or the frames) to greyscale before segmenting"
+    )
+    parser.add_argument(
+        "--runs", type=int, default=3, help="with one image: how many times to repeat it for the timing (default 3)"
+    )
+    parser.add_argument(
+        "--image-size", type=int, default=512, metavar="N", help="the image is resized to NxN for the network (default 512)"
+    )
+    add_sequence_options(parser, need_settings=False)
+    sequence = parser.add_argument_group("with a sequence")
+    sequence.add_argument("--save", metavar="DIR", help="write the label map of every frame to this folder, for main_slam.py --semantic-mask")
+    sequence.add_argument("--step", type=int, default=1, metavar="N", help="segment every Nth frame (default 1: every frame)")
+    sequence.add_argument("--max-frames", type=int, metavar="N", help="stop after N segmented frames")
+    sequence.add_argument("--headless", action="store_true", help="no windows")
+    parser.add_argument("--list", action="store_true", help="list the methods")
+    args = parser.parse_args()
 
+    if args.list:
+        print("Methods (--method), and what each gives:")
+        for name, what in kMethods.items():
+            print(f"    {name:10s} {what}")
+        print(f"{' and '.join(kDefaultLevel)} run{'s' if len(kDefaultLevel) == 1 else ''} at the default level; the others need the semantics level: "
+              "pixi run -e semantics semantic-segmentation ... (pixi run -e semantics models-semantics installs their models).")
+        print(f"{' and '.join(kCudaOnly)} also need an NVIDIA GPU.")
+        sys.exit(0)
+    if args.method not in kMethods:
+        print(f"Unknown method '{args.method}'. Valid names (see --list):", file=sys.stderr)
+        print("    " + " ".join(kMethods), file=sys.stderr)
+        sys.exit(2)
+    if args.image and has_sequence_options(args):
+        parser.error("give --image or a sequence, not both")
+    if args.method in kNeeds and importlib.util.find_spec(kNeeds[args.method]) is None:
+        sys.exit(
+            f"{args.method} needs the semantics level: run this command with `pixi run -e semantics "
+            f"semantic-segmentation ...` ({' and '.join(kDefaultLevel)} run{'s' if len(kDefaultLevel) == 1 else ''} at the default level)."
+        )
 
-# basic output checks
-def check_output_shapes(semantics, instances, image_shape, feature_type):
-    h, w = image_shape[:2]
-    assert semantics is not None, "semantics is None"
-    if feature_type == SemanticFeatureType.LABEL:
-        assert semantics.shape == (h, w), f"label semantics shape {semantics.shape} != {(h, w)}"
+    # the configuration (it sets the library paths; its dataset is only used for a sequence)
+    from pyslam.config import Config
+
+    config_path = sequence_config_path(args, parser, default_settings=os.path.join(kScriptFolder, "settings", "KITTI04-12.yaml"))
+    config = Config(config_path) if config_path else Config()
+    if config_path:
+        os.remove(config_path)  # the temporary file of sequence_config_path(): it has been read
+
+    from pyslam.utilities.logging import Printer
+
+    segmenter = Segmenter(args.method, args.image_size)
+    if has_sequence_options(args):
+        from pyslam.io.dataset_factory import dataset_factory
+
+        dataset = dataset_factory(config)
+        run_sequence(args, segmenter, dataset, Printer)
     else:
-        assert semantics.shape[:2] == (
-            h,
-            w,
-        ), f"prob semantics shape {semantics.shape} has wrong H,W"
+        run_image(args, segmenter, Printer)
 
 
-# check if the semantics are of the correct dtype
-def check_semantics_dtype(semantics, feature_type):
-    if feature_type == SemanticFeatureType.LABEL:
-        assert semantics.dtype in (
-            np.int32,
-            np.int64,
-            np.uint16,
-            np.uint8,
-        ), f"label semantics dtype looks wrong: {semantics.dtype}"
+class Segmenter:
+    """One of pySLAM's segmentation methods, with the names and colours of its classes."""
+
+    def __init__(self, method, image_size):
+        from pyslam.semantics.semantic_segmentation_factory import semantic_segmentation_factory
+        from pyslam.semantics.semantic_segmentation_types import SemanticSegmentationType
+        from pyslam.semantics.semantic_types import SemanticDatasetType, SemanticFeatureType
+
+        self.method = method
+        # pySLAM's DeepLabV3 has Pascal VOC weights only; the others are asked for the Cityscapes classes
+        self.dataset = SemanticDatasetType.VOC if method == "DEEPLABV3" else SemanticDatasetType.CITYSCAPES
+        self.class_set = kClassSets[method]
+        start = time.time()
+        self.model = semantic_segmentation_factory(
+            semantic_segmentation_type=SemanticSegmentationType[method],
+            semantic_feature_type=SemanticFeatureType.LABEL,
+            semantic_dataset_type=self.dataset,
+            image_size=(image_size, image_size),
+            device=None,  # autodetect
+        )
+        self.load_time = time.time() - start
+        self.device = str(getattr(self.model, "device", ""))
+        self.num_classes = int(self.model.num_classes())
+        self.objects_only = method in kObjectsOnly
+        # the label of the pixels in no object, when the method only labels the objects it finds
+        self.no_object_label = self.num_classes if self.objects_only else None
+        self.class_names = self._class_names()
+        if self.no_object_label is not None:
+            self.class_names[self.no_object_label] = kNoObject
+        self.colours = {}  # label -> BGR colour, as seen
+
+    def _class_names(self):
+        """The names of the classes, by label, as far as the method gives them."""
+        model = getattr(self.model, "model", None)
+        for source in (
+            getattr(model, "names", None),
+            getattr(model, "class_names", None),
+            getattr(getattr(model, "model", None), "names", None),
+        ):
+            if isinstance(source, dict) and source:
+                return {int(k): str(v) for k, v in source.items()}
+            if isinstance(source, (list, tuple)) and source:
+                return dict(enumerate(str(v) for v in source))
+        metadata = getattr(model, "metadata", None)
+        listed = getattr(metadata, "thing_classes", None) if self.method == "DETIC" else (
+            getattr(metadata, "stuff_classes", None) or getattr(metadata, "thing_classes", None)
+        )
+        if listed:
+            return dict(enumerate(str(v) for v in listed))
+        try:
+            from pyslam.semantics.semantic_labels_factory import semantic_labels_factory
+
+            return dict(enumerate(str(v) for v in semantic_labels_factory(self.dataset)))
+        except Exception:
+            return {}
+
+    def name(self, label):
+        return self.class_names.get(int(label), str(int(label)))
+
+    def segment(self, img):
+        """The label map of img (with no_object_label on the pixels in no object), its colours, and
+        the colours over the image."""
+        result = self.model.infer(img)
+        labels = np.asarray(result.semantics)
+        instances = result.instances
+        colours = np.ascontiguousarray(self.model.sem_img_to_rgb(labels, bgr=True))
+        labelled = np.ones(labels.shape, bool)
+        if self.objects_only and instances is not None:
+            labelled = np.asarray(instances) > 0
+        labels = labels.astype(np.int32)
+        if self.no_object_label is not None:
+            labels[~labelled] = self.no_object_label
+            colours[~labelled] = 0
+        for label in np.unique(labels[labelled]):
+            if int(label) not in self.colours:
+                self.colours[int(label)] = [int(v) for v in colours[labelled & (labels == label)][0]]
+        over_image = cv2.addWeighted(img, 0.45, np.zeros_like(img), 0.55, 0)  # in no object: the image, darkened
+        over_image[labelled] = cv2.addWeighted(colours, 0.6, img, 0.4, 0)[labelled]
+        return labels, colours, over_image
+
+    def shares(self, labels):
+        """[(label, share of the pixels)], largest first."""
+        ids, counts = np.unique(labels, return_counts=True)
+        return sorted(((int(i), float(c) / labels.size) for i, c in zip(ids, counts)), key=lambda s: -s[1])
+
+    def shares_text(self, shares, most=10):
+        return ", ".join(f"{self.name(i)} {'<1' if share < 0.005 else f'{100 * share:.0f}'}%" for i, share in shares[:most])
+
+    def legend(self, shares, width, most=8):
+        """A strip with the colours and names of the largest classes."""
+        strip = np.full((30, width, 3), 255, np.uint8)
+        x = 8
+        for label, share in shares[:most]:
+            text = f"{self.name(label)} {'<1' if share < 0.005 else f'{100 * share:.0f}'}%"
+            text_width = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0][0]
+            if x + 24 + text_width > width - 8:
+                break
+            colour = self.colours.get(label, [40, 40, 40])
+            cv2.rectangle(strip, (x, 7), (x + 16, 23), colour, -1)
+            cv2.rectangle(strip, (x, 7), (x + 16, 23), (60, 60, 60), 1)
+            cv2.putText(strip, text, (x + 22, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
+            x += 22 + text_width + 16
+        return strip
+
+    def label_dtype(self):
+        return np.uint8 if self.num_classes < 255 else np.uint16
+
+
+def to_grey(img):
+    grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return cv2.cvtColor(grey, cv2.COLOR_GRAY2BGR)
+
+
+def show(segmenter, img, labels, colours, over_image, title):
+    shares = segmenter.shares(labels)
+    cv2.imshow("Image", img)
+    cv2.imshow(f"Classes - {segmenter.method}", np.vstack([colours, segmenter.legend(shares, colours.shape[1])]))
+    cv2.imshow(f"Classes over the image - {segmenter.method}", over_image)
+    cv2.setWindowTitle("Image", title)
+
+
+def run_image(args, segmenter, Printer):
+    if args.image:
+        path, name = args.image, os.path.basename(args.image)
     else:
-        assert np.issubdtype(
-            semantics.dtype, np.floating
-        ), f"prob semantics dtype looks wrong: {semantics.dtype}"
+        path, name = os.path.join(kScriptFolder, kTests[args.test]), args.test
+    img = cv2.imread(path)
+    if img is None:
+        sys.exit(f"cannot read the image {path}")
+    if args.grey:
+        img = to_grey(img)
+    h, w = img.shape[:2]
+
+    start = time.time()
+    labels, colours, over_image = segmenter.segment(img)
+    first = time.time() - start
+    times = []
+    for _ in range(max(0, args.runs)):
+        start = time.time()
+        segmenter.segment(img)
+        times.append(time.time() - start)
+    per_image = np.mean(times) if times else first
+    shares = segmenter.shares(labels)
+
+    summary = (
+        f"{segmenter.method} on {name} ({w}x{h} pixels{', in greyscale' if args.grey else ''}): "
+        f"{segmenter.num_classes} classes ({segmenter.class_set}) on {segmenter.device}; "
+        f"{per_image:.2f} s per image"
+        + (
+            f" (mean of {len(times)} runs after the first, which took {first:.2f} s"
+            if len(times) > 1
+            else f" (one run after the first, which took {first:.2f} s" if times else " (the first run"
+        )
+        + f"; {segmenter.load_time:.1f} s to load the model); {segmenter.shares_text(shares)}"
+    )
+    Printer.green(f"\nSummary: {summary}\n")
+    if not args.headless:
+        show(segmenter, img, labels, colours, over_image, f"Image: {name}")
+        print("Press a key in one of the windows to close them.")
+        cv2.waitKey()
+        cv2.destroyAllWindows()
 
 
-# check if the label ids are in the correct range
-def check_label_range(semantics, num_classes, feature_type):
-    if feature_type == SemanticFeatureType.LABEL:
-        if semantics.size > 0:
-            min_id = int(semantics.min())
-            max_id = int(semantics.max())
-            assert min_id >= 0, f"label id < 0: {min_id}"
-            assert max_id < num_classes, f"label id >= num_classes: {max_id} >= {num_classes}"
+def run_sequence(args, segmenter, dataset, Printer):
+    source = args.video or args.images or args.tum
+    name = os.path.basename(os.path.normpath(source))
+    num_total = getattr(dataset, "num_frames", None)
+    if args.save:
+        os.makedirs(args.save, exist_ok=True)
+    info = {
+        "method": segmenter.method,
+        "class_set": segmenter.class_set,
+        "num_classes": segmenter.num_classes,
+        "class_names": {str(k): v for k, v in sorted(segmenter.class_names.items())},
+        "no_object_label": segmenter.no_object_label,
+        "sequence": os.path.abspath(source),
+        "step": args.step,
+        "greyscale": bool(args.grey),
+        "device": segmenter.device,
+        "frames": [],
+    }
+    rows = []  # one per segmented frame: id, time, changed fraction, {label: share}
+    totals = {}  # label -> sum of the shares
+    prev_labels = None
+    img_id = 0
+    paused = False
+    stopped = False
+    print(f"{segmenter.method} on {name}: every {args.step} frame(s); q or Esc in a window stops, p pauses")
+    while dataset.is_ok and not stopped:
+        img = dataset.getImageColor(img_id)
+        if img is None:
+            break
+        if img_id % args.step == 0:
+            if args.max_frames is not None and len(rows) >= args.max_frames:
+                break
+            if args.grey:
+                img = to_grey(img)
+            start = time.time()
+            labels, colours, over_image = segmenter.segment(img)
+            seconds = time.time() - start
+            shares = segmenter.shares(labels)
+            changed = None
+            if prev_labels is not None and prev_labels.shape == labels.shape:
+                changed = float(np.count_nonzero(prev_labels != labels)) / labels.size
+            prev_labels = labels
+            rows.append((img_id, seconds, changed, dict(shares)))
+            for label, share in shares:
+                totals[label] = totals.get(label, 0.0) + share
+            if args.save:
+                cv2.imwrite(os.path.join(args.save, f"labels_{img_id:06d}.png"), labels.astype(segmenter.label_dtype()))
+                info["frames"].append(img_id)
+            if len(rows) == 1 or len(rows) % 50 == 0:
+                print(
+                    f"frame {img_id}" + (f"/{num_total}" if num_total else "") + f": {seconds:.2f} s; "
+                    + segmenter.shares_text(shares, most=5)
+                )
+            if not args.headless:
+                show(segmenter, img, labels, colours, over_image, f"Image: {name}, frame {img_id}")
+                while True:
+                    key = cv2.waitKey(0 if paused else 1) & 0xFF
+                    if key in (ord("q"), 27):
+                        stopped = True
+                        break
+                    if key == ord("p"):
+                        paused = not paused
+                        Printer.yellow("Paused: p resumes." if paused else "Resumed.")
+                    if not paused:
+                        break
+        img_id += 1
 
-
-# check if the probability vectors are simplex
-def check_probability_simplex(semantics, feature_type, atol=1e-3):
-    if feature_type != SemanticFeatureType.PROBABILITY_VECTOR:
-        return
-    sums = semantics.sum(axis=-1)
-    max_err = float(np.max(np.abs(sums - 1.0)))
-    assert max_err < atol, f"prob sums not ~1.0 (max err {max_err})"
-
-
-# check if the instances are consistent
-def check_instances_consistency(instances):
-    if instances is None:
-        return
-    assert instances.ndim == 2, f"instances should be 2D, got {instances.ndim}D"
-    assert instances.dtype == np.int32, f"instances dtype should be int32, got {instances.dtype}"
-    if instances.size > 0:
-        min_id = int(instances.min())
-        assert min_id >= 0, f"instance id < 0: {min_id}"
-
-
-# check if the instances are connected
-def check_instances_connected(instances, min_pixels=50):
-    if instances is None:
-        return
-    instance_ids = np.unique(instances)
-    for instance_id in instance_ids:
-        if instance_id <= 0:
-            continue
-        mask = instances == instance_id
-        if np.count_nonzero(mask) < min_pixels:
-            continue
-        num_labels, _ = cv2.connectedComponents(mask.astype(np.uint8))
-        assert num_labels <= 2, f"instance id {instance_id} has disconnected components"
-
-
-# check if the instances are disconnected
-def warn_on_disconnected_instances(instances, min_pixels=50, max_components_report=6):
-    if instances is None:
-        return
-    instance_ids = np.unique(instances)
-    for instance_id in instance_ids:
-        if instance_id <= 0:
-            continue
-        mask = instances == instance_id
-        if np.count_nonzero(mask) < min_pixels:
-            continue
-        num_labels, labels = cv2.connectedComponents(mask.astype(np.uint8))
-        if num_labels > 2:  # background + multiple components
-            Printer.red(f"instance id {instance_id} has {num_labels - 1} disconnected components")
-            component_ids = list(range(1, num_labels))
-            if max_components_report is not None:
-                component_ids = component_ids[:max_components_report]
-            component_masks = [(labels == comp_id) for comp_id in component_ids]
-            # Loop over each connected component mask for the current instance id.
-            for i in range(len(component_masks)):
-                # For component i, compute a distance transform on the inverse of the mask.
-                # That produces, for every pixel, the Euclidean distance to the nearest pixel
-                # inside component i. Pixels inside the component have distance 0.
-                inv_mask_i = 1 - component_masks[i].astype(
-                    np.uint8
-                )  # inverse of the mask: 1 for background, 0 for component i
-                dist_map = cv2.distanceTransform(inv_mask_i, cv2.DIST_L2, 3)
-                # compute the minimum boundary-to-boundary distance between components
-                for j in range(i + 1, len(component_masks)):
-                    # select pixels belonging to the other component
-                    other_pixels = component_masks[j]
-                    if not np.any(other_pixels):
-                        continue
-                    # min distance from any pixel in component j to component i
-                    min_dist = float(dist_map[other_pixels].min())
-                    Printer.red(
-                        # report component pair and their separation in pixels
-                        f"  components {component_ids[i]}-{component_ids[j]} min distance: {min_dist:.1f}px"
-                    )
+    if not rows:
+        sys.exit(f"no frames were read from {source}")
+    seconds = float(np.mean([r[1] for r in rows]))
+    changes = [r[2] for r in rows if r[2] is not None]
+    mean_shares = sorted(((label, total / len(rows)) for label, total in totals.items()), key=lambda s: -s[1])
+    summary = (
+        f"{segmenter.method} on {name}: {len(rows)} frames" + (f" of {num_total}" if num_total else "")
+        + (f" (every {args.step})" if args.step > 1 else "") + (", in greyscale" if args.grey else "")
+        + f"; {segmenter.num_classes} classes ({segmenter.class_set}) on {segmenter.device}; "
+        f"{seconds:.2f} s per frame; mean shares: {segmenter.shares_text(mean_shares)}"
+    )
+    if changes:
+        summary += f"; the label changed on {100 * np.mean(changes):.1f}% of the pixels from one segmented frame to the next (mean)"
+    if args.save:
+        info["seconds_per_frame"] = seconds
+        with open(os.path.join(args.save, "info.json"), "w") as f:
+            json.dump(info, f, indent=1)
+        labels_seen = sorted(totals)
+        with open(os.path.join(args.save, "shares.csv"), "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["frame", "seconds", "changed_fraction"] + [segmenter.name(l) for l in labels_seen])
+            for frame_id, secs, changed, shares in rows:
+                writer.writerow([frame_id, f"{secs:.4f}", "" if changed is None else f"{changed:.4f}"] + [f"{shares.get(l, 0.0):.4f}" for l in labels_seen])
+        summary += f"; saved to {args.save} (labels_NNNNNN.png, info.json, shares.csv)"
+    Printer.green(f"\nSummary: {summary}\n")
+    if not args.headless:
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
-
-    dataset = dataset_factory(config)
-
-    tracker_config = FeatureTrackerConfigs.ORB2
-    tracker_config["num_features"] = 2000
-    print("tracker_config: ", tracker_config)
-    feature_tracker = feature_tracker_factory(**tracker_config)
-
-    # This is normally done by the Slam class we don't have here. We need to set the static field of the class Frame and FeatureTrackerShared.
-    FeatureTrackerShared.set_feature_tracker(feature_tracker)
-
-    # Select your semantic segmentation configuration (see the file pyslam/semantics/semantic_segmentation_types.py)
-    # SemanticSegmentationType: DETIC, RFDETR, SEGFORMER, DEEPLABV3, CLIP, EOV_SEG, ODISE, YOLO
-    semantic_segmentation_type = SemanticSegmentationType.DETIC
-    semantic_feature_type = SemanticFeatureType.LABEL
-    semantic_dataset_type = SemanticDatasetType.CITYSCAPES
-    image_size = (512, 512)
-    device = None  # autodetect
-    semantic_segmentation = semantic_segmentation_factory(
-        semantic_segmentation_type=semantic_segmentation_type,
-        semantic_feature_type=semantic_feature_type,
-        semantic_dataset_type=semantic_dataset_type,
-        image_size=image_size,
-        device=device,
-    )
-    Printer.green(f"semantic_segmentation_type: {semantic_segmentation_type.name}")
-    Printer.green(f"semantic_feature_type: {semantic_feature_type.name}")
-    Printer.green(f"semantic_dataset_type: {semantic_dataset_type.name}")
-    Printer.green(f"num classes: {semantic_segmentation.num_classes()}")
-
-    semantic_color_map = None
-    if semantic_dataset_type != SemanticDatasetType.FEATURE_SIMILARITY:
-        semantic_color_map = labels_color_map_factory(semantic_dataset_type)
-
-    img_writer = ImgWriter(font_scale=0.7)
-
-    window_camera_name = "Camera"
-    window_semantic_prediction_name = f"Semantic prediction viz - {semantic_segmentation_type.name}"
-    window_semantic_class_map_name = f"Semantic class map - {semantic_segmentation_type.name}"
-    window_semantic_instance_map_name = f"Semantic instance map - {semantic_segmentation_type.name}"
-
-    # Create windows before the loop to avoid delay on first display
-    cv2.namedWindow(window_camera_name)
-    cv2.namedWindow(window_semantic_prediction_name)
-    cv2.namedWindow(window_semantic_class_map_name)
-    cv2.namedWindow(window_semantic_instance_map_name)
-
-    img_id = 0  # 180, 340, 400   # you can start from a desired frame id if needed
-    key = None
-    paused = False
-    while True:
-
-        timestamp, img = None, None
-
-        if dataset.is_ok:
-            timestamp = dataset.getTimestamp()  # get current timestamp
-            img = dataset.getImageColor(img_id)
-
-        if img is not None:
-            print("----------------------------------------")
-            print(f"processing img {img_id}, img.shape: {img.shape}")
-
-            inference_result = semantic_segmentation.infer(img)
-            curr_semantic_prediction = inference_result.semantics
-            curr_semantic_instances = inference_result.instances
-
-            if check_output:
-                check_output_shapes(
-                    curr_semantic_prediction,
-                    curr_semantic_instances,
-                    img.shape,
-                    semantic_feature_type,
-                )
-                check_semantics_dtype(curr_semantic_prediction, semantic_feature_type)
-                check_label_range(
-                    curr_semantic_prediction,
-                    semantic_segmentation.num_classes(),
-                    semantic_feature_type,
-                )
-                check_probability_simplex(curr_semantic_prediction, semantic_feature_type)
-                check_instances_consistency(curr_semantic_instances)
-                # Enable strict connectedness check if you want hard failures.
-                # check_instances_connected(curr_semantic_instances, min_pixels=50)
-
-            # Get the visualization RGB image with possible overlays/annotations
-            semantic_color_img_viz = semantic_segmentation.sem_img_to_viz_rgb(
-                curr_semantic_prediction, bgr=True
-            )
-            semantic_color_img = semantic_segmentation.sem_img_to_rgb(
-                curr_semantic_prediction, bgr=True
-            )
-            if curr_semantic_instances is not None:
-                # Use instances_to_rgb method from semantic segmentation class
-                # This uses hash-based color mapping for instance IDs (which can be arbitrary integers)
-                semantic_color_instances_img = semantic_segmentation.instances_to_rgb(
-                    curr_semantic_instances, bgr=True
-                )
-                if check_disconnected_instances:
-                    warn_on_disconnected_instances(curr_semantic_instances)
-            else:
-                semantic_color_instances_img = None
-
-            img_writer.write(img, f"id: {img_id}", (30, 30))
-
-            cv2.imshow(window_camera_name, img)
-
-            cv2.imshow(window_semantic_prediction_name, semantic_color_img_viz)
-
-            cv2.imshow(window_semantic_class_map_name, semantic_color_img)
-
-            if semantic_color_instances_img is not None:
-                cv2.imshow(window_semantic_instance_map_name, semantic_color_instances_img)
-
-            if paused:
-                key = cv2.waitKey(0)
-            else:
-                key = cv2.waitKey(1)
-        else:
-            if paused:
-                key = cv2.waitKey(0)
-            else:
-                key = cv2.waitKey(100)
-
-        if key == ord("q") or key == 27:
-            break
-
-        if key == ord("p"):
-            paused = not paused
-            if paused:
-                Printer.yellow("Paused. Press 'p' to resume.")
-            else:
-                Printer.yellow("Resumed.")
-
-        if not paused:
-            img_id += 1
+    main()

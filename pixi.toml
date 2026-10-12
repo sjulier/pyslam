@@ -391,6 +391,8 @@ doctor = "python scripts/doctor.py"
 # default level: the main scripts (extra arguments are passed on, e.g. `pixi run slam --headless`)
 vo = "python main_vo.py"
 slam = "python main_slam.py"
+# DeepLabV3 (torchvision) runs at this level; SegFormer, CLIP and the detectors need the semantics level
+semantic-segmentation = "python main_semantic_image_segmentation.py"
 feature-matching = "python main_feature_matching.py"
 map-viewer = "python main_map_viewer.py"
 slam-evaluation = "python main_slam_evaluation.py"
@@ -404,7 +406,6 @@ depth-prediction = "python main_depth_prediction.py"
 [feature.semantics.tasks]
 # Segmentation and detection models (group ii): clone, patch, download the weights, check each one
 models-semantics = "bash scripts/install_extra.sh semantics"
-semantic-segmentation = "python main_semantic_image_segmentation.py"
 
 [feature.recon3d.tasks]
 # 3R models and Gaussian splatting (group iv): clone, patch, build the CUDA extensions, download the
