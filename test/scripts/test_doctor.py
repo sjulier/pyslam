@@ -63,3 +63,17 @@ def test_read_tail(tmp_path):
     f.write_text("a" * 100 + "END")
     assert doctor.read_tail(str(f), num_bytes=10) == "a" * 7 + "END"
     assert doctor.read_tail(str(tmp_path / "missing.txt")) == ""
+
+
+def test_hidden_entries(tmp_path):
+    import stat
+
+    (tmp_path / "platforms").mkdir()
+    (tmp_path / "platforms" / "libqcocoa.dylib").write_text("")
+    (tmp_path / "imageformats").mkdir()
+    (tmp_path / "imageformats" / "libqjpeg.dylib").write_text("")
+    hidden_names = {"libqcocoa.dylib"}
+    flags = lambda path: stat.UF_HIDDEN if os.path.basename(path) in hidden_names else 0
+    assert doctor.hidden_entries(str(tmp_path), flags) == [str(tmp_path / "platforms" / "libqcocoa.dylib")]
+    hidden_names.clear()
+    assert doctor.hidden_entries(str(tmp_path), flags) == []
