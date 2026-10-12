@@ -199,6 +199,12 @@ if __name__ == "__main__":
         help=f"the classes to mask (default: {' '.join(kDefaultMaskedClasses)})",
     )
     semantic.add_argument(
+        "--mask-after-init",
+        action="store_true",
+        help="apply the mask only while tracking is OK: the initialisation (whose first frames set "
+        "the scale of a monocular map) and relocalisation after a loss keep every keypoint",
+    )
+    semantic.add_argument(
         "--mask-dilation",
         type=int,
         default=0,
@@ -251,8 +257,8 @@ if __name__ == "__main__":
     semantic_masks = None
     if args.semantic_mask:
         semantic_masks = SavedLabelMaps(args.semantic_mask, args.mask_classes, args.mask_dilation)
-    elif args.mask_classes or args.mask_dilation:
-        parser.error("--mask-classes and --mask-dilation go with --semantic-mask")
+    elif args.mask_classes or args.mask_dilation or args.mask_after_init:
+        parser.error("--mask-classes, --mask-dilation and --mask-after-init go with --semantic-mask")
     num_total_frames = dataset.num_frames
 
     online_trajectory_writer = None
@@ -551,7 +557,9 @@ if __name__ == "__main__":
                                 # cv2.imshow("depth prediction", depth_img)
                                 cv_image_viewer.draw(depth_img, "depth prediction")
 
-                        mask = semantic_masks.mask(img_id, img.shape) if semantic_masks else None
+                        mask = None
+                        if semantic_masks and (not args.mask_after_init or slam.tracking.state == SlamState.OK):
+                            mask = semantic_masks.mask(img_id, img.shape)
                         # the same mask for the right image of a stereo pair. The masked things are
                         # shifted there by the disparity (tens of pixels when they are near), so the
                         # mask covers them only partly; --mask-dilation covers part of the rest, and
