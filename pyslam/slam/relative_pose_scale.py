@@ -29,9 +29,10 @@
 # Here, tracking also stores the positions of a few keyframes around the reference keyframe ("anchors")
 # when the frame is tracked. When the relative pose is used, the anchors' positions then and now give the
 # local scale change, whatever made it (loop correction, global or local BA), and the relative
-# translation is scaled by it. If the reference keyframe has been culled since, the frame's pose at
-# tracking time is moved by the anchors' similarity transform (then -> now) instead of following the
-# parent's Tcp, whose scale is unknown.
+# translation is scaled by it. A frame whose reference keyframe has been culled since follows the spanning
+# tree, as in ORB-SLAM2/3, with its relative pose rescaled the same way. (Moving such frames with the
+# similarity transform of the anchors instead was tried: on EuRoC MH01 mono it was worse in three runs out
+# of three, by 0.4-0.9 mm of 35 mm ATE, while the rescaling alone was better in all three.)
 # Monocular only: with stereo and RGB-D the scale is observed and loop corrections are SE3, so the anchors
 # would only measure bundle adjustment's noise (on KITTI 06 stereo, TUM fr1_desk and EuRoC MH01 the ATE
 # was 0.0001-0.0004 m worse); tracking records no anchors there.
@@ -49,7 +50,7 @@ kMinAnchorsForScale = 3  # with two keyframes (one of them maybe just moved by l
 class RelativePoseAnchors:
     """The keyframes around a frame's reference keyframe and their positions when the frame was tracked."""
 
-    __slots__ = ("keyframes", "positions", "Twr")
+    __slots__ = ("keyframes", "positions")
 
     def __init__(self, kf_ref, previous=None):
         keyframes = [kf_ref]
@@ -68,7 +69,6 @@ class RelativePoseAnchors:
                 kids.add(kf.kid)
         self.keyframes = keyframes
         self.positions = np.array([np.asarray(kf.Ow(), dtype=np.float64).reshape(3) for kf in keyframes])
-        self.Twr = np.array(kf_ref.Twc(), dtype=np.float64)  # the reference keyframe's pose then
 
     def _matched_positions(self):
         """The anchors' positions then and now, for those that are still in the map."""
@@ -86,26 +86,6 @@ class RelativePoseAnchors:
             return 1.0
         return float(np.sqrt(((now - now.mean(axis=0)) ** 2).sum() / spread_then))
 
-    def similarity(self):
-        """The similarity (s, R, t) that moves the anchors from then to now (Umeyama), or None."""
-        then, now = self._matched_positions()
-        if len(then) < 3:
-            return None
-        mu_then, mu_now = then.mean(axis=0), now.mean(axis=0)
-        x_then, x_now = then - mu_then, now - mu_now
-        var_then = (x_then**2).sum() / len(then)
-        if var_then < kMinAnchorSpread:
-            return None
-        U, D, Vt = np.linalg.svd(x_now.T @ x_then / len(then))
-        if D[1] < 1e-6 * D[0]:  # the anchors are on a line: the rotation about it is undetermined
-            return None
-        S = np.eye(3)
-        if np.linalg.det(U) * np.linalg.det(Vt) < 0:
-            S[2, 2] = -1
-        R = U @ S @ Vt
-        s = float(np.trace(np.diag(D) @ S) / var_then)
-        return s, R, mu_now - s * R @ mu_then
-
 
 def rescaled_relative_pose(Tcr, anchors):
     """The relative pose Tcr (4x4, frame w.r.t. reference keyframe) with its translation in today's scale."""
@@ -114,20 +94,3 @@ def rescaled_relative_pose(Tcr, anchors):
     T = np.array(Tcr, dtype=np.float64)
     T[:3, 3] *= anchors.scale()
     return T
-
-
-def frame_Twc_after_culled_reference(Tcr, anchors):
-    """The frame's pose (Twc, 4x4) when its reference keyframe has been culled: its pose at tracking time,
-    moved by the anchors' similarity transform. None if the anchors cannot tell (the caller then follows
-    the spanning tree, as ORB-SLAM does)."""
-    if anchors is None or not Parameters.kTrajectoryRescaleRelativePoses:
-        return None
-    sim = anchors.similarity()
-    if sim is None:
-        return None
-    s, R, t = sim
-    Twc_then = anchors.Twr @ np.linalg.inv(np.array(Tcr, dtype=np.float64))
-    Twc = np.eye(4)
-    Twc[:3, :3] = R @ Twc_then[:3, :3]
-    Twc[:3, 3] = s * R @ Twc_then[:3, 3] + t
-    return Twc
