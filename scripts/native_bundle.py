@@ -205,6 +205,8 @@ def ladder():
 
 def build_environment():
     """The environment whose libraries the modules are linked to (the first level of the ladder)."""
+    if platform_name() == "win-64":
+        return "default"  # the only level on native Windows, in the CPU ladder
     return "default-cpu" if ladder() == "cpu" else "default"
 
 
