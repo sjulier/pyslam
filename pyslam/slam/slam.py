@@ -605,6 +605,8 @@ class Slam(object):
         # keyframes.sort(key=lambda kf: kf.id)
         # print(f'keyframes: {[kf.id for kf in keyframes]}')
         first_keyframe = self.map.get_first_keyframe()
+        if first_keyframe is None:  # the map was never initialised: no frame has a pose
+            return poses, timestamps, ids
 
         # Transform all keyframes so that the first keyframe is at the origin.
         # After a loop closure the first keyframe might not be at the origin.
