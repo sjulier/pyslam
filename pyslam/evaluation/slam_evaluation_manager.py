@@ -437,6 +437,9 @@ class SlamEvaluationManager:
         # e.g. "--throttle" or "--speed 0.5", for features that cannot keep up with the camera
         if self.json_data.get("main_slam_options"):
             command += " " + self.json_data["main_slam_options"]
+        # options of this preset alone, e.g. "--semantic-mask labels/kitti06" (main_slam_evaluation.py --semantic-mask)
+        if preset.get("main_slam_options"):
+            command += " " + preset["main_slam_options"]
 
         print("command: " + command)
 

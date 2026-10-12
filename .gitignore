@@ -79,6 +79,8 @@ pyslam/slam/cpp/tests_py/test_data
 
 leftover/
 results/
+# the label maps saved by main_semantic_image_segmentation.py --save
+labels/
 
 cpp/test_opencv_casters/build
 cpp/test_opencv_casters/lib

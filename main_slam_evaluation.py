@@ -149,13 +149,33 @@ def config_overrides_from_args(args, argparser):
         overrides["output_path"] = "video" if args.video else "images" if args.images else "tum"
     elif args.settings or args.groundtruth or args.timestamps:
         argparser.error("--settings, --groundtruth and --timestamps go with --video, --images or --tum")
-    if args.features:
-        unknown = [name for name in args.features if name not in feature_config_names()]
+    features = args.features
+    if args.semantic_mask and not features:
+        features = ["ORB2"]
+    elif (args.mask_classes or args.mask_dilation is not None) and not args.semantic_mask:
+        argparser.error("--mask-classes and --mask-dilation go with --semantic-mask")
+    if features:
+        unknown = [name for name in features if name not in feature_config_names()]
         if unknown:
             print(f"Unknown feature configuration(s): {' '.join(unknown)}. Valid names:", file=sys.stderr)
             print("    " + " ".join(feature_config_names()), file=sys.stderr)
             sys.exit(2)
-        overrides["presets"] = [feature_preset(name) for name in args.features]
+        overrides["presets"] = [feature_preset(name) for name in features]
+        if args.semantic_mask:
+            # each configuration again, with the detector masked: the options of main_slam.py go
+            # with the preset ("main_slam_options" of a preset, see slam_evaluation_manager.py)
+            mask_options = f'--semantic-mask "{os.path.abspath(os.path.expanduser(args.semantic_mask))}"'
+            if args.mask_classes:
+                mask_options += " --mask-classes " + " ".join(args.mask_classes)
+            if args.mask_dilation is not None:
+                mask_options += f" --mask-dilation {args.mask_dilation}"
+            masked = []
+            for name in features:
+                preset = feature_preset(name)
+                preset["name"] = f"{name}+mask"
+                preset["main_slam_options"] = mask_options
+                masked.append(preset)
+            overrides["presets"] += masked
     if args.runs is not None:
         overrides["number_of_runs_per_dataset"] = args.runs
     if args.jobs is not None:
@@ -267,6 +287,19 @@ if __name__ == "__main__":
         "--speed",
         type=float,
         help="playback speed relative to the camera's frame rate (main_slam.py --speed), e.g. 0.5",
+    )
+    runs.add_argument(
+        "--semantic-mask",
+        metavar="DIR",
+        help="also run every feature configuration with the detector masked by the label maps of "
+        "DIR (main_slam.py --semantic-mask), as a second preset named NAME+mask: the report then "
+        "compares SLAM with and without the mask (default features: ORB2)",
+    )
+    runs.add_argument(
+        "--mask-classes", nargs="+", metavar="NAME", help="with --semantic-mask: the classes to mask (main_slam.py --mask-classes)"
+    )
+    runs.add_argument(
+        "--mask-dilation", type=int, metavar="PIXELS", help="with --semantic-mask: grow the masked regions (main_slam.py --mask-dilation)"
     )
     #
     argparser.add_argument(
