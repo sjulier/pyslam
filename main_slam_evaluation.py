@@ -102,8 +102,10 @@ def feature_preset(name):
 
 def tum_sensor_type(associations_path):
     """rgbd if the list of the frames of a TUM sequence has depth images (4 columns), mono otherwise."""
+    from pyslam.utilities.text_files import open_text
+
     try:
-        with open(associations_path) as f:
+        with open_text(associations_path) as f:
             lines = [line.split() for line in f if line.strip() and not line.lstrip().startswith("#")]
     except OSError:
         return "mono"

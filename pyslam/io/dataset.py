@@ -32,6 +32,7 @@ from pyslam.semantics.semantic_types import SemanticDatasetType
 from pyslam.utilities.logging import Printer
 from pyslam.utilities.serialization import SerializableEnum, register_class, SerializationJSON
 from pyslam.utilities.strings import levenshtein_distance
+from pyslam.utilities.text_files import open_text
 from .dataset_types import DatasetType, SensorType, DatasetEnvironmentType, MinimalDatasetConfig
 
 from typing import TYPE_CHECKING
@@ -630,7 +631,7 @@ class TumDataset(Dataset):
         print("Processing TUM Sequence")
         self.base_path = self.path + "/" + self.name + "/"
         self.associations_path = self.path + "/" + self.name + "/" + associations
-        with open(self.associations_path) as f:
+        with open_text(self.associations_path) as f:
             # one frame per line; lines starting with # are comments (as in TUM's rgb.txt)
             self.associations_data = [l for l in f.readlines() if l.strip() and not l.lstrip().startswith("#")]
             self.max_frame_id = len(self.associations_data)
@@ -1707,7 +1708,7 @@ class RoverDataset(Dataset):
         print("Processing ROVER Sequence")
         self.base_path = self.path + "/" + self.name + "/" + camera_name + "/"
         self.associations_path = self.base_path + "/" + associations
-        with open(self.associations_path) as f:
+        with open_text(self.associations_path) as f:
             self.associations_data = f.readlines()
             self.max_frame_id = len(self.associations_data)
             self.num_frames = self.max_frame_id

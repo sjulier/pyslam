@@ -28,6 +28,7 @@ import traceback
 from enum import Enum
 
 from pyslam.utilities.logging import Printer
+from pyslam.utilities.text_files import open_text
 from pyslam.utilities.geometry import (
     rotmat2qvec,
     qvec2rotmat,
@@ -722,7 +723,7 @@ class TumGroundTruth(GroundTruth):
         if self.data is None:
             sys.exit("ERROR [TumGroundTruth] while reading groundtruth file!")
         if self.associations_path is not None:
-            with open(self.associations_path) as f:
+            with open_text(self.associations_path) as f:
                 self.associations_data = [
                     l for l in f.readlines() if l.strip() and not l.lstrip().startswith("#")
                 ]
@@ -829,7 +830,7 @@ class IclNuimGroundTruth(GroundTruth):
         if self.data is None:
             sys.exit("ERROR [IclNuimGroundTruth] while reading groundtruth file!")
         if self.associations_path is not None:
-            with open(self.associations_path) as f:
+            with open_text(self.associations_path) as f:
                 self.associations_data = f.readlines()
                 self.associations_data = [line.strip().split() for line in self.associations_data]
             if self.associations_data is None:
@@ -1994,7 +1995,7 @@ class RoverGroundTruth(GroundTruth):
                 sys.exit(
                     f"ERROR [RoverGroundTruth] associations file not found: {self.associations_path}"
                 )
-            with open(self.associations_path) as f:
+            with open_text(self.associations_path) as f:
                 self.associations_data = f.readlines()
                 self.associations_data = [line.strip().split() for line in self.associations_data]
             if self.associations_data is None:
