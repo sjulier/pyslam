@@ -63,7 +63,7 @@ kClassSets = {"SEGFORMER": "Cityscapes", "DEEPLABV3": "Pascal VOC", "CLIP": "Cit
 kCudaOnly = ("EOV_SEG", "ODISE")
 kDefaultLevel = ("DEEPLABV3",)  # the others need the semantics level (pixi run -e semantics ...)
 # A module of the semantics level which each of the other methods needs (checked before anything is imported)
-kNeeds = {"SEGFORMER": "transformers", "CLIP": "einops", "YOLO": "ultralytics", "RFDETR": "supervision",
+kNeeds = {"SEGFORMER": "transformers", "CLIP": "open_clip", "YOLO": "ultralytics", "RFDETR": "supervision",
           "DETIC": "detectron2", "EOV_SEG": "detectron2", "ODISE": "detectron2"}
 kNoObject = "no object"
 
