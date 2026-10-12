@@ -152,6 +152,73 @@ def memory_total_and_available():
     return info["MemTotal"], info.get("MemAvailable")
 
 
+def macos_low_power_mode(pmset_output):
+    """True/False from the output of `pmset -g` (the settings of the power source in use), None when
+    it does not say (Macs and macOS versions without Low Power Mode)."""
+    m = re.search(r"^\s*lowpowermode\s+(\d+)", pmset_output, re.MULTILINE)
+    return None if m is None else m.group(1) != "0"
+
+
+def macos_power_source(batt_output):
+    """'AC Power' or 'Battery Power' from the first line of `pmset -g batt`, '' when it does not say."""
+    m = re.search(r"Now drawing from '([^']+)'", batt_output)
+    return m.group(1) if m else ""
+
+
+def check_macos_power(r):
+    # SLAM plays the video at the camera's rate: on a slowed-down processor tracking does not get
+    # slower, it falls behind and can lose track. On an M1 with Low Power Mode on, tracking a frame
+    # of KITTI 06 took 52-56 ms instead of 21-23 ms (the frames are 104 ms apart).
+    try:
+        settings = subprocess.run(["pmset", "-g"], capture_output=True, text=True, timeout=10).stdout
+        batt = subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return
+    low_power = macos_low_power_mode(settings)
+    if low_power is None:
+        return
+    source = macos_power_source(batt)
+    on_source = f" ({source})" if source else ""
+    if low_power:
+        r.add("WARN", "Low Power Mode", f"on{on_source}: it slows the processor down, so SLAM falls behind the video and can lose "
+              "track - turn it off in System Settings > Battery before running SLAM")
+    else:
+        r.add("OK", "Low Power Mode", f"off{on_source}")
+
+
+def hidden_entries(folder, flags_of=None):
+    """The entries under folder (macOS) that carry the BSD 'hidden' flag (chflags hidden), at most 3 levels down."""
+    import stat
+    flags_of = flags_of or (lambda path: getattr(os.lstat(path), "st_flags", 0))
+    hidden = []
+    for top, dirs, files in os.walk(folder):
+        if os.path.relpath(top, folder).count(os.sep) >= 2:
+            dirs[:] = []
+        for name in dirs + files:
+            path = os.path.join(top, name)
+            try:
+                if flags_of(path) & stat.UF_HIDDEN:
+                    hidden.append(path)
+            except OSError:
+                pass
+    return hidden
+
+
+def check_macos_qt_plugins(r):
+    # Qt lists its plugin folders without hidden entries: with the BSD 'hidden' flag on the environment's
+    # files (seen on a Mac where every entry of .pixi had it; the cause is unknown), cv2.imshow stops with
+    # "Could not find the Qt platform plugin cocoa", although the plugin is there and loads.
+    plugins = os.path.join(sys.prefix, "lib", "qt6", "plugins")
+    if not os.path.isdir(plugins):
+        return
+    hidden = hidden_entries(plugins)
+    if hidden:
+        r.add("FAIL", "Qt plugins", f"{len(hidden)} file(s) of {plugins} are marked hidden, so Qt cannot find its "
+              f"platform plugin (\"Could not find the Qt platform plugin cocoa\"): run `chflags -R nohidden {os.path.join(ROOT_DIR, '.pixi')}`")
+    else:
+        r.add("OK", "Qt plugins", "not hidden")
+
+
 def git_commit():
     try:
         p = subprocess.run(["git", "-C", ROOT_DIR, "log", "-1", "--format=%h %cs"], capture_output=True, text=True)
@@ -213,6 +280,8 @@ def check_machine(r):
         detail += " (WSL2 gets half of the PC's memory by default; memory= in %UserProfile%\\.wslconfig changes it)"
     r.add(status, "memory", detail)
     r.add("INFO", "CPU cores", str(os.cpu_count()))
+    if system == "Darwin":
+        check_macos_power(r)
     free = shutil.disk_usage(ROOT_DIR).free
     r.add("OK" if free >= 10 * GB else "WARN", "free disk",
           f"{free / GB:.0f} GB on the checkout's disk" + ("" if free >= 10 * GB else " - keep about 10 GB free for datasets and results"))
@@ -245,6 +314,8 @@ def check_environment(r):
         r.add("WARN", "pyslam package", f"the active Python imports pyslam from {out}, not from this checkout: its native modules may not match")
     else:
         r.add("OK", "pyslam package", "installed from this checkout (editable)")
+    if platform.system() == "Darwin":
+        check_macos_qt_plugins(r)
     return commit
 
 
@@ -326,6 +397,13 @@ def check_native_modules(r):
     lines = [l for l in (p.stdout + p.stderr).splitlines() if l.strip()]
     status, detail = abi_summary(p.returncode, lines)
     r.add(status, "pybind11 ABI", detail)
+    p = subprocess.run([sys.executable, os.path.join(ROOT_DIR, "scripts", "native_bundle.py"), "check"],
+                       cwd=ROOT_DIR, capture_output=True, text=True)
+    if p.returncode == 1:
+        outdated = "; ".join(l.strip() for l in p.stdout.splitlines() if l.strip())
+        r.add("FAIL", "prebuilt modules", f"older than this checkout ({outdated})")
+    elif p.returncode == 0:
+        r.add("OK", "prebuilt modules", p.stdout.strip())
     for level, name, code, build in NATIVE_MODULES:
         ok, out = run_python(CHILD_PREFIX + "\n" + code)
         if not ok and build:

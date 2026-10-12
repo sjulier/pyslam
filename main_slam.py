@@ -19,6 +19,11 @@
 """
 
 import pyslam  # first: sets the OpenMP thread settings before numpy/torch are imported
+from pyslam.utilities.native_bundle_check import warn_if_native_modules_outdated
+
+if __name__ == "__main__":
+    warn_if_native_modules_outdated()  # before anything imports the native modules
+
 import time
 import os
 import sys
@@ -50,6 +55,8 @@ if __name__ != "__mp_main__":
     from pyslam.io.ground_truth import groundtruth_factory, is_valid_groundtruth, need_sim3_alignment
     from pyslam.io.dataset_factory import dataset_factory
     from pyslam.io.dataset_types import SensorType
+    from pyslam.io.sequence_options import add_sequence_options, sequence_config_path
+    from pyslam.semantics.semantic_mask import SavedLabelMaps, kDefaultMaskedClasses
     from pyslam.io.trajectory_writer import TrajectoryWriter
 
     from pyslam.viz.viewer3D import Viewer3D
@@ -82,9 +89,6 @@ from datetime import datetime
 import traceback
 
 import argparse
-import glob
-import tempfile
-import yaml
 
 
 from typing import TYPE_CHECKING
@@ -108,86 +112,6 @@ def draw_associated_cameras(viewer3D, assoc_est_poses, assoc_gt_poses, T_gt_est)
     viewer3D.draw_cameras(
         [assoc_est_poses, assoc_gt_poses_aligned], [GlColors.kCyan, GlColors.kMagenta]
     )
-
-
-def sequence_config_path(args, parser):
-    """The configuration file for the sequence given on the command line (--video, --images or
-    --tum, with --settings): a copy of the configuration file (config.yaml, or the one of -c) with
-    its dataset replaced, written to a temporary file. Without such a sequence, the file of -c."""
-    num_sequences = sum(bool(sequence) for sequence in (args.video, args.images, args.tum))
-    if num_sequences == 0:
-        if args.settings or args.groundtruth or args.timestamps:
-            parser.error("--settings, --groundtruth and --timestamps go with --video, --images or --tum")
-        return args.config_path
-    if num_sequences > 1:
-        parser.error("give only one of --video, --images and --tum")
-    if not args.settings:
-        parser.error("--video, --images and --tum need the camera settings file: --settings")
-    settings_path = os.path.abspath(os.path.expanduser(args.settings))
-    if not os.path.isfile(settings_path):
-        sys.exit(f"--settings: no file {settings_path}")
-
-    # the ground truth is optional for a video or an image folder (without it there is no trajectory
-    # error); a file given with --groundtruth is in the folder of the sequence
-    dataset = {"sensor_type": "mono", "settings": settings_path}
-    if args.groundtruth:
-        dataset["groundtruth_file"] = args.groundtruth
-    if args.video:
-        video_path = os.path.abspath(os.path.expanduser(args.video))
-        if not os.path.isfile(video_path):
-            sys.exit(f"--video: no file {video_path}")
-        dataset_type = "VIDEO_DATASET"
-        dataset.update(type="video", base_path=os.path.dirname(video_path), name=os.path.basename(video_path))
-        if args.timestamps:
-            dataset["timestamps"] = args.timestamps
-    elif args.images:
-        images_path = os.path.abspath(os.path.expanduser(args.images))
-        if not glob.glob(os.path.join(images_path, args.pattern)):
-            sys.exit(f"--images: no images {args.pattern} in {images_path} (see --pattern)")
-        dataset_type = "FOLDER_DATASET"
-        dataset.update(type="folder", base_path=images_path, name=args.pattern, fps=args.fps)
-        if args.timestamps:
-            dataset["timestamps"] = args.timestamps
-    else:
-        # a sequence in the layout of the TUM RGB-D datasets: the images, their timestamps and
-        # their order come from the list of the frames, as for the TUM datasets themselves
-        tum_path = os.path.abspath(os.path.expanduser(args.tum)).rstrip("/")
-        associations = args.associations
-        if associations is None:
-            has_associations = os.path.exists(os.path.join(tum_path, "associations.txt"))
-            associations = "associations.txt" if has_associations else "rgb.txt"
-        if not os.path.isfile(os.path.join(tum_path, associations)):
-            sys.exit(f"--tum: no {associations} in {tum_path}")
-        groundtruth_file = args.groundtruth or "groundtruth.txt"
-        if not os.path.isfile(os.path.join(tum_path, groundtruth_file)):
-            sys.exit(
-                f"--tum: no {groundtruth_file} in {tum_path} (TUM sequences need their ground truth). "
-                f"For a sequence without ground truth, use its images: --images {os.path.join(args.tum, 'rgb')}"
-            )
-        sensor_type = args.sensor
-        if sensor_type is None:  # rgbd if the list of the frames has depth images (4 columns)
-            with open(os.path.join(tum_path, associations)) as f:
-                lines = [l.split() for l in f if l.strip() and not l.lstrip().startswith("#")]
-            sensor_type = "rgbd" if lines and len(lines[0]) >= 4 else "mono"
-        dataset_type = "TUM_DATASET"
-        dataset.update(
-            type="tum",
-            sensor_type=sensor_type,
-            base_path=os.path.dirname(tum_path),
-            name=os.path.basename(tum_path),
-            associations=associations,
-            groundtruth_file=args.groundtruth or "auto",
-        )
-
-    with open(args.config_path or kDefaultConfigPath, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-    config["DATASET"]["type"] = dataset_type
-    config[dataset_type] = dataset
-    with tempfile.NamedTemporaryFile(
-        "w", prefix="pyslam_config_", suffix=".yaml", delete=False
-    ) as f:
-        yaml.dump(config, f)
-    return f.name
 
 
 def draw_end_of_sequence_message(img, text):
@@ -229,32 +153,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Do not append date to output directory",
     )
-    sequence = parser.add_argument_group(
-        "a sequence of your own (instead of the dataset of the configuration file)",
-        "the same options as main_slam_evaluation.py; they need --settings",
-    )
-    sequence.add_argument("--video", help="a video file (monocular)")
-    sequence.add_argument("--images", help="a folder of images, read in the order of their names")
-    sequence.add_argument(
-        "--tum",
-        metavar="FOLDER",
-        help="a sequence in the layout of the TUM RGB-D datasets, with its ground truth "
-        "(groundtruth.txt); the frames come from associations.txt, or from rgb.txt (monocular)",
-    )
-    sequence.add_argument("--associations", help="with --tum: the list of the frames")
-    sequence.add_argument("--sensor", choices=("mono", "rgbd"), help="with --tum: default rgbd if the list of the frames has depth images")
-    sequence.add_argument("--pattern", default="*.png", help="with --images: which files (default '*.png')")
-    sequence.add_argument("--fps", type=float, default=10, help="with --images: frames per second (default 10)")
-    sequence.add_argument(
-        "--settings",
-        help="the camera settings file of the sequence (calibration, image size, frame rate): "
-        "copy one of settings/, e.g. WEBCAM.yaml",
-    )
-    sequence.add_argument(
-        "--groundtruth",
-        help="the ground truth file, in the folder of the sequence; with --tum: default groundtruth.txt",
-    )
-    sequence.add_argument("--timestamps", help="with --video or --images: a file of the timestamps of the frames")
+    add_sequence_options(parser)
     parser.add_argument("--headless", action="store_true", help="Run in headless mode")
     parser.add_argument(
         "--speed",
@@ -287,6 +186,35 @@ if __name__ == "__main__":
         "whose descriptors are not ORB, loop closing uses CosPlace when it is installed (`pixi run "
         "models`), otherwise DBoW3 on ORB descriptors of its own (DBOW3_INDEPENDENT), unless the "
         "settings file names a loop detector.",
+    )
+    semantic = parser.add_argument_group(
+        "a semantic mask for the detector (COMP0227 Lab 02)",
+        "the label maps written by `pixi run -e semantics semantic-segmentation --save DIR` for the "
+        "same sequence; mask_from_labels() in pyslam/semantics/semantic_mask.py turns them into masks",
+    )
+    semantic.add_argument(
+        "--semantic-mask",
+        metavar="DIR",
+        help="the folder of the label maps: no keypoints are detected on the masked classes",
+    )
+    semantic.add_argument(
+        "--mask-classes",
+        nargs="+",
+        metavar="NAME",
+        help=f"the classes to mask (default: {' '.join(kDefaultMaskedClasses)})",
+    )
+    semantic.add_argument(
+        "--mask-after-init",
+        action="store_true",
+        help="apply the mask only while tracking is OK: the initialisation (whose first frames set "
+        "the scale of a monocular map) and relocalisation after a loss keep every keypoint",
+    )
+    semantic.add_argument(
+        "--mask-dilation",
+        type=int,
+        default=0,
+        metavar="PIXELS",
+        help="grow the masked regions by this many pixels (default 0)",
     )
     parser.add_argument(
         "--plot-window",
@@ -330,6 +258,12 @@ if __name__ == "__main__":
         dataset.scale_viewer_3d = 0.5
 
     is_monocular = dataset.sensor_type == SensorType.MONOCULAR
+
+    semantic_masks = None
+    if args.semantic_mask:
+        semantic_masks = SavedLabelMaps(args.semantic_mask, args.mask_classes, args.mask_dilation)
+    elif args.mask_classes or args.mask_dilation or args.mask_after_init:
+        parser.error("--mask-classes, --mask-dilation and --mask-after-init go with --semantic-mask")
     num_total_frames = dataset.num_frames
 
     online_trajectory_writer = None
@@ -628,7 +562,15 @@ if __name__ == "__main__":
                                 # cv2.imshow("depth prediction", depth_img)
                                 cv_image_viewer.draw(depth_img, "depth prediction")
 
-                        slam.track(img, img_right, depth, img_id, timestamp)  # main SLAM function
+                        mask = None
+                        if semantic_masks and (not args.mask_after_init or slam.tracking.state == SlamState.OK):
+                            mask = semantic_masks.mask(img_id, img.shape)
+                        # the same mask for the right image of a stereo pair. The masked things are
+                        # shifted there by the disparity (tens of pixels when they are near), so the
+                        # mask covers them only partly; --mask-dilation covers part of the rest, and
+                        # what is left is rarely matched, since the left keypoints on them are gone
+                        mask_right = mask if (mask is not None and img_right is not None) else None
+                        slam.track(img, img_right, depth, img_id, timestamp, mask=mask, mask_right=mask_right)  # main SLAM function
 
                         # 3D display (map display)
                         if viewer3D:
@@ -641,6 +583,8 @@ if __name__ == "__main__":
                                 with_level_radius=is_draw_features_with_radius,
                                 trail_max_length=Parameters.kMaxFeatureTrailLength,
                             )
+                            if mask is not None:  # the masked regions, darkened
+                                img_draw[mask == 0] = img_draw[mask == 0] // 3
                             timer_main.refresh()
                             fps = timer_main.get_fps()
                             fps_text = f" fps: {fps:.1f}" if USE_CPP else ""
@@ -831,6 +775,9 @@ if __name__ == "__main__":
     if online_trajectory_writer:
         online_trajectory_writer.close_file()
 
+    if semantic_masks:
+        Printer.green(semantic_masks.summary())
+
     # compute metrics on the estimated final trajectory
     try:
         est_poses, timestamps, ids = slam.get_final_trajectory()
@@ -856,6 +803,40 @@ if __name__ == "__main__":
             final_trajectory_writer.write_full_trajectory(est_poses, timestamps)
             final_trajectory_writer.close_file()
 
+        # The same run's trajectory with the frames' relative poses as tracked, as ORB-SLAM2/3 (they do not
+        # follow the map's later scale changes): saved next to it with its ATE, to compare (see
+        # pyslam/slam/relative_pose_scale.py); monocular only, as the rescaling
+        ate_rmse_as_tracked = None
+        if Parameters.kTrajectoryRescaleRelativePoses and slam.sensor_type == SensorType.MONOCULAR:
+            Parameters.kTrajectoryRescaleRelativePoses = False
+            try:
+                est_poses_as_tracked, timestamps_as_tracked, ids_as_tracked = slam.get_final_trajectory()
+            finally:
+                Parameters.kTrajectoryRescaleRelativePoses = True
+            if final_trajectory_writer:
+                writer = TrajectoryWriter(
+                    format_type=config.trajectory_saving_settings["format_type"],
+                    filename=trajectory_final_file_path.replace(".txt", "_as_tracked.txt"),
+                )
+                writer.write_full_trajectory(est_poses_as_tracked, timestamps_as_tracked)
+                writer.close_file()
+            if has_groundtruth:
+                assoc = find_poses_associations(timestamps_as_tracked, est_poses_as_tracked, gt_timestamps, gt_poses)
+                ape_as_tracked, _ = eval_ate(
+                    poses_est=assoc[1],
+                    poses_gt=assoc[2],
+                    frame_ids=ids_as_tracked,
+                    curr_frame_id=img_id,
+                    is_final=is_final,
+                    is_monocular=eval_ate_correct_scale,
+                    save_dir=None,
+                )
+                ate_rmse_as_tracked = ape_as_tracked.get("rmse")
+                Printer.green(
+                    f"ATE rmse with the relative poses as tracked (ORB-SLAM2/3): {ate_rmse_as_tracked:.4f} "
+                    f"(this run's trajectory: {ape_stats.get('rmse'):.4f})"
+                )
+
         other_metrics_file_path = os.path.join(metrics_save_dir, "other_metrics_info.txt")
         with open(other_metrics_file_path, "w") as f:
             f.write(f"num_total_frames: {num_total_frames}\n")
@@ -865,6 +846,8 @@ if __name__ == "__main__":
             # the frames with a pose in the final trajectory: the trajectory errors are over these only
             f.write(f"num_tracked_frames: {len(est_poses)}\n")
             f.write(f"percent_tracked: {len(est_poses)/num_total_frames*100:.2f}\n")
+            if ate_rmse_as_tracked is not None:
+                f.write(f"ate_rmse_relative_poses_as_tracked: {ate_rmse_as_tracked:.6f}\n")
             f.write(f"playback_max_speed: {playback_throttle.speed_str(playback_throttle.max_speed)}\n")
             f.write(f"playback_lowest_speed: {playback_throttle.speed_str(playback_throttle.lowest_speed)}\n")
             f.write(f"playback_num_slowdowns: {playback_throttle.num_decreases}\n")

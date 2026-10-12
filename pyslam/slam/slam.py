@@ -616,13 +616,15 @@ class Slam(object):
 
         tracking_history = self.tracking.tracking_history
 
-        # For each frame we have a reference keyframe (ref_kf), the timestamp (timestamp) and the SLAM state (state)
-        for rel_pose, ref_kf, timestamp, id, state in zip(
-            tracking_history.relative_frame_poses,
-            tracking_history.kf_references,
-            tracking_history.timestamps,
-            tracking_history.ids,
-            tracking_history.slam_states,
+        # For each frame we have a reference keyframe (ref_kf), the timestamp (timestamp) and the SLAM state (state).
+        # The relative poses are taken in the map's current scale (monocular, see relative_pose_scale.py).
+        for i, (ref_kf, timestamp, id, state) in enumerate(
+            zip(
+                tracking_history.kf_references,
+                tracking_history.timestamps,
+                tracking_history.ids,
+                tracking_history.slam_states,
+            )
         ):
             if state != SlamState.OK:
                 continue
@@ -636,7 +638,7 @@ class Slam(object):
 
             Trw = Tcr @ keyframe.Tcw() @ Two
 
-            Tcw = rel_pose.matrix() @ Trw
+            Tcw = tracking_history.relative_pose(i).matrix() @ Trw
             Twc = inv_T(Tcw)
 
             poses.append(Twc)

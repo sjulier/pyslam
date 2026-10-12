@@ -237,8 +237,11 @@ class SlamEvaluationManager:
                     problems.append(f"{name}: the image folder {base_path} does not exist")
                 elif not glob.glob(os.path.join(base_path, pattern)):
                     problems.append(f"{name}: no images {pattern} in {base_path}")
-            elif not os.path.exists(os.path.join(base_path, str(name))):
-                problems.append(f"{name}: {os.path.join(base_path, str(name))} does not exist")
+            else:
+                # the KITTI reader looks for <base>/sequences/<name>; the others for <base>/<name>
+                sequence_path = os.path.join(base_path, "sequences", str(name)) if self.dataset_type == "KITTI_DATASET" else os.path.join(base_path, str(name))
+                if not os.path.exists(sequence_path):
+                    problems.append(f"{name}: {sequence_path} does not exist")
             if self.dataset_type == "TUM_DATASET":
                 sequence_path = os.path.join(base_path, str(name))
                 associations = dataset.get("associations", "associations.txt")
@@ -437,6 +440,9 @@ class SlamEvaluationManager:
         # e.g. "--throttle" or "--speed 0.5", for features that cannot keep up with the camera
         if self.json_data.get("main_slam_options"):
             command += " " + self.json_data["main_slam_options"]
+        # options of this preset alone, e.g. "--semantic-mask labels/kitti06" (main_slam_evaluation.py --semantic-mask)
+        if preset.get("main_slam_options"):
+            command += " " + preset["main_slam_options"]
 
         print("command: " + command)
 
