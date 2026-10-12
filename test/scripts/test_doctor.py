@@ -42,6 +42,15 @@ def test_abi_summary():
     assert status == "FAIL" and "no built module" in detail
 
 
+def test_macos_low_power_mode():
+    on = "System-wide power settings:\nCurrently in use:\n standby              1\n lowpowermode         1\n sleep                1\n"
+    assert doctor.macos_low_power_mode(on) is True
+    assert doctor.macos_low_power_mode(on.replace("lowpowermode         1", "lowpowermode         0")) is False
+    assert doctor.macos_low_power_mode("Currently in use:\n standby              1\n") is None  # no such setting
+    assert doctor.macos_power_source("Now drawing from 'AC Power'\n -InternalBattery-0 (id=1)\t100%; charged;") == "AC Power"
+    assert doctor.macos_power_source("") == ""
+
+
 def test_slam_progress():
     assert doctor.slam_progress("", 3).startswith("starting")
     line = doctor.slam_progress(" @tracking MONOCULAR, img id: 41, frame id: 41, state: OK\n ... img id: 42, frame", 12.4)
