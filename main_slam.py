@@ -552,7 +552,10 @@ if __name__ == "__main__":
                                 cv_image_viewer.draw(depth_img, "depth prediction")
 
                         mask = semantic_masks.mask(img_id, img.shape) if semantic_masks else None
-                        slam.track(img, img_right, depth, img_id, timestamp, mask=mask)  # main SLAM function
+                        # the same mask for the right image of a stereo pair: the masked things sit
+                        # within a few pixels of where they are on the left
+                        mask_right = mask if (mask is not None and img_right is not None) else None
+                        slam.track(img, img_right, depth, img_id, timestamp, mask=mask, mask_right=mask_right)  # main SLAM function
 
                         # 3D display (map display)
                         if viewer3D:
