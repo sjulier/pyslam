@@ -881,10 +881,11 @@ if __name__ == "__main__":
             else:
                 Printer.green(f"Tracking: {tracked}")
             if percent_tracked < kMinPercentTrackedToCompare:
+                # the frames without a pose: lost, or before the initialisation
                 Printer.orange(
-                    f"Tracking was lost for most of the sequence: the trajectory error covers only the "
-                    f"{len(est_poses)} tracked frames, and cannot be compared with that of a run which "
-                    f"tracked the whole sequence"
+                    f"Tracking was lost for {100 - percent_tracked:.0f}% of the sequence: the "
+                    f"trajectory error covers only the {len(est_poses)} tracked frames, and cannot "
+                    f"be compared with that of a run which tracked the whole sequence"
                 )
 
         evaluate_semantic_mapping(slam, dataset, metrics_save_dir)
