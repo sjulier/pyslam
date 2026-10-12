@@ -950,7 +950,7 @@ class LoopClosing:
                         timeout=Parameters.kMultithreadingThreadJoinDefaultTimeout
                     )
         self.loop_detecting_process.quit()
-        self.GBA.quit()
+        self.GBA.quit(shutdown_manager=True)
         if (
             self.loop_consistent_candidate_imgs is not None
             and self.loop_consistent_candidate_imgs.candidates is not None

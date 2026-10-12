@@ -220,7 +220,10 @@ class GlobalBundleAdjustment:
         else:
             self.opt_abort_flag.value = True
 
-    def quit(self):
+    def quit(self, shutdown_manager=False):
+        """Stop the GBA process if it is running. The manager of the queues is shut down only with
+        shutdown_manager=True, when the system quits: a GBA restarted after quit() (a new loop closure, a
+        reset) uses the same queues, and with the manager gone its result could not be delivered."""
         if self.is_running():
             GlobalBundleAdjustment.print("GlobalBundleAdjustment: quitting...")
             self.abort()
@@ -238,17 +241,18 @@ class GlobalBundleAdjustment:
                 self.process.terminate()
             if self.use_multiprocessing:
                 empty_queue(self.q_message)
-                # Shutdown the manager AFTER the process has exited
-                if hasattr(self, "mp_manager") and self.mp_manager is not None:
-                    try:
-                        self.mp_manager.shutdown()
-                    except Exception as e:
-                        GlobalBundleAdjustment.print(f"Warning: Error shutting down manager: {e}")
             else:
                 self.q_message.clear()
             self._is_running.value = 0
             self._is_correcting.value = 0
             GlobalBundleAdjustment.print("GlobalBundleAdjustment: done")
+        # Shutdown the manager AFTER the process has exited
+        if shutdown_manager and self.use_multiprocessing and getattr(self, "mp_manager", None) is not None:
+            try:
+                self.mp_manager.shutdown()
+            except Exception as e:
+                GlobalBundleAdjustment.print(f"Warning: Error shutting down manager: {e}")
+            self.mp_manager = None
 
     # def check_GBA_has_finished_and_correct_if_needed(self):
     #     if (
