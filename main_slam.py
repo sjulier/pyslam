@@ -199,6 +199,12 @@ if __name__ == "__main__":
         help=f"the classes to mask (default: {' '.join(kDefaultMaskedClasses)})",
     )
     semantic.add_argument(
+        "--mask-after-init",
+        action="store_true",
+        help="apply the mask only once the map is initialised: the first frames, which set the "
+        "scale of a monocular map, keep every keypoint",
+    )
+    semantic.add_argument(
         "--mask-dilation",
         type=int,
         default=0,
@@ -551,7 +557,9 @@ if __name__ == "__main__":
                                 # cv2.imshow("depth prediction", depth_img)
                                 cv_image_viewer.draw(depth_img, "depth prediction")
 
-                        mask = semantic_masks.mask(img_id, img.shape) if semantic_masks else None
+                        mask = None
+                        if semantic_masks and (not args.mask_after_init or slam.tracking.state == SlamState.OK):
+                            mask = semantic_masks.mask(img_id, img.shape)
                         # the same mask for the right image of a stereo pair. The masked things are
                         # shifted there by the disparity (tens of pixels when they are near), so the
                         # mask covers them only partly; --mask-dilation covers part of the rest, and

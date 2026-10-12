@@ -169,6 +169,8 @@ def config_overrides_from_args(args, argparser):
                 mask_options += " --mask-classes " + " ".join(args.mask_classes)
             if args.mask_dilation is not None:
                 mask_options += f" --mask-dilation {args.mask_dilation}"
+            if args.mask_after_init:
+                mask_options += " --mask-after-init"
             masked = []
             for name in features:
                 preset = feature_preset(name)
@@ -300,6 +302,9 @@ if __name__ == "__main__":
     )
     runs.add_argument(
         "--mask-dilation", type=int, metavar="PIXELS", help="with --semantic-mask: grow the masked regions (main_slam.py --mask-dilation)"
+    )
+    runs.add_argument(
+        "--mask-after-init", action="store_true", help="with --semantic-mask: mask only once the map is initialised (main_slam.py --mask-after-init)"
     )
     #
     argparser.add_argument(
