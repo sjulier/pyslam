@@ -552,8 +552,10 @@ if __name__ == "__main__":
                                 cv_image_viewer.draw(depth_img, "depth prediction")
 
                         mask = semantic_masks.mask(img_id, img.shape) if semantic_masks else None
-                        # the same mask for the right image of a stereo pair: the masked things sit
-                        # within a few pixels of where they are on the left
+                        # the same mask for the right image of a stereo pair. The masked things are
+                        # shifted there by the disparity (tens of pixels when they are near), so the
+                        # mask covers them only partly; --mask-dilation covers part of the rest, and
+                        # what is left is rarely matched, since the left keypoints on them are gone
                         mask_right = mask if (mask is not None and img_right is not None) else None
                         slam.track(img, img_right, depth, img_id, timestamp, mask=mask, mask_right=mask_right)  # main SLAM function
 
