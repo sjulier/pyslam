@@ -362,6 +362,13 @@ def check_native_modules(r):
     lines = [l for l in (p.stdout + p.stderr).splitlines() if l.strip()]
     status, detail = abi_summary(p.returncode, lines)
     r.add(status, "pybind11 ABI", detail)
+    p = subprocess.run([sys.executable, os.path.join(ROOT_DIR, "scripts", "native_bundle.py"), "check"],
+                       cwd=ROOT_DIR, capture_output=True, text=True)
+    if p.returncode == 1:
+        outdated = "; ".join(l.strip() for l in p.stdout.splitlines() if l.strip())
+        r.add("FAIL", "prebuilt modules", f"older than this checkout ({outdated})")
+    elif p.returncode == 0:
+        r.add("OK", "prebuilt modules", p.stdout.strip())
     for level, name, code, build in NATIVE_MODULES:
         ok, out = run_python(CHILD_PREFIX + "\n" + code)
         if not ok and build:
