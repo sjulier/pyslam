@@ -152,8 +152,8 @@ def config_overrides_from_args(args, argparser):
     features = args.features
     if args.semantic_mask and not features:
         features = ["ORB2"]
-    elif (args.mask_classes or args.mask_dilation is not None) and not args.semantic_mask:
-        argparser.error("--mask-classes and --mask-dilation go with --semantic-mask")
+    elif (args.mask_classes or args.mask_dilation is not None or args.mask_after_init) and not args.semantic_mask:
+        argparser.error("--mask-classes, --mask-dilation and --mask-after-init go with --semantic-mask")
     if features:
         unknown = [name for name in features if name not in feature_config_names()]
         if unknown:
@@ -304,7 +304,7 @@ if __name__ == "__main__":
         "--mask-dilation", type=int, metavar="PIXELS", help="with --semantic-mask: grow the masked regions (main_slam.py --mask-dilation)"
     )
     runs.add_argument(
-        "--mask-after-init", action="store_true", help="with --semantic-mask: mask only once the map is initialised (main_slam.py --mask-after-init)"
+        "--mask-after-init", action="store_true", help="with --semantic-mask: mask only while tracking is OK (main_slam.py --mask-after-init)"
     )
     #
     argparser.add_argument(
