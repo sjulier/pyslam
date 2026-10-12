@@ -31,6 +31,7 @@
 import pyslam  # first: sets the OpenMP thread settings before numpy/torch are imported
 import argparse
 import csv
+import importlib.util
 import json
 import os
 import sys
@@ -61,6 +62,9 @@ kClassSets = {"SEGFORMER": "Cityscapes", "DEEPLABV3": "Pascal VOC", "CLIP": "Cit
               "RFDETR": "COCO", "DETIC": "LVIS", "EOV_SEG": "open vocabulary", "ODISE": "open vocabulary"}
 kCudaOnly = ("EOV_SEG", "ODISE")
 kDefaultLevel = ("DEEPLABV3",)  # the others need the semantics level (pixi run -e semantics ...)
+# A module of the semantics level which each of the other methods needs (checked before anything is imported)
+kNeeds = {"SEGFORMER": "transformers", "CLIP": "einops", "YOLO": "ultralytics", "RFDETR": "rfdetr",
+          "DETIC": "detectron2", "EOV_SEG": "detectron2", "ODISE": "detectron2"}
 kNoObject = "no object"
 
 # The images of --test
@@ -112,7 +116,7 @@ def main():
         print("Methods (--method), and what each gives:")
         for name, what in kMethods.items():
             print(f"    {name:10s} {what}")
-        print(f"{' and '.join(kDefaultLevel)} run at the default level; the others need the semantics level: "
+        print(f"{' and '.join(kDefaultLevel)} run{'s' if len(kDefaultLevel) == 1 else ''} at the default level; the others need the semantics level: "
               "pixi run -e semantics semantic-segmentation ... (pixi run -e semantics models-semantics installs their models).")
         print(f"{' and '.join(kCudaOnly)} also need an NVIDIA GPU.")
         sys.exit(0)
@@ -122,6 +126,11 @@ def main():
         sys.exit(2)
     if args.image and has_sequence_options(args):
         parser.error("give --image or a sequence, not both")
+    if args.method in kNeeds and importlib.util.find_spec(kNeeds[args.method]) is None:
+        sys.exit(
+            f"{args.method} needs the semantics level: run this command with `pixi run -e semantics "
+            f"semantic-segmentation ...` ({' and '.join(kDefaultLevel)} run{'s' if len(kDefaultLevel) == 1 else ''} at the default level)."
+        )
 
     # the configuration (it sets the library paths; its dataset is only used for a sequence)
     from pyslam.config import Config
@@ -133,15 +142,7 @@ def main():
 
     from pyslam.utilities.logging import Printer
 
-    try:
-        segmenter = Segmenter(args.method, args.image_size)
-    except (ImportError, RuntimeError) as e:
-        if args.method in kDefaultLevel or "No module named" not in str(e):
-            raise
-        sys.exit(
-            f"{args.method} needs the semantics level: run this command with `pixi run -e semantics "
-            f"semantic-segmentation ...` (DEEPLABV3 runs at the default level).\n({str(e).splitlines()[-1]})"
-        )
+    segmenter = Segmenter(args.method, args.image_size)
     if has_sequence_options(args):
         from pyslam.io.dataset_factory import dataset_factory
 
