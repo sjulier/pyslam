@@ -23,9 +23,9 @@
 # (the classes found, their shares of the image, and the time per image). With --save, the label
 # maps of a sequence are written for main_slam.py --semantic-mask.
 #
-#   pixi run -e semantics semantic-segmentation --list
-#   pixi run -e semantics semantic-segmentation --method SEGFORMER --test kitti
-#   pixi run -e semantics semantic-segmentation --method DEEPLABV3 --image photo.jpg
+#   pixi run semantic-segmentation --list
+#   pixi run semantic-segmentation --method DEEPLABV3 --test kitti          (DeepLabV3 runs at the default level)
+#   pixi run -e semantics semantic-segmentation --method SEGFORMER --image photo.jpg
 #   pixi run -e semantics semantic-segmentation --method SEGFORMER --video data/videos/kitti06/video_color.mp4 --save labels/kitti06
 
 import pyslam  # first: sets the OpenMP thread settings before numpy/torch are imported
@@ -44,8 +44,8 @@ kScriptFolder = os.path.dirname(kScriptPath)
 
 # The methods (SemanticSegmentationType entries): what each gives
 kMethods = {
+    "DEEPLABV3": "a class for every pixel: 21 object classes (Pascal VOC). DeepLabV3 with a ResNet-50 (default level)",
     "SEGFORMER": "a class for every pixel: 19 street classes (Cityscapes). SegFormer-B0, a transformer",
-    "DEEPLABV3": "a class for every pixel: 21 object classes (Pascal VOC). DeepLabV3 with a ResNet-50",
     "CLIP": "a class for every pixel, from text: the best matching of the 19 Cityscapes class names. CLIP ViT-L/14",
     "YOLO": "the pixels of each object it detects, nothing elsewhere: 80 object classes (COCO). YOLO26-S",
     "RFDETR": "the pixels of each object it detects, nothing elsewhere: 80 object classes (COCO). RF-DETR Seg-S",
@@ -60,6 +60,7 @@ kObjectsOnly = ("YOLO", "RFDETR", "DETIC")
 kClassSets = {"SEGFORMER": "Cityscapes", "DEEPLABV3": "Pascal VOC", "CLIP": "Cityscapes", "YOLO": "COCO",
               "RFDETR": "COCO", "DETIC": "LVIS", "EOV_SEG": "open vocabulary", "ODISE": "open vocabulary"}
 kCudaOnly = ("EOV_SEG", "ODISE")
+kDefaultLevel = ("DEEPLABV3",)  # the others need the semantics level (pixi run -e semantics ...)
 kNoObject = "no object"
 
 # The images of --test
@@ -79,13 +80,13 @@ def main():
     parser = argparse.ArgumentParser(
         description="Semantic segmentation of one image, or of every frame of a sequence, with one "
         "of pySLAM's segmentation methods",
-        epilog="examples: pixi run -e semantics semantic-segmentation --method SEGFORMER --test kitti; "
-        "pixi run -e semantics semantic-segmentation --method DEEPLABV3 --image photo.jpg; "
+        epilog="examples: pixi run semantic-segmentation --method DEEPLABV3 --test kitti; "
+        "pixi run -e semantics semantic-segmentation --method SEGFORMER --image photo.jpg; "
         "pixi run -e semantics semantic-segmentation --method SEGFORMER "
         "--video data/videos/kitti06/video_color.mp4 --save labels/kitti06",
     )
     parser.add_argument(
-        "--method", default="SEGFORMER", metavar="NAME", help="the segmentation method (default SEGFORMER; see --list)"
+        "--method", default="DEEPLABV3", metavar="NAME", help="the segmentation method (default DEEPLABV3; see --list)"
     )
     parser.add_argument("--test", default="kitti", choices=sorted(kTests), help="the image (default kitti)")
     parser.add_argument("--image", metavar="FILE", help="an image file of your own, instead of --test")
@@ -111,8 +112,9 @@ def main():
         print("Methods (--method), and what each gives:")
         for name, what in kMethods.items():
             print(f"    {name:10s} {what}")
-        print("Their models are installed by: pixi run -e semantics models-semantics")
-        print(f"{' and '.join(kCudaOnly)} need an NVIDIA GPU (the full level: pixi run -e full ...).")
+        print(f"{' and '.join(kDefaultLevel)} run at the default level; the others need the semantics level: "
+              "pixi run -e semantics semantic-segmentation ... (pixi run -e semantics models-semantics installs their models).")
+        print(f"{' and '.join(kCudaOnly)} also need an NVIDIA GPU.")
         sys.exit(0)
     if args.method not in kMethods:
         print(f"Unknown method '{args.method}'. Valid names (see --list):", file=sys.stderr)
@@ -131,7 +133,15 @@ def main():
 
     from pyslam.utilities.logging import Printer
 
-    segmenter = Segmenter(args.method, args.image_size)
+    try:
+        segmenter = Segmenter(args.method, args.image_size)
+    except (ImportError, RuntimeError) as e:
+        if args.method in kDefaultLevel or "No module named" not in str(e):
+            raise
+        sys.exit(
+            f"{args.method} needs the semantics level: run this command with `pixi run -e semantics "
+            f"semantic-segmentation ...` (DEEPLABV3 runs at the default level).\n({str(e).splitlines()[-1]})"
+        )
     if has_sequence_options(args):
         from pyslam.io.dataset_factory import dataset_factory
 
@@ -227,14 +237,14 @@ class Segmenter:
         return sorted(((int(i), float(c) / labels.size) for i, c in zip(ids, counts)), key=lambda s: -s[1])
 
     def shares_text(self, shares, most=10):
-        return ", ".join(f"{self.name(i)} {100 * share:.0f}%" for i, share in shares[:most])
+        return ", ".join(f"{self.name(i)} {'<1' if share < 0.005 else f'{100 * share:.0f}'}%" for i, share in shares[:most])
 
     def legend(self, shares, width, most=8):
         """A strip with the colours and names of the largest classes."""
         strip = np.full((30, width, 3), 255, np.uint8)
         x = 8
         for label, share in shares[:most]:
-            text = f"{self.name(label)} {100 * share:.0f}%"
+            text = f"{self.name(label)} {'<1' if share < 0.005 else f'{100 * share:.0f}'}%"
             text_width = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0][0]
             if x + 24 + text_width > width - 8:
                 break

@@ -33,8 +33,9 @@ import numpy as np
 from pyslam.utilities.logging import Printer
 
 
-# The classes masked by default: the things which move in a street scene (Cityscapes names).
-kDefaultMaskedClasses = ["person", "rider", "car", "truck", "bus", "train", "motorcycle", "bicycle"]
+# The classes masked by default: the things which move in a street scene, under the names of the
+# Cityscapes and the Pascal VOC classes (a name which a method does not have is ignored).
+kDefaultMaskedClasses = ["person", "rider", "car", "truck", "bus", "train", "motorcycle", "motorbike", "bicycle"]
 
 
 def mask_from_labels(labels, class_names, masked_classes, dilation=0):
@@ -79,11 +80,18 @@ class SavedLabelMaps:
         self.masked_fraction_sum = 0.0
         self.warned = False
         self._last = (None, None)  # (frame saved, its labels)
-        unknown = [c for c in self.masked_classes if c not in self.class_names.values()]
-        if unknown:
+        known = [c for c in self.masked_classes if c in self.class_names.values()]
+        unknown = [c for c in self.masked_classes if c not in known]
+        if masked_classes and unknown:  # names given on the command line which the method does not have
             Printer.orange(
                 f"--mask-classes: {', '.join(unknown)}: not among the classes of "
                 f"{self.info['method']} ({', '.join(sorted(self.class_names.values()))})"
+            )
+        self.masked_classes = known
+        if not known:
+            raise ValueError(
+                f"--semantic-mask: none of the classes to mask ({', '.join(unknown)}) is a class of "
+                f"{self.info['method']}: see --mask-classes"
             )
         if not self.frames:
             raise ValueError(f"--semantic-mask: no frames in {info_path}")
