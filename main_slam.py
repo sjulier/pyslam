@@ -858,9 +858,9 @@ if __name__ == "__main__":
 
         # The same run's trajectory with the frames' relative poses as tracked, as ORB-SLAM2/3 (they do not
         # follow the map's later scale changes): saved next to it with its ATE, to compare (see
-        # pyslam/slam/relative_pose_scale.py)
+        # pyslam/slam/relative_pose_scale.py); monocular only, as the rescaling
         ate_rmse_as_tracked = None
-        if Parameters.kTrajectoryRescaleRelativePoses:
+        if Parameters.kTrajectoryRescaleRelativePoses and slam.sensor_type == SensorType.MONOCULAR:
             Parameters.kTrajectoryRescaleRelativePoses = False
             try:
                 est_poses_as_tracked, timestamps_as_tracked, ids_as_tracked = slam.get_final_trajectory()

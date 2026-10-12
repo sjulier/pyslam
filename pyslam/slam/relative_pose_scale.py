@@ -32,6 +32,9 @@
 # translation is scaled by it. If the reference keyframe has been culled since, the frame's pose at
 # tracking time is moved by the anchors' similarity transform (then -> now) instead of following the
 # parent's Tcp, whose scale is unknown.
+# Monocular only: with stereo and RGB-D the scale is observed and loop corrections are SE3, so the anchors
+# would only measure bundle adjustment's noise (on KITTI 06 stereo, TUM fr1_desk and EuRoC MH01 the ATE
+# was 0.0001-0.0004 m worse); tracking records no anchors there.
 # Parameters.kTrajectoryRescaleRelativePoses = False gives the ORB-SLAM2/3 behaviour (to compare ATEs).
 
 import numpy as np

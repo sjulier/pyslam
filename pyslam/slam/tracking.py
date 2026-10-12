@@ -159,7 +159,7 @@ class TrackingHistory(object):
         """Entry i's pose w.r.t. its reference keyframe (g2o.Isometry3d), with its translation in the map's
         current scale (Parameters.kTrajectoryRescaleRelativePoses)."""
         Tcr = self.relative_frame_poses[i]
-        if not Parameters.kTrajectoryRescaleRelativePoses or i >= len(self.anchors):
+        if not Parameters.kTrajectoryRescaleRelativePoses or i >= len(self.anchors) or self.anchors[i] is None:
             return Tcr
         T = rescaled_relative_pose(Tcr.matrix(), self.anchors[i])
         return g2o.Isometry3d(T[:3, :3], T[:3, 3])
@@ -764,10 +764,15 @@ class Tracking:
             )  # pose of current frame w.r.t. current reference keyframe kf_ref
             self.tracking_history.relative_frame_poses.append(isometry3d_Tcr)
             self.tracking_history.kf_references.append(self.kf_ref)
+            # monocular only: with stereo and RGB-D the map's scale is observed and does not change, and
+            # rescaling would only add bundle adjustment's noise (the frames then follow their reference
+            # keyframes as in ORB-SLAM2/3)
             self.tracking_history.anchors.append(
                 RelativePoseAnchors(
                     self.kf_ref, self.tracking_history.anchors[-1] if self.tracking_history.anchors else None
                 )
+                if self.sensor_type == SensorType.MONOCULAR
+                else None
             )
             self.tracking_history.timestamps.append(self.f_cur.timestamp)
             self.tracking_history.ids.append(self.f_cur.id)
