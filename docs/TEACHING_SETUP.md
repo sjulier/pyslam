@@ -48,9 +48,9 @@ The steps are those of this page, with these differences:
   winget install --id Git.Git -e
   powershell -ExecutionPolicy ByPass -c "irm -useb https://pixi.sh/install.ps1 | iex"
   ```
-- **Every `pixi run` command takes `-e default-win`**: `pixi run -e default-win build`,
-  `pixi run -e default-win check`, `pixi run -e default-win models`,
-  `pixi run -e default-win slam --headless`, `pixi run -e default-win doctor`.
+- **The `pixi run` commands are the same** as on Linux and macOS (`pixi run build`, `pixi run slam`,
+  ...). Before comp0227-2026.3 they took `-e default-win`; the old environment, in
+  `.pixi\envs\default-win`, can be deleted.
 - **Nothing is compiled**: `build` installs pySLAM's C++ modules ready-made (about 40 MB of
   downloads). If there is no ready-made copy for your version of pySLAM, `build` needs Microsoft's
   compiler, and stops with a message when it does not find it.
@@ -63,7 +63,7 @@ Not available on native Windows: a GPU for PyTorch, the other learned features a
 models (`models-all-features`, `models-all-vpr`), the TensorFlow-based features, and the levels
 above the default one (depth prediction, semantic segmentation, 3D reconstruction).
 
-**Not tested yet** (please report what you find, with the output of `pixi run -e default-win doctor`):
+**Not tested yet** (please report what you find, with the output of `pixi run doctor`):
 
 - a machine **without Visual Studio**: both test machines had it installed. pySLAM should not need
   it, but this has not been shown;

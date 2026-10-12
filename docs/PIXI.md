@@ -47,7 +47,7 @@ On **Linux without an NVIDIA GPU**, use the CPU levels instead: `default-cpu`, `
 | Linux x86-64 without an NVIDIA GPU | none | `default-cpu`, `depth-cpu`, `semantics-cpu`, `full-cpu`: tested. EOV-Seg and everything `full` adds need an NVIDIA GPU and are skipped |
 | macOS 14 or later, Apple silicon | the Apple GPU (MPS) | `default`, `depth`, `semantics`: tested (MacBook Air M1). EOV-Seg, ODISE and everything `full` adds need an NVIDIA GPU and are skipped |
 | Windows, via WSL2 (Ubuntu inside Windows) | as Linux: follow the Linux instructions | `default`: tested (Windows 11). The other levels: not tested yet |
-| Windows, native (experimental) | none: the CPU build of PyTorch | `default-win` only, the default level without the TensorFlow features: see [Windows (native, experimental)](../README.md#windows-native-experimental) |
+| Windows, native (experimental) | none: the CPU build of PyTorch | `default` only, without the TensorFlow features: see [Windows (native, experimental)](../README.md#windows-native-experimental) |
 
 You do not need to install the CUDA toolkit or a compiler: both are part of the environment.
 
