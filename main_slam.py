@@ -19,6 +19,11 @@
 """
 
 import pyslam  # first: sets the OpenMP thread settings before numpy/torch are imported
+from pyslam.utilities.native_bundle_check import warn_if_native_modules_outdated
+
+if __name__ == "__main__":
+    warn_if_native_modules_outdated()  # before anything imports the native modules
+
 import time
 import os
 import sys

@@ -27,6 +27,9 @@ usage:
   python scripts/native_bundle.py remove [PART]  remove the files a fetched bundle installed
   python scripts/native_bundle.py stale [PART]   remove the CMake build folders configured in the other
                                                  ladder (gpu/cpu), before building from source
+  python scripts/native_bundle.py check          say whether the installed bundles are the ones for this
+                                                 checkout (exit code 1: `pixi run build` was not run after
+                                                 an update; modules built from source are not checked)
 PART is prereq or pyslam; without it, both (in that order; `remove`: pyslam first).
 
 environment:
@@ -603,6 +606,28 @@ def remove(part, quiet=False):
     log(f"removed the {len(manifest.get('files', []))} files of {part} bundle {manifest.get('key')}")
 
 
+def outdated_parts():
+    """
+    The parts whose installed bundle is not the one for this checkout, as [(part, installed key, key)]: the
+    checkout was updated (git pull, a new course version) and `pixi run build` was not run since. `fetch`
+    replaces or removes a bundle that does not match, so a mismatch means that it has not run. Modules built
+    from source (no manifest) and sources with local changes (no key) are not checked.
+    """
+    if platform_name() is None:
+        return []
+    if os.path.exists(os.path.join(ROOT, OLD_MANIFEST)):
+        return [("prereq", "a one-part bundle", source_key("prereq")[0])]
+    outdated = []
+    for part in PART_NAMES:
+        installed = read_manifest(part)
+        if installed is None:
+            continue
+        key, _ = source_key(part)
+        if key is not None and (installed.get("key") != key or installed.get("ladder") != ladder()):
+            outdated.append((part, installed.get("key"), key))
+    return outdated
+
+
 def no_bundle(part, reason):
     log(f"no prebuilt {part} modules for this checkout: {reason}")
     log(f"the {part} modules will be built from source")
@@ -724,7 +749,7 @@ def main():
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     parts = sys.argv[2:] or PART_NAMES
     unknown = [p for p in parts if p not in PARTS]
-    if unknown or command not in ("key", "pack", "fetch", "remove", "stale"):
+    if unknown or command not in ("key", "pack", "fetch", "remove", "stale", "check"):
         print(__doc__)
         sys.exit(1)
     if command == "key":
@@ -742,6 +767,13 @@ def main():
     elif command == "stale":
         for part in parts:
             stale(part)
+    elif command == "check":
+        outdated = outdated_parts()
+        for part, installed, key in outdated:
+            print(f"{part}: installed bundle {installed}, this checkout needs {key}: run `pixi run build`")
+        if not outdated:
+            print("the installed bundles (if any) match this checkout")
+        sys.exit(1 if outdated else 0)
 
 
 if __name__ == "__main__":
