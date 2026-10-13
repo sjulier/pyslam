@@ -109,6 +109,30 @@ See the related discussion [here](https://github.com/luigifreda/pyslam/issues/22
 
 --- 
 
+## SLAM stops part-way, every thread idle (known deadlock)
+
+**What you see:** `pixi run slam` or one run of `pixi run slam-evaluation` stops processing frames part-way through a sequence and never continues. The process uses no CPU, the logs end in the middle of a frame (local mapping at `>>>> local optimization (LBA) ...`), and Ctrl-C does nothing. `slam-evaluation` has no time limit per run, so it waits too.
+
+**What to do:** kill the process (close the terminal, or `pkill -f main_slam.py`; on Windows, end the `python.exe` processes in Task Manager) and run the command again. It is rare and timing-dependent, so the next run normally finishes.
+
+**What is known** (12–13 Oct 2026). It was seen twice in about 30 RGB-D runs of TUM `walking_halfsphere`, both on a 24-thread AMD laptop:
+- under WSL2 (course branch `comp0227-2026`) at frame 497;
+- under native Windows 11 (sjulier/pyslam#103) at frame 298.
+
+It never happened in about 40 runs on two Macs. A `py-spy dump` of the Windows run shows where the threads are waiting:
+- **Tracking** waits in `track_local_map` on `self.map.local_map.is_empty()` (`pyslam/slam/tracking.py:695`). That is inside `with self.map.update_lock:` (`tracking.py:1370-1541`).
+- **Local mapping** waits inside the C++ `self.local_mapping_core.local_BA()` (`pyslam/slam/local_mapping.py:568`).
+
+The likely cause is a lock-order inversion:
+- `is_empty` is bound without releasing the GIL (`pyslam/slam/cpp/py_module/map_module.h:524`), so tracking holds the GIL and the map's update lock while it waits for the local map's lock (`map.cpp:582`).
+- `local_BA` releases the GIL (`local_mapping_core_module.h:72`), and `Map::locally_optimize()` takes the local map's lock in `local_map->update()` before the bundle adjustment.
+
+The lock local mapping waits on is not yet known: `py-spy dump --native --pid <pid>` during the next hang would show it. Candidate fixes:
+- release the GIL in the `LocalMapBase` getters bound for Python, as `local_BA` already does;
+- take the map's update lock and the local map's lock in the same order on both sides.
+
+---
+
 ## Limitations of `main_vo.py` on General Datasets
 
 As explained in the main [README](../README.md), `main_vo.py` implements a **minimal monocular visual odometry (VO) pipeline**, focusing on the core geometric building blocks rather than a full SLAM system. In particular, it does **not** include:
