@@ -30,20 +30,11 @@ from PIL import Image
 import packaging
 import packaging.version
 import types
+import importlib.util
+import warnings
 
 from torchvision import transforms
 from torchvision.transforms import CenterCrop, Compose
-
-# f3rm's CLIP code does `from pkg_resources import packaging`. setuptools >= 81 no longer ships
-# pkg_resources, and recent builds that still do may not expose the vendored `packaging`. In that
-# case register a minimal in-process stand-in that provides only `packaging` (nothing is installed).
-try:
-    import pkg_resources
-except ImportError:
-    pkg_resources = types.ModuleType("pkg_resources")
-    sys.modules["pkg_resources"] = pkg_resources
-if not hasattr(pkg_resources, "packaging"):
-    pkg_resources.packaging = packaging
 
 import torch.nn.functional as F
 
@@ -59,12 +50,35 @@ try:
 except ImportError:
     open_clip = None
 
-try:
+f3rm_clip = f3rm_tokenize = None  # loaded by load_f3rm(), only when f3rm is the backend
+
+
+def f3rm_available():
+    """Whether f3rm can be imported (without importing it)."""
     config.cfg.set_lib("f3rm")
-    from f3rm.features.clip import clip as f3rm_clip
-    from f3rm.features.clip import tokenize as f3rm_tokenize
-except ImportError:
-    f3rm_clip = f3rm_tokenize = None
+    return importlib.util.find_spec("f3rm") is not None
+
+
+def load_f3rm():
+    global f3rm_clip, f3rm_tokenize
+    if f3rm_clip is not None:
+        return
+    # f3rm's CLIP code does `from pkg_resources import packaging`. setuptools >= 81 no longer ships
+    # pkg_resources, and recent builds that still do may not expose the vendored `packaging`. In that
+    # case register a minimal in-process stand-in that provides only `packaging` (nothing is installed).
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)  # "pkg_resources is deprecated as an API"
+        try:
+            import pkg_resources
+        except ImportError:
+            pkg_resources = types.ModuleType("pkg_resources")
+            sys.modules["pkg_resources"] = pkg_resources
+    if not hasattr(pkg_resources, "packaging"):
+        pkg_resources.packaging = packaging
+    config.cfg.set_lib("f3rm")
+    from f3rm.features.clip import clip, tokenize
+
+    f3rm_clip, f3rm_tokenize = clip, tokenize
 
 from .semantic_labels import get_ade20k_to_scannet40_map
 from .semantic_segmentation_base import SemanticSegmentationBase
@@ -98,10 +112,13 @@ def clip_backend(encoder_name):
     """The CLIP implementation to use: "open_clip" or "f3rm" (see the imports above)."""
     wanted = os.environ.get("PYSLAM_CLIP_BACKEND", "")
     if wanted == "f3rm" or (wanted != "open_clip" and (open_clip is None or encoder_name not in kOpenClipModels)):
-        if f3rm_clip is None:
+        if not f3rm_available():
             raise ImportError(
-                "CLIP needs open_clip (the conda package open-clip-torch) or f3rm (pixi run -e semantics models-semantics)"
+                "PYSLAM_CLIP_BACKEND=f3rm, but f3rm is not installed (pixi run -e semantics models-semantics)"
+                if wanted == "f3rm"
+                else "CLIP needs open_clip (the conda package open-clip-torch) or f3rm (pixi run -e semantics models-semantics)"
             )
+        load_f3rm()
         return "f3rm"
     if open_clip is None:
         raise ImportError("PYSLAM_CLIP_BACKEND=open_clip, but open_clip is not installed (open-clip-torch)")
@@ -225,7 +242,7 @@ class SemanticSegmentationCLIP(SemanticSegmentationBase):
         if self.backend == "open_clip":
             self.tokenize = open_clip.get_tokenizer(kOpenClipModels[encoder_name])
         else:
-            self.tokenize = f3rm_tokenize
+            self.tokenize = f3rm_tokenize  # set by load_f3rm() in clip_backend()
         tokenize = self.tokenize
 
         # NOTE: transform is called preprocess in the original code
