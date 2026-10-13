@@ -262,6 +262,7 @@ platforms = ["linux-64", "osx-arm64-14", "win-64"]  # linux-64 also covers linux
 # any version: transformers 4 would hold huggingface_hub below 1, and so change the default level's
 # packages (and its native-module key); SegFormer is in transformers 5 too
 transformers = "*"
+open-clip-torch = "*"  # OPEN_CLIP (CLIP needs f3rm, which models-semantics installs with bash)
 
 [feature.semantics.target.unix.dependencies]
 transformers = ">=4.41.2,<5"  # RF-DETR (pinned commit) uses backbone utilities removed in transformers 5
