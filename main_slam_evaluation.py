@@ -188,6 +188,8 @@ def config_overrides_from_args(args, argparser):
         overrides["number_of_runs_per_dataset"] = args.runs
     if args.jobs is not None:
         overrides["num_threads"] = args.jobs
+    if args.stall_factor is not None:
+        overrides["stall_factor"] = args.stall_factor
     main_slam_options = []
     if args.throttle:
         main_slam_options.append("--throttle")
@@ -288,6 +290,14 @@ if __name__ == "__main__":
         "--jobs",
         type=int,
         help="number of runs at the same time (results may get worse with more than one)",
+    )
+    runs.add_argument(
+        "--stall-factor",
+        type=float,
+        metavar="N",
+        help="stop a run, and run it again once, when it has had no new frame and used no CPU for N "
+        "times its mean time per frame (at least a minute): a rare deadlock "
+        "(docs/TROUBLESHOOTING.md); default 100, 0 never stops a run",
     )
     runs.add_argument(
         "--throttle",

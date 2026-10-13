@@ -35,7 +35,7 @@ import concurrent.futures
 from pyslam.config import load_settings_yaml
 from pyslam.utilities.data_management import merge_dicts
 from pyslam.utilities.logging import Printer
-from pyslam.utilities.run_command import run_command_async, run_command_sync
+from pyslam.utilities.run_command import run_command_async, run_command_sync, kStalledReturnCode
 import traceback
 from pathlib import Path
 
@@ -53,6 +53,13 @@ kRootFolder = kScriptFolder + "/../.."
 kSettingsFolder = kRootFolder + "/settings"
 kResultsFolder = kRootFolder + "/results"
 kEvaluationFolder = kRootFolder + "/pyslam/evaluation"
+
+# A run with no new frame, no file written and no CPU used for this many times its mean time per frame
+# (at least a minute; see pyslam/utilities/run_command.py) has stalled (a rare deadlock, see
+# docs/TROUBLESHOOTING.md): it is stopped and run again, up to kStallRetries times. The evaluation's
+# "stall_factor" (main_slam_evaluation.py --stall-factor) overrides it; 0: never stop a run.
+kDefaultStallFactor = 100
+kStallRetries = 1
 
 
 date_time_now = datetime.now()
@@ -449,6 +456,32 @@ class SlamEvaluationManager:
         print("")
         return command, main_log_output_file
 
+    def run_slam_command(self, command, log_path, msg):
+        """Run one SLAM run. A run that stalls (a rare deadlock, see docs/TROUBLESHOOTING.md) is stopped
+        after "stall_factor" times its mean time per frame without progress (0: never), its log is kept
+        as log_stalled_<n>.txt next to log.txt, and it is run again, up to kStallRetries times."""
+        stall_factor = self.json_data.get("stall_factor", kDefaultStallFactor)
+        iteration_folder = os.path.dirname(os.path.dirname(log_path))  # <iteration>/<logs>/log.txt
+        for attempt in range(kStallRetries + 1):
+            result = run_command_async(
+                command,
+                log_path,
+                True,
+                msg,
+                stall_factor=stall_factor,
+                stall_watch_folder=iteration_folder,
+            )
+            if result[0] != kStalledReturnCode:
+                return result
+            stalled_log_path = log_path.replace("log.txt", f"log_stalled_{attempt + 1}.txt")
+            os.replace(log_path, stalled_log_path)
+            Printer.orange(
+                f"[{msg}] stalled (no progress, no CPU used), stopped"
+                + (", running it again" if attempt < kStallRetries else "")
+                + f" (threads' stacks in {stalled_log_path})"
+            )
+        return result
+
     def run_evaluation(self):
         self.check_inputs()
         commands = []
@@ -485,7 +518,7 @@ class SlamEvaluationManager:
             for item_run_command, item_log_output_path in commands:
                 msg = f"{num_started_tasks}/{num_tasks}"
                 item_future = executor.submit(
-                    run_command_async, item_run_command, item_log_output_path, True, msg
+                    self.run_slam_command, item_run_command, item_log_output_path, msg
                 )
                 futures.append(item_future)
                 future_to_command[item_future] = item_run_command
@@ -504,6 +537,12 @@ class SlamEvaluationManager:
                 if returncode == 0:
                     Printer.green(
                         f'Command {msg} "{item_run_command}" returned {returncode}, (completed {num_completed_tasks}/{num_tasks})'
+                    )
+                elif returncode == kStalledReturnCode:
+                    Printer.red(
+                        f"Command {msg} stalled {kStallRetries + 1} times and was stopped (completed "
+                        f"{num_completed_tasks}/{num_tasks}); see docs/TROUBLESHOOTING.md (log: "
+                        f"{future_to_log[future]})"
                     )
                 else:
                     Printer.red(
