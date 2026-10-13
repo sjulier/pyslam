@@ -753,8 +753,9 @@ LocalWindowMap::LocalWindowMap(Map *map, int local_window_size)
 
 KeyFrameIdSet LocalWindowMap::update_keyframes(const KeyFramePtr &kf_ref) {
     std::lock_guard<MapMutex> lock(_lock);
-    keyframes = KeyFrameIdSet(map->get_last_keyframes(local_window_size).begin(),
-                              map->get_last_keyframes(local_window_size).end());
+    // one vector: begin() and end() of two calls would be iterators of two different temporaries
+    const auto last_keyframes = map->get_last_keyframes(local_window_size);
+    keyframes = KeyFrameIdSet(last_keyframes.begin(), last_keyframes.end());
     return keyframes;
 }
 
@@ -764,8 +765,9 @@ std::vector<KeyFramePtr> LocalWindowMap::get_best_neighbors(const KeyFramePtr &k
 
 std::tuple<KeyFrameIdSet, std::unordered_set<MapPointPtr>, KeyFrameIdSet>
 LocalWindowMap::update(const KeyFramePtr &kf_ref) {
-    update_keyframes(kf_ref);
-    return update_from_keyframes(keyframes);
+    // the copy taken under the lock: the member can change in another thread meanwhile
+    const KeyFrameIdSet local_keyframes = update_keyframes(kf_ref);
+    return update_from_keyframes(local_keyframes);
 }
 
 // LocalCovisibilityMap implementation
@@ -793,8 +795,10 @@ std::vector<KeyFramePtr> LocalCovisibilityMap::get_best_neighbors(const KeyFrame
 
 std::tuple<KeyFrameIdSet, std::unordered_set<MapPointPtr>, KeyFrameIdSet>
 LocalCovisibilityMap::update(const KeyFramePtr &kf_ref) {
-    update_keyframes(kf_ref);
-    return update_from_keyframes(keyframes);
+    // the copy taken under the lock: tracking (after a relocalisation), local BA and a map reset
+    // all change the member, from different threads
+    const KeyFrameIdSet local_keyframes = update_keyframes(kf_ref);
+    return update_from_keyframes(local_keyframes);
 }
 
 } // namespace pyslam
