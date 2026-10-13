@@ -66,6 +66,13 @@ kDefaultLevel = ("DEEPLABV3",)  # the others need the semantics level (pixi run 
 kNeeds = {"SEGFORMER": "transformers", "CLIP": "open_clip", "YOLO": "ultralytics", "RFDETR": "supervision",
           "DETIC": "detectron2", "EOV_SEG": "detectron2", "ODISE": "detectron2"}
 kNoObject = "no object"
+# What `pixi run -e semantics models-semantics` installs for each method that needs it (code or weights in
+# thirdparty/): a method whose entry is missing has not been installed yet
+kInstalledBy = {"CLIP": "thirdparty/f3rm_pkg/f3rm/features/clip/clip.py", "RFDETR": "thirdparty/rf_detr",
+                "DETIC": "thirdparty/detic", "EOV_SEG": "thirdparty/eov_segmentation", "ODISE": "thirdparty/odise"}
+# The methods native Windows has: DeepLabV3 at the default level, SegFormer at the semantics level (only
+# transformers is installed there on Windows; models-semantics is a bash script)
+kWindowsMethods = ("DEEPLABV3", "SEGFORMER")
 
 # The images of --test
 kTests = {
@@ -126,11 +133,9 @@ def main():
         sys.exit(2)
     if args.image and has_sequence_options(args):
         parser.error("give --image or a sequence, not both")
-    if args.method in kNeeds and importlib.util.find_spec(kNeeds[args.method]) is None:
-        sys.exit(
-            f"{args.method} needs the semantics level: run this command with `pixi run -e semantics "
-            f"semantic-segmentation ...` ({' and '.join(kDefaultLevel)} run{'s' if len(kDefaultLevel) == 1 else ''} at the default level)."
-        )
+    problem = method_not_available(args.method)
+    if problem:
+        sys.exit(problem)
 
     # the configuration (it sets the library paths; its dataset is only used for a sequence)
     from pyslam.config import Config
@@ -150,6 +155,31 @@ def main():
         run_sequence(args, segmenter, dataset, Printer)
     else:
         run_image(args, segmenter, Printer)
+
+
+def method_not_available(method):
+    """Why `method` cannot run in this environment (a message saying what to do), or None if it can. Three
+    cases: native Windows does not have it; the semantics level is not this environment; or it is, and the
+    method has not been installed with models-semantics yet."""
+    level = os.environ.get("PIXI_ENVIRONMENT_NAME", "")  # set by `pixi run`
+    in_semantics = level.startswith(("semantics", "full"))
+    if sys.platform == "win32" and method not in kWindowsMethods:
+        return (
+            f"{method} is not available on native Windows, where only {' and '.join(kWindowsMethods)} run "
+            f"(SEGFORMER with `pixi run -e semantics ...`). Use WSL2 for {method}, or borrow a neighbour's results."
+        )
+    module_missing = method in kNeeds and importlib.util.find_spec(kNeeds[method]) is None
+    if module_missing and not in_semantics:
+        return (
+            f"{method} needs the semantics level: run this command with `pixi run -e semantics "
+            f"semantic-segmentation ...` ({' and '.join(kDefaultLevel)} run{'s' if len(kDefaultLevel) == 1 else ''} at the default level)."
+        )
+    if module_missing or (method in kInstalledBy and not os.path.exists(os.path.join(kScriptFolder, kInstalledBy[method]))):
+        return (
+            f"{method} is not installed yet: run `pixi run -e {level or 'semantics'} models-semantics` once (it "
+            f"installs the code and the models of the segmentation and detection methods), then this command again."
+        )
+    return None
 
 
 class Segmenter:
