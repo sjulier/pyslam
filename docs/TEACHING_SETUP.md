@@ -23,7 +23,7 @@ need to install CUDA or a compiler.
 | **Linux** (x86-64), without an NVIDIA GPU | tested: add `-e default-cpu` to every `pixi run` command below |
 | **macOS** (Apple silicon, macOS 14 or later) | tested. Learned features use the Apple GPU |
 | **Windows**, via **WSL2** (Ubuntu inside Windows) | the recommended way on Windows, then as Linux: tested (Windows 11, WSL2, Titan Xp), including the GPU and the windows of `pixi run slam` |
-| **Windows**, native (no WSL2) | **experimental**: the default level, on the CPU. Tested on two Windows 11 machines only: see [Native Windows](#native-windows-experimental) for what differs and what has not been tested yet |
+| **Windows**, native (no WSL2) | **experimental**: the default level, and SegFormer from the semantics level, on the CPU. Tested on two Windows 11 machines only: see [Native Windows](#native-windows-experimental) for what differs and what has not been tested yet |
 
 You need about **30 GB of free disk space** (less without an NVIDIA GPU) and an internet connection.
 If pySLAM's C++ modules have to be compiled on your machine (see step 3), that also needs about
@@ -61,7 +61,9 @@ The steps are those of this page, with these differences:
 
 Not available on native Windows: a GPU for PyTorch, the other learned features and place recognition
 models (`models-all-features`, `models-all-vpr`), the TensorFlow-based features, and the levels
-above the default one (depth prediction, semantic segmentation, 3D reconstruction).
+above the default one (depth prediction, semantic segmentation, 3D reconstruction), except SegFormer:
+`pixi run -e semantics semantic-segmentation --method SEGFORMER ...` works (Lab 02), on the CPU. The
+other methods of the semantics level (CLIP, Detic, the detectors, `models-semantics`) do not.
 
 **Not tested yet** (please report what you find, with the output of `pixi run doctor`):
 

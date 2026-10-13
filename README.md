@@ -322,7 +322,7 @@ Earlier versions gave Windows an environment of its own, and every command took 
 
 **Please report** whether the steps worked, with: the Windows version, the processor and memory (Settings > System > About), whether Visual Studio is installed, and, if a step failed, the command and the last 30 lines of its output.
 
-Not on Windows yet: the other learned features and place recognition models (`models-all-features`, `models-all-vpr`), a GPU build of PyTorch, the TensorFlow-based features (DELF, ContextDesc, LF-Net, GeoDesc), and the levels above the default one (depth prediction, semantics, 3D reconstruction). For those, use [WSL2](./docs/TEACHING_SETUP.md).
+Not on Windows yet: the other learned features and place recognition models (`models-all-features`, `models-all-vpr`), a GPU build of PyTorch, the TensorFlow-based features (DELF, ContextDesc, LF-Net, GeoDesc), and the levels above the default one (depth prediction, semantics, 3D reconstruction), except SegFormer (`pixi run -e semantics semantic-segmentation --method SEGFORMER`). For those, use [WSL2](./docs/TEACHING_SETUP.md).
 
 ### Docker
 

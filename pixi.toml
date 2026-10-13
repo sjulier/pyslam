@@ -228,9 +228,11 @@ pytorch = { version = "*", build = "*cpu*" }
 # RAFT-Stereo, CREStereo)
 # ---------------------------------------------------------------------------
 [feature.depth]
-platforms = ["linux-64", "osx-arm64-14"]  # not on native Windows (linux-64 also covers linux-64-cuda)
+# native Windows: none of the depth models, only so that the semantics level (which includes this one)
+# exists there, for SegFormer (linux-64 also covers linux-64-cuda)
+platforms = ["linux-64", "osx-arm64-14", "win-64"]
 
-[feature.depth.dependencies]
+[feature.depth.target.unix.dependencies]
 pillow-heif = "*"
 gradio = "5.*"  # gradio 6 needs huggingface-hub >= 1, transformers 4.x needs < 1
 opt_einsum = "*"       # RAFT-Stereo
@@ -253,9 +255,15 @@ pycolmap = "*"
 # (ii) semantic segmentation and object detection
 # ---------------------------------------------------------------------------
 [feature.semantics]
-platforms = ["linux-64", "osx-arm64-14"]  # not on native Windows (linux-64 also covers linux-64-cuda)
+platforms = ["linux-64", "osx-arm64-14", "win-64"]  # linux-64 also covers linux-64-cuda
 
-[feature.semantics.dependencies]
+# native Windows: SegFormer only (Lab 02); the other methods need packages or builds Windows lacks
+[feature.semantics.target.win-64.dependencies]
+# any version: transformers 4 would hold huggingface_hub below 1, and so change the default level's
+# packages (and its native-module key); SegFormer is in transformers 5 too
+transformers = "*"
+
+[feature.semantics.target.unix.dependencies]
 transformers = ">=4.41.2,<5"  # RF-DETR (pinned commit) uses backbone utilities removed in transformers 5
 ultralytics = "*"
 open-clip-torch = "*"
@@ -277,7 +285,7 @@ fasttext = "*"
 fpsample = "*"
 supervision = "*"
 
-[feature.semantics.pypi-dependencies]
+[feature.semantics.target.unix.pypi-dependencies]
 # not on conda-forge
 panopticapi = { git = "https://github.com/cocodataset/panopticapi.git" }
 
@@ -392,6 +400,7 @@ doctor = "python scripts/doctor.py"
 vo = "python main_vo.py"
 slam = "python main_slam.py"
 # DeepLabV3 (torchvision) runs at this level; SegFormer, CLIP and the detectors need the semantics level
+# (native Windows: SegFormer only)
 semantic-segmentation = "python main_semantic_image_segmentation.py"
 feature-matching = "python main_feature_matching.py"
 map-viewer = "python main_map_viewer.py"
