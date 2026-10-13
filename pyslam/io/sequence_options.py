@@ -137,7 +137,9 @@ def sequence_config_path(args, parser, default_settings=None):
             )
         sensor_type = args.sensor
         if sensor_type is None:  # rgbd if the list of the frames has depth images (4 columns)
-            with open(os.path.join(tum_path, associations)) as f:
+            from pyslam.utilities.text_files import open_text
+
+            with open_text(os.path.join(tum_path, associations)) as f:
                 lines = [l.split() for l in f if l.strip() and not l.lstrip().startswith("#")]
             sensor_type = "rgbd" if lines and len(lines[0]) >= 4 else "mono"
         dataset_type = "TUM_DATASET"

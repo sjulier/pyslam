@@ -102,8 +102,10 @@ def feature_preset(name):
 
 def tum_sensor_type(associations_path):
     """rgbd if the list of the frames of a TUM sequence has depth images (4 columns), mono otherwise."""
+    from pyslam.utilities.text_files import open_text
+
     try:
-        with open(associations_path) as f:
+        with open_text(associations_path) as f:
             lines = [line.split() for line in f if line.strip() and not line.lstrip().startswith("#")]
     except OSError:
         return "mono"
@@ -151,7 +153,6 @@ def config_overrides_from_args(args, argparser):
             dataset["groundtruth_file"] = args.groundtruth
         overrides["datasets"] = [dataset]
         overrides["sensor_type"] = sensor_type
-        overrides["output_path"] = "video" if args.video else "images" if args.images else "tum"
     elif args.settings or args.groundtruth or args.timestamps:
         argparser.error("--settings, --groundtruth and --timestamps go with --video, --images or --tum")
     features = args.features
@@ -194,6 +195,10 @@ def config_overrides_from_args(args, argparser):
         main_slam_options.append(f"--speed {args.speed}")
     if main_slam_options:
         overrides["main_slam_options"] = " ".join(main_slam_options)
+    # the report, the tables and the runs go to results/eval_<date>/ itself, not to a subfolder named
+    # after the dataset type (the "output_path" of the configuration file): the folder is new for every
+    # evaluation, and the course guide and the lab sheets name it
+    overrides["output_path"] = ""
     return overrides
 
 

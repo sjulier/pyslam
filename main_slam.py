@@ -100,6 +100,10 @@ if TYPE_CHECKING:
 
 datetime_string = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+# Below this percentage of the frames tracked, the end of a run warns that its trajectory error is over
+# a part of the sequence only
+kMinPercentTrackedToCompare = 90
+
 
 def draw_associated_cameras(viewer3D, assoc_est_poses, assoc_gt_poses, T_gt_est):
     T_est_gt = np.linalg.inv(T_gt_est)
@@ -693,7 +697,9 @@ if __name__ == "__main__":
 
                 if not is_paused and viewer3D.is_paused():  # when a pause is triggered
                     est_poses, timestamps, ids = slam.get_final_trajectory()
-                    if has_groundtruth:
+                    if not est_poses:
+                        Printer.yellow("SLAM is not initialised yet: no trajectory to evaluate on pause")
+                    elif has_groundtruth:
                         assoc_timestamps, assoc_est_poses, assoc_gt_poses = find_poses_associations(
                             timestamps, est_poses, gt_timestamps, gt_poses
                         )
@@ -782,7 +788,10 @@ if __name__ == "__main__":
     try:
         est_poses, timestamps, ids = slam.get_final_trajectory()
         is_final = not dataset.is_ok
-        if has_groundtruth:
+        ape_stats = None
+        if not est_poses:
+            Printer.orange(f"SLAM never initialised in {num_frames} frames: no trajectory to evaluate")
+        elif has_groundtruth:
             assoc_timestamps, assoc_est_poses, assoc_gt_poses = find_poses_associations(
                 timestamps, est_poses, gt_timestamps, gt_poses
             )
@@ -807,7 +816,7 @@ if __name__ == "__main__":
         # follow the map's later scale changes): saved next to it with its ATE, to compare (see
         # pyslam/slam/relative_pose_scale.py); monocular only, as the rescaling
         ate_rmse_as_tracked = None
-        if Parameters.kTrajectoryRescaleRelativePoses and slam.sensor_type == SensorType.MONOCULAR:
+        if est_poses and Parameters.kTrajectoryRescaleRelativePoses and slam.sensor_type == SensorType.MONOCULAR:
             Parameters.kTrajectoryRescaleRelativePoses = False
             try:
                 est_poses_as_tracked, timestamps_as_tracked, ids_as_tracked = slam.get_final_trajectory()
@@ -857,6 +866,27 @@ if __name__ == "__main__":
             f.write(
                 f"percent_suppressed_keyframe_requests: {slam.tracking.kf_demand.total_suppressed_fraction()*100:.2f}\n"
             )
+
+        # The trajectory error is over the tracked frames only: say how many there were, so that a run
+        # which lost track early (a short, easily aligned trajectory: a small error) is not read as a
+        # good one
+        if est_poses:
+            percent_tracked = len(est_poses) / num_total_frames * 100
+            tracked = (
+                f"{len(est_poses)} of {num_total_frames} frames tracked ({percent_tracked:.0f}%), "
+                f"lost in {num_tracking_lost / num_total_frames * 100:.0f}%"
+            )
+            if ape_stats is not None:
+                Printer.green(f"ATE rmse {ape_stats.get('rmse'):.4f} over the tracked frames: {tracked}")
+            else:
+                Printer.green(f"Tracking: {tracked}")
+            if percent_tracked < kMinPercentTrackedToCompare:
+                # the frames without a pose: lost, or before the initialisation
+                Printer.orange(
+                    f"Tracking was lost for {100 - percent_tracked:.0f}% of the sequence: the "
+                    f"trajectory error covers only the {len(est_poses)} tracked frames, and cannot "
+                    f"be compared with that of a run which tracked the whole sequence"
+                )
 
         evaluate_semantic_mapping(slam, dataset, metrics_save_dir)
 
