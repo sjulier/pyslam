@@ -30,29 +30,55 @@ from PIL import Image
 import packaging
 import packaging.version
 import types
+import importlib.util
+import warnings
 
 from torchvision import transforms
 from torchvision.transforms import CenterCrop, Compose
 
-# f3rm's CLIP code does `from pkg_resources import packaging`. setuptools >= 81 no longer ships
-# pkg_resources, and recent builds that still do may not expose the vendored `packaging`. In that
-# case register a minimal in-process stand-in that provides only `packaging` (nothing is installed).
-try:
-    import pkg_resources
-except ImportError:
-    pkg_resources = types.ModuleType("pkg_resources")
-    sys.modules["pkg_resources"] = pkg_resources
-if not hasattr(pkg_resources, "packaging"):
-    pkg_resources.packaging = packaging
+import torch.nn.functional as F
 
-# f3rm is unpacked into thirdparty/f3rm_pkg by scripts/install_extra.sh (without its dependencies:
-# only its CLIP module is used here); a pip-installed f3rm is used if there is one.
+# Two implementations of CLIP with dense (per-patch) features, the same OpenAI weights and the same maths:
+# - open_clip (the conda package open-clip-torch, part of the semantics level, also on native Windows),
+#   with the dense features computed here (OpenClipDense);
+# - f3rm's CLIP module, unpacked into thirdparty/f3rm_pkg by scripts/install_extra.sh (models-semantics).
+# open_clip is used when it is installed; PYSLAM_CLIP_BACKEND=f3rm or =open_clip chooses one.
 import pyslam.config as config
 
-config.cfg.set_lib("f3rm")
+try:
+    import open_clip
+except ImportError:
+    open_clip = None
 
-from f3rm.features.clip import clip as f3rm_clip
-from f3rm.features.clip import tokenize
+f3rm_clip = f3rm_tokenize = None  # loaded by load_f3rm(), only when f3rm is the backend
+
+
+def f3rm_available():
+    """Whether f3rm can be imported (without importing it)."""
+    config.cfg.set_lib("f3rm")
+    return importlib.util.find_spec("f3rm") is not None
+
+
+def load_f3rm():
+    global f3rm_clip, f3rm_tokenize
+    if f3rm_clip is not None:
+        return
+    # f3rm's CLIP code does `from pkg_resources import packaging`. setuptools >= 81 no longer ships
+    # pkg_resources, and recent builds that still do may not expose the vendored `packaging`. In that
+    # case register a minimal in-process stand-in that provides only `packaging` (nothing is installed).
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)  # "pkg_resources is deprecated as an API"
+        try:
+            import pkg_resources
+        except ImportError:
+            pkg_resources = types.ModuleType("pkg_resources")
+            sys.modules["pkg_resources"] = pkg_resources
+    if not hasattr(pkg_resources, "packaging"):
+        pkg_resources.packaging = packaging
+    config.cfg.set_lib("f3rm")
+    from f3rm.features.clip import clip, tokenize
+
+    f3rm_clip, f3rm_tokenize = clip, tokenize
 
 from .semantic_labels import get_ade20k_to_scannet40_map
 from .semantic_segmentation_base import SemanticSegmentationBase
@@ -71,6 +97,107 @@ from pyslam.utilities.logging import Printer
 kScriptPath = os.path.realpath(__file__)
 kScriptFolder = os.path.dirname(kScriptPath)
 kRootFolder = kScriptFolder + "/../.."
+
+
+# The open_clip names of the OpenAI CLIP models (the OpenAI weights were trained with QuickGELU)
+kOpenClipModels = {
+    "ViT-B/32": "ViT-B-32-quickgelu",
+    "ViT-B/16": "ViT-B-16-quickgelu",
+    "ViT-L/14": "ViT-L-14-quickgelu",
+    "ViT-L/14@336px": "ViT-L-14-336-quickgelu",
+}
+
+
+def clip_backend(encoder_name):
+    """The CLIP implementation to use: "open_clip" or "f3rm" (see the imports above)."""
+    wanted = os.environ.get("PYSLAM_CLIP_BACKEND", "")
+    if wanted == "f3rm" or (wanted != "open_clip" and (open_clip is None or encoder_name not in kOpenClipModels)):
+        if not f3rm_available():
+            raise ImportError(
+                "PYSLAM_CLIP_BACKEND=f3rm, but f3rm is not installed (pixi run -e semantics models-semantics)"
+                if wanted == "f3rm"
+                else "CLIP needs open_clip (the conda package open-clip-torch) or f3rm (pixi run -e semantics models-semantics)"
+            )
+        load_f3rm()
+        return "f3rm"
+    if open_clip is None:
+        raise ImportError("PYSLAM_CLIP_BACKEND=open_clip, but open_clip is not installed (open-clip-torch)")
+    if encoder_name not in kOpenClipModels:
+        raise ValueError(f"open_clip backend: {encoder_name} is not one of {list(kOpenClipModels)}")
+    return "open_clip"
+
+
+def interpolate_positional_embedding(positional_embedding, x, patch_size, h, w):
+    """The positional embedding of a ViT, interpolated to an image of h x w pixels, i.e. (h // patch_size) x
+    (w // patch_size) patches (bicubic). The same computation as f3rm's interpolate_positional_embedding,
+    itself from DINO's interpolate_pos_encoding:
+    https://github.com/facebookresearch/dino/blob/7c446df5b9f45747937fb0d72314eb9f7b66930a/vision_transformer.py#L174
+    """
+    num_patches = x.shape[1] - 1
+    num_og_patches = positional_embedding.shape[0] - 1
+    if num_patches == num_og_patches and h == w:
+        return positional_embedding.to(x.dtype)
+    dim = x.shape[-1]
+    class_pos_embed = positional_embedding[:1]
+    patch_pos_embed = positional_embedding[1:]
+    h0, w0 = h // patch_size, w // patch_size
+    assert h0 * w0 == num_patches, "Number of patches does not match"
+    h0, w0 = h0 + 0.1, w0 + 0.1  # against floating point error in the interpolation (DINO issue 8)
+    patch_per_ax = int(np.sqrt(num_og_patches))
+    patch_pos_embed = F.interpolate(
+        patch_pos_embed.reshape(1, patch_per_ax, patch_per_ax, dim).permute(0, 3, 1, 2),
+        scale_factor=(h0 / patch_per_ax, w0 / patch_per_ax),
+        mode="bicubic",
+        align_corners=False,
+        recompute_scale_factor=False,
+    )
+    assert int(h0) == patch_pos_embed.shape[-2] and int(w0) == patch_pos_embed.shape[-1], "Interpolation error."
+    patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).reshape(-1, dim)
+    return torch.cat([class_pos_embed, patch_pos_embed], dim=0).to(x.dtype)
+
+
+class OpenClipDense(torch.nn.Module):
+    """An open_clip ViT CLIP model with the interface this module uses from f3rm: encode_text(),
+    get_patch_encodings() and visual.patch_size. The patch encodings follow MaskCLIP
+    (https://arxiv.org/abs/2112.01071), as f3rm does: the last transformer block is replaced by its value
+    projection alone (no attention between the patches, no MLP), then ln_post and the projection to the
+    space of the text embeddings."""
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+        patch_size = model.visual.patch_size
+        self.visual = types.SimpleNamespace(
+            patch_size=patch_size[0] if isinstance(patch_size, (tuple, list)) else patch_size
+        )
+
+    def encode_text(self, tokens):
+        return self.model.encode_text(tokens)
+
+    def get_patch_encodings(self, image):
+        v = self.model.visual
+        _, _, h, w = image.shape
+        x = v.conv1(image.to(v.conv1.weight.dtype))  # (B, width, h / patch, w / patch)
+        x = x.reshape(x.shape[0], x.shape[1], -1).permute(0, 2, 1)  # (B, patches, width)
+        cls = v.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)
+        x = torch.cat([cls, x], dim=1)
+        x = x + interpolate_positional_embedding(v.positional_embedding, x, self.visual.patch_size, h, w)
+        x = v.ln_pre(x)
+        batch_first = getattr(v.transformer, "batch_first", True)
+        if not batch_first:
+            x = x.permute(1, 0, 2)
+        *blocks, last = v.transformer.resblocks
+        for block in blocks:
+            x = block(x)
+        dim = last.attn.embed_dim
+        x = F.linear(last.ln_1(x), last.attn.in_proj_weight[-dim:], last.attn.in_proj_bias[-dim:])
+        x = F.linear(x, last.attn.out_proj.weight, last.attn.out_proj.bias)
+        if not batch_first:
+            x = x.permute(1, 0, 2)
+        x = v.ln_post(x[:, 1:, :])  # the patches, not the class token
+        if v.proj is not None:
+            x = x @ v.proj
+        return x
 
 
 class SemanticSegmentationCLIP(SemanticSegmentationBase):
@@ -111,6 +238,12 @@ class SemanticSegmentationCLIP(SemanticSegmentationBase):
         device = self.init_device(device)
 
         self.encoder_name = encoder_name  # Keep the encoder name to infer if it's ViT or RN
+        self.backend = clip_backend(encoder_name)
+        if self.backend == "open_clip":
+            self.tokenize = open_clip.get_tokenizer(kOpenClipModels[encoder_name])
+        else:
+            self.tokenize = f3rm_tokenize  # set by load_f3rm() in clip_backend()
+        tokenize = self.tokenize
 
         # NOTE: transform is called preprocess in the original code
         model, transform = self.init_model(
@@ -186,8 +319,15 @@ class SemanticSegmentationCLIP(SemanticSegmentationBase):
                 f"Segformer does not support {encoder_name} model with size {image_size} and dataset {semantic_dataset_type}"
             )
 
-        if model_path == "":  # Load pre-trained models
+        if model_path == "" and self.backend == "open_clip":  # the OpenAI weights, through open_clip
+            model, _, preprocess = open_clip.create_model_and_transforms(
+                kOpenClipModels[encoder_name], pretrained="openai", device=device
+            )
+            model = OpenClipDense(model.eval())
+            print(f"SemanticSegmentationCLIP: open_clip {kOpenClipModels[encoder_name]} (OpenAI weights)")
+        elif model_path == "":  # Load pre-trained models
             model, preprocess = f3rm_clip.load(encoder_name, device)
+            print(f"SemanticSegmentationCLIP: f3rm {encoder_name}")
         else:
             raise NotImplementedError(
                 "Segformer only supports pre-trained model for now"
@@ -218,7 +358,7 @@ class SemanticSegmentationCLIP(SemanticSegmentationBase):
     def set_query_word(self, query_word):
         if self.semantic_dataset_type == SemanticDatasetType.FEATURE_SIMILARITY:
             self.label_names = [query_word]
-            self.tokens = [tokenize(query_word).to(self.device)]
+            self.tokens = [self.tokenize(query_word).to(self.device)]
             self.text_embs = torch.stack(
                 [self.model.encode_text(token).squeeze(0) for token in self.tokens]
             )
