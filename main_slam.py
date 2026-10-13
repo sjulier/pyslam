@@ -24,6 +24,14 @@ from pyslam.utilities.native_bundle_check import warn_if_native_modules_outdated
 if __name__ == "__main__":
     warn_if_native_modules_outdated()  # before anything imports the native modules
 
+    import faulthandler
+    import signal
+
+    if hasattr(signal, "SIGUSR1"):  # Linux, macOS
+        # every thread's stack to the log on SIGUSR1, even in a deadlock: slam-evaluation sends it
+        # to a run that stalls (pyslam/utilities/run_command.py)
+        faulthandler.register(signal.SIGUSR1, all_threads=True)
+
 import time
 import os
 import sys
@@ -508,6 +516,10 @@ if __name__ == "__main__":
 
     num_tracking_lost = 0
     num_frames = 0
+    # slam-evaluation's stall check (pyslam/utilities/run_command.py) reads the frames done so far,
+    # with the times of the first and the latest, from this file
+    progress_file_path = os.environ.get("PYSLAM_PROGRESS_FILE")
+    progress_first_time = None
 
     img_id = 0  # 210, 340, 400, 770   # you can start from a desired frame id if needed
 
@@ -612,6 +624,14 @@ if __name__ == "__main__":
 
                     img_id += 1
                     num_frames += 1
+                    if progress_file_path:  # for slam-evaluation's stall check
+                        now = time.time()
+                        progress_first_time = progress_first_time or now
+                        try:
+                            with open(progress_file_path, "w") as f:
+                                f.write(f"{num_frames} {progress_first_time:.3f} {now:.3f}\n")
+                        except OSError:
+                            pass
                     if FrameLog.is_to_file() and (num_frames == 1 or num_frames % 100 == 0):
                         # the first frame (tracking has started), then every 100 frames; the details of
                         # every frame are in logs/tracking.log

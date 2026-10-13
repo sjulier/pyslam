@@ -111,9 +111,11 @@ See the related discussion [here](https://github.com/luigifreda/pyslam/issues/22
 
 ## SLAM stops part-way, every thread idle (known deadlock)
 
-**What you see:** `pixi run slam` or one run of `pixi run slam-evaluation` stops processing frames part-way through a sequence and never continues. The process uses no CPU, the logs end in the middle of a frame (local mapping at `>>>> local optimization (LBA) ...`), and Ctrl-C does nothing. `slam-evaluation` has no time limit per run, so it waits too.
+**What you see:** `pixi run slam` or one run of `pixi run slam-evaluation` stops processing frames part-way through a sequence and never continues. The process uses no CPU, the logs end in the middle of a frame (local mapping at `>>>> local optimization (LBA) ...`), and Ctrl-C does nothing.
 
-**What to do:** kill the process (close the terminal, or `pkill -f main_slam.py`; on Windows, end the `python.exe` processes in Task Manager) and run the command again. It is rare and timing-dependent, so the next run normally finishes.
+`slam-evaluation` stops such a run by itself and runs it again once: when a run has had no new frame, written no file and used almost no CPU for 100 times its mean time per frame (at least a minute; `--stall-factor` changes the 100, 0 turns it off). The stalled run's log, with every thread's stack at the end (Linux, macOS), is kept as `logs/log_stalled_1.txt` in its folder: please send it to the course team.
+
+**What to do** with `pixi run slam`: kill the process (close the terminal, or `pkill -f main_slam.py`; on Windows, end the `python.exe` processes in Task Manager) and run the command again. It is rare and timing-dependent, so the next run normally finishes.
 
 **What is known** (12–13 Oct 2026). It was seen twice in about 30 RGB-D runs of TUM `walking_halfsphere`, both on a 24-thread AMD laptop:
 - under WSL2 (course branch `comp0227-2026`) at frame 497;
