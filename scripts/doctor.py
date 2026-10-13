@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-IS_WINDOWS = sys.platform == "win32"  # native Windows (experimental): the environment default-win
+IS_WINDOWS = sys.platform == "win32"  # native Windows (experimental): the default level only
 GB = 1024**3
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
@@ -44,7 +44,6 @@ class Report:
     def add(self, status, name, detail=""):
         if IS_WINDOWS:  # the commands that the messages name, as they are typed on Windows
             detail = re.sub(r"pixi run build(-[a-z0-9-]+)?", "pixi run build", detail)
-            detail = detail.replace("pixi run ", "pixi run -e default-win ")
         self.items.append({"status": status, "name": name, "detail": detail})
         print(f"  {status:<4}  {name}" + (f": {detail}" if detail else ""), flush=True)
 
@@ -301,6 +300,11 @@ def check_environment(r):
         env = None
     r.add("OK" if env else "WARN", "environment",
           (env or "none active") + f" ({sys.executable})" + ("" if env else " - run `pixi run doctor`, or activate the pySLAM environment first"))
+    old_windows_env = os.path.join(ROOT_DIR, ".pixi", "envs", "default-win")
+    if IS_WINDOWS and os.path.isdir(old_windows_env):
+        # comp0227-2026.2 and earlier: native Windows had an environment of its own; it is now the default one
+        r.add("WARN", "old environment", f"{old_windows_env} is no longer used (Windows now uses the default "
+              "environment): delete that folder to free its disk space")
     version = platform.python_version()
     r.add("OK" if version.startswith("3.11.") else "WARN", "Python", version + ("" if version.startswith("3.11.") else " (pySLAM is set up for 3.11)"))
     commit = git_commit()
