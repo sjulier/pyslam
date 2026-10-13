@@ -123,11 +123,11 @@ It never happened in about 40 runs on two Macs. A `py-spy dump` of the Windows r
 - **Tracking** waits in `track_local_map` on `self.map.local_map.is_empty()` (`pyslam/slam/tracking.py:695`). That is inside `with self.map.update_lock:` (`tracking.py:1370-1541`).
 - **Local mapping** waits inside the C++ `self.local_mapping_core.local_BA()` (`pyslam/slam/local_mapping.py:568`).
 
-The likely cause is a lock-order inversion:
+A possible cause is a lock-order inversion:
 - `is_empty` is bound without releasing the GIL (`pyslam/slam/cpp/py_module/map_module.h:524`), so tracking holds the GIL and the map's update lock while it waits for the local map's lock (`map.cpp:582`).
 - `local_BA` releases the GIL (`local_mapping_core_module.h:72`), and `Map::locally_optimize()` takes the local map's lock in `local_map->update()` before the bundle adjustment.
 
-The lock local mapping waits on is not yet known: `py-spy dump --native --pid <pid>` during the next hang would show it. Candidate fixes:
+This is not confirmed. For a deadlock, local mapping must be waiting on something tracking holds, but the path of `local_BA` takes neither the GIL nor the map's update lock (`locally_optimize()` passes no map lock to the bundle adjustment). It may instead wait on the lock of a keyframe or a map point: `update_keyframes()` holds the local map's lock while it reads the covisible keyframes of the reference keyframe. The lock local mapping waits on is not yet known: `py-spy dump --native --pid <pid>` during the next hang would show it. Candidate fixes, once it is:
 - release the GIL in the `LocalMapBase` getters bound for Python, as `local_BA` already does;
 - take the map's update lock and the local map's lock in the same order on both sides.
 
