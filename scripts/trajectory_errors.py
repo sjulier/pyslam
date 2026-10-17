@@ -3,7 +3,7 @@
 """
 The trajectory error (ATE rmse) of every SLAM run in a results folder, computed twice: after fitting
 the estimated trajectory to the ground truth with a rotation and a translation only (without scale),
-and with a scale as well (with scale), and the scale which that second fit found.
+and with a scale as well (with scale), and the scale which that second fit found (fitted scale).
 
 main_slam.py reports one of the two: with scale for a monocular run, whose map has no scale, and
 without scale for RGB-D and stereo runs, whose maps claim metres. Computing both puts runs of
@@ -59,7 +59,7 @@ def main():
         name = os.path.relpath(os.path.dirname(os.path.dirname(path)), folder).replace(os.sep, "/")
         if name == ".":
             name = os.path.basename(os.path.abspath(folder))
-        print(f"{name}: {rigid:.3f} m without scale; {similar:.3f} m with scale, which is {scale:.2f}")
+        print(f"{name}: {rigid:.3f} m without scale; {similar:.3f} m with scale (fitted scale {scale:.2f})")
 
 
 if __name__ == "__main__":
