@@ -129,7 +129,11 @@ def config_overrides_from_args(args, argparser):
             overrides["dataset_type"] = "TUM_DATASET"
             overrides["dataset_base_path"] = os.path.dirname(tum_path)
             dataset["name"] = os.path.basename(tum_path)
-            associations = args.associations
+            from pyslam.io.sequence_options import tum_list_name
+
+            associations = tum_list_name(tum_path, args.associations) if args.associations else None
+            if args.predicted_depth:
+                args.predicted_depth = tum_list_name(tum_path, args.predicted_depth)
             if associations is None:
                 has_associations = os.path.exists(os.path.join(tum_path, "associations.txt"))
                 associations = "associations.txt" if has_associations else "rgb.txt"
