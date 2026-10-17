@@ -18,7 +18,8 @@
 * along with PYSLAM. If not, see <http://www.gnu.org/licenses/>.
 """
 
-# The objects of every frame of a sequence, detected and tracked: every object the tracker keeps gets
+# The objects of every frame of a sequence, detected and tracked (with --tum, every colour image of
+# rgb.txt, unless --associations names another list): every object the tracker keeps gets
 # an identity, a number which should stay the same while the object is in view. The detector is
 # YOLO (or YOLOE with a text prompt), the trackers ByteTrack and BoT-SORT, through Ultralytics' track
 # mode (model.track(persist=True, tracker=...)), with their settings in settings/trackers/.
@@ -171,6 +172,13 @@ class SequenceFrames:
         from pyslam.io.dataset_factory import dataset_factory
         from pyslam.io.sequence_options import sequence_config_path
 
+        if args.tum and not args.associations:
+            # every colour image, from rgb.txt: the tracker needs no depth, and associations.txt leaves out the
+            # frames without a depth image (main_slam.py --tracks finds the boxes of its frames by timestamp)
+            folder = os.path.abspath(os.path.expanduser(args.tum)).rstrip("/")
+            if os.path.isfile(os.path.join(folder, "rgb.txt")):
+                args.associations = "rgb.txt"
+                args.sensor = args.sensor or "mono"
         config_path = sequence_config_path(args, parser, default_settings=os.path.join(kScriptFolder, "settings", "KITTI04-12.yaml"))
         config = Config(config_path)
         os.remove(config_path)  # the temporary file of sequence_config_path(): it has been read
@@ -185,6 +193,7 @@ class SequenceFrames:
         if args.tum:
             folder = os.path.abspath(os.path.expanduser(args.tum)).rstrip("/")
             self.list_name = args.associations or ("associations.txt" if os.path.isfile(os.path.join(folder, "associations.txt")) else "rgb.txt")
+            print(f"--tum: the frames of {self.list_name}" + (" (every colour image)" if self.list_name == "rgb.txt" else ""))
 
     def __iter__(self):
         """(frame number, timestamp, image), in order, until the sequence ends."""
