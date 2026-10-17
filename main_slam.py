@@ -246,8 +246,8 @@ if __name__ == "__main__":
         type=float,
         default=0.35,
         metavar="M",
-        help="a detection joins the nearest object of its class whose centre lies within this distance "
-        "(default 0.35, in the map's units: metres with RGB-D)",
+        help="a detection (with --tracks: a static track) joins the nearest object of its class whose centre "
+        "lies within this distance (default 0.35, in the map's units: metres with RGB-D)",
     )
     detected.add_argument(
         "--lift-depth",
@@ -262,6 +262,26 @@ if __name__ == "__main__":
         default=0.5,
         metavar="S",
         help="only the detections with at least this score are lifted (default 0.5)",
+    )
+    tracked = parser.add_argument_group(
+        "tracked objects in the map (COMP0227 Lab 05)",
+        "the tracks written by `pixi run -e semantics object-tracking --save DIR` for the same sequence: "
+        "each tracked box of each frame is lifted into the map with the pose and the depth of its frame; "
+        "--merge-radius (above) also applies to the tracks",
+    )
+    tracked.add_argument(
+        "--tracks",
+        metavar="DIR",
+        help="the folder of the tracks: the Map Viewer draws a path per identity, and the end of the run "
+        "merges the static tracks into objects",
+    )
+    tracked.add_argument(
+        "--static-radius",
+        type=float,
+        default=0.30,
+        metavar="M",
+        help="a track is static if 90%% of its lifted points lie within this distance of their median "
+        "(default 0.30, in the map's units: metres with RGB-D)",
     )
     parser.add_argument(
         "--plot-window",
@@ -320,8 +340,21 @@ if __name__ == "__main__":
         except FileNotFoundError as e:
             sys.exit(str(e))
         Printer.green(f"Detections: {saved_detections.describe()}")
-    elif any(o in sys.argv for o in ("--merge-radius", "--lift-depth", "--min-score")):
-        parser.error("--merge-radius, --lift-depth and --min-score go with --detections")
+    elif any(o in sys.argv for o in ("--lift-depth", "--min-score")):
+        parser.error("--lift-depth and --min-score go with --detections")
+    saved_tracks = None
+    if args.tracks:
+        from pyslam.semantics.track_lifting import SavedTracks
+
+        try:
+            saved_tracks = SavedTracks(args.tracks, args.static_radius, args.merge_radius)
+        except FileNotFoundError as e:
+            sys.exit(str(e))
+        Printer.green(f"Tracks: {saved_tracks.describe()}")
+    elif "--static-radius" in sys.argv:
+        parser.error("--static-radius goes with --tracks")
+    if "--merge-radius" in sys.argv and not (args.detections or args.tracks):
+        parser.error("--merge-radius goes with --detections or --tracks")
     num_total_frames = dataset.num_frames
 
     online_trajectory_writer = None
@@ -646,6 +679,15 @@ if __name__ == "__main__":
                             if saved_detections.lift_frame(img_id, timestamp, camera, Twc, depth=depth_m, frame=slam.tracking.f_cur) and viewer3D:
                                 viewer3D.draw_objects(saved_detections.viewer_groups())
 
+                        # the tracked boxes of this frame, lifted with its pose and depth (--tracks)
+                        if saved_tracks and slam.tracking.state == SlamState.OK and slam.tracking.cur_R is not None:
+                            Twc = np.eye(4)
+                            Twc[:3, :3] = slam.tracking.cur_R
+                            Twc[:3, 3] = np.asarray(slam.tracking.cur_t).reshape(3)
+                            depth_m = depth.astype(np.float32) * camera.depth_factor if depth is not None else None
+                            if saved_tracks.lift_frame(img_id, timestamp, camera, Twc, depth=depth_m, frame=slam.tracking.f_cur) and viewer3D:
+                                viewer3D.draw_tracks(saved_tracks.paths())
+
                         # 3D display (map display)
                         if viewer3D:
                             viewer3D.draw_slam_map(slam)
@@ -910,6 +952,19 @@ if __name__ == "__main__":
                     spread = f"{o['spread']:.2f} map units" if is_monocular else f"{o['spread'] * 100:3.0f} cm"
                     print(f"    {o['cls']:16s} {o['n']:4d} detection{'s' if o['n'] != 1 else ' '}  spread {spread}")
                 Printer.green(line)
+
+        # --tracks: the boxes lifted again with the final trajectory, and the static tracks merged into objects
+        if saved_tracks:
+            if saved_tracks.num_frames_matched == 0:
+                Printer.orange(f"--tracks {args.tracks}: no frame of this sequence has tracked boxes (another sequence?)")
+            elif est_poses:
+                tracks_folder = metrics_save_dir or args.tracks
+                Printer.green(
+                    f"Tracks: {len(saved_tracks.lifted)} boxes lifted in {saved_tracks.num_frames_matched} frames, with "
+                    f"{saved_tracks.depth_source}; {saved_tracks.num_not_lifted} boxes had too little depth"
+                )
+                Printer.green(saved_tracks.finish(est_poses, ids, save_folder=tracks_folder))
+                print(f"Written: {tracks_folder}/tracks_lifted.csv (every lifted box) and {tracks_folder}/objects.json")
 
         # The same run's trajectory with the frames' relative poses as tracked, as ORB-SLAM2/3 (they do not
         # follow the map's later scale changes): saved next to it with its ATE, to compare (see
