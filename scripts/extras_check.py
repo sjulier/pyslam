@@ -18,7 +18,7 @@ Each component runs in its own process on the bundled KITTI 06 test images:
   environment without TensorFlow they run in the TensorFlow worker (pyslam/workers), device "tfw".
 
 usage: python scripts/extras_check.py <extra> [COMPONENT ...]   (run from anywhere)
-       <extra>: features, features-core, vpr, vpr-core, depth, semantics, scene3d, tf (see install_extra.sh)
+       <extra>: features, features-core, vpr, vpr-core, depth, depth-small, semantics, scene3d, tf (see install_extra.sh)
 
 A component whose model weights could not be downloaded (no network, a server that does not answer,
 a download quota) is reported as UNTRIED, not as failed: run the check again later.
@@ -46,6 +46,8 @@ EXTRA_COMPONENTS = {
         "DEPTH_ANYTHING_V2", "DEPTH_PRO", "DEPTH_RAFT_STEREO", "DEPTH_CRESTEREO_PYTORCH",
         "DEPTH_ANYTHING_V3",
     ],
+    # only the small Depth Anything V2 models (pixi task models-depth-small), for a short disk
+    "depth-small": ["DEPTH_ANYTHING_V2"],
     "semantics": ["DEEPLABV3", "SEGFORMER", "YOLO", "RFDETR", "CLIP", "DETIC", "EOV_SEG", "ODISE"],
     "scene3d": ["MAST3R", "DUST3R", "MVDUST3R", "VGGT", "VGGT_ROBUST", "FAST3R", "GAUSSIAN_SPLATTING"],
     "tf": ["DELF", "LFNET", "CONTEXTDESC", "GEODESC", "HDC_DELF"],
@@ -94,7 +96,7 @@ try:
         kps2, des2 = tracker.detectAndCompute(img2)
         res = tracker.matcher.match(img1, img2, des1, des2, kps1, kps2)
         out["result"] = f"{len(res.idxs1)} matches"
-    elif kind == "depth":
+    elif kind in ("depth", "depth-small"):
         from pyslam.depth_estimation.depth_estimator_factory import depth_estimator_factory, DepthEstimatorType
         from pyslam.io.dataset_types import DatasetEnvironmentType
         from pyslam.slam import PinholeCamera
@@ -102,10 +104,15 @@ try:
         if not cam.bf:  # the stereo models need the baseline: KITTI's, as the test images are from KITTI 06
             cam.bf = 379.8145
             cam.b = cam.bf / cam.fx
-        est = depth_estimator_factory(
-            depth_estimator_type=DepthEstimatorType[name], camera=cam, max_depth=50,
-            dataset_env_type=DatasetEnvironmentType.OUTDOOR,
-        )
+        if kind == "depth-small":  # Depth Anything V2's small models: the indoor one is loaded, the outdoor one run
+            from pyslam.depth_estimation.depth_estimator_depth_anything_v2 import DepthEstimatorDepthAnythingV2
+            DepthEstimatorDepthAnythingV2(camera=cam, dataset_env_type=DatasetEnvironmentType.INDOOR, encoder_name="vits")
+            est = DepthEstimatorDepthAnythingV2(camera=cam, dataset_env_type=DatasetEnvironmentType.OUTDOOR, encoder_name="vits")
+        else:
+            est = depth_estimator_factory(
+                depth_estimator_type=DepthEstimatorType[name], camera=cam, max_depth=50,
+                dataset_env_type=DatasetEnvironmentType.OUTDOOR,
+            )
         # a rectified stereo pair; the monocular models ignore the right image
         depth, _ = est.infer(read("kitti06-12-color.png"), read("kitti06-12-R-color.png"))
         depth = np.asarray(depth, dtype=np.float64)

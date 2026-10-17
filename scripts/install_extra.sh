@@ -37,7 +37,7 @@ cd "$ROOT_DIR"
 
 PYTHON_EXE=$(get_python_exe)
 
-EXTRAS_ORDER="features-core features vpr-core vpr depth semantics scene3d tf"
+EXTRAS_ORDER="features-core features vpr-core vpr depth depth-small semantics scene3d tf"
 
 # extra_description <extra>: print the description, or nothing for an unknown extra
 # (a function rather than an associative array, which needs bash >= 4; macOS ships bash 3.2)
@@ -48,6 +48,7 @@ function extra_description() {
         vpr-core) echo "The recommended visual place recognition loop detector: CosPlace" ;;
         vpr) echo "All visual place recognition loop detectors: NetVLAD, CosPlace, EigenPlaces, MegaLoc, AlexNet" ;;
         depth) echo "Depth and stereo estimation: Depth Anything V2, Depth Pro, RAFT-Stereo, CREStereo (PyTorch), Depth Anything V3 [pixi level: depth]" ;;
+        depth-small) echo "Only the small Depth Anything V2 models, indoor and outdoor (0.2 GB of the 7 GB of 'depth'), for a short disk [pixi level: depth]" ;;
         semantics) echo "Semantic segmentation and object detection: DeepLabV3, SegFormer, YOLO, RF-DETR, CLIP, Detic, EOV-Seg, ODISE [pixi level: semantics]" ;;
         scene3d) echo "3D representations: MASt3R, DUSt3R, MV-DUSt3R, VGGT, Robust VGGT, Fast3R, Gaussian splatting (need an NVIDIA GPU) [pixi level: full]" ;;
         tf) echo "TensorFlow-based features: DELF, LF-Net, ContextDesc, GeoDesc, and the HDC-DELF place recognition [pixi environment tf, used through a worker process]" ;;
@@ -398,15 +399,19 @@ function install_depth_pro() {
     download_file https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt thirdparty/ml_depth_pro/checkpoints/depth_pro.pt 1904446787
 }
 
+# install_depth_anything_v2 [<size> ...]: the metric indoor (Hypersim) and outdoor (VKITTI) models of
+# the given sizes (Small, Base, Large), or of all three
 function install_depth_anything_v2() {
     # Depth Anything V2 (monocular, metric indoor/outdoor models)
     clone_repo depth_anything_v2 https://github.com/DepthAnything/Depth-Anything-V2.git
     apply_patch depth_anything_v2 depth_anything_v2.patch
+    local sizes="${*:-Small Base Large}"
     # <dataset>:<size>:<encoder>:<bytes>
     local entry dataset size encoder bytes model
     for entry in Hypersim:Small:vits:99222290 Hypersim:Base:vitb:389965138 Hypersim:Large:vitl:1341401882 \
                  VKITTI:Small:vits:99221808 VKITTI:Base:vitb:389964656 VKITTI:Large:vitl:1341401064; do
         IFS=: read -r dataset size encoder bytes <<< "$entry"
+        [[ " $sizes " == *" $size "* ]] || continue
         model="depth_anything_v2_metric_$(echo "$dataset" | tr '[:upper:]' '[:lower:]')_$encoder.pth"
         download_file "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-$dataset-$size/resolve/main/$model?download=true" \
             "thirdparty/depth_anything_v2/metric_depth/checkpoints/$model" "$bytes"
@@ -436,6 +441,10 @@ function install_depth_anything_v3() {
     # Depth Anything V3 (monocular); its weights are downloaded by the check below, on first creation
     clone_repo depth_anything_v3 https://github.com/ByteDance-Seed/depth-anything-3 ed6989a23cd389e975ed9f7cbd7385396e6d867e
     apply_patch depth_anything_v3 depth_anything_v3.patch
+}
+
+function install_depth_small() {
+    component "Depth Anything V2 (small)" install_depth_anything_v2 Small
 }
 
 function install_depth() {
