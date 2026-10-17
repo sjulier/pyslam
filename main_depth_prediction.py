@@ -384,8 +384,8 @@ class KeypointScorer:
         dg = self.depth_at_keypoints(gt, uv, method=self.method, patch=self.patch)
         if dp is None or dg is None:
             Printer.orange(
-                "depth_at_keypoints() in pyslam/depth_estimation/depth_sampling.py returned None: the keypoints are "
-                "skipped. Write it (Lab 03, Activity 6)."
+                f"depth_at_keypoints() returned None for --keypoints {self.method}: the keypoints are skipped "
+                "(pyslam/depth_estimation/depth_sampling.py, Lab 03, Activity 6)."
             )
             self.enabled = False
             return None
@@ -923,7 +923,7 @@ def print_summary(args, name, num_total, image_size, rows, network, saved_info, 
                 f"{mean_of(rows, 'keypoints'):.0f} keypoints per frame with both depths)"
             )
         else:
-            parts.append("no depth at the keypoints: depth_at_keypoints() returned None")
+            parts.append(f"no depth at the keypoints: depth_at_keypoints() returned None for {keypoint_scorer.method}")
     if args.save:
         parts.append(f"{len(saved)} depth maps saved to depth_{args.save}")
     Printer.green(f"\nSummary: {'; '.join(parts)}\n")

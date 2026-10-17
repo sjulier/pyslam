@@ -25,9 +25,13 @@
 
 import numpy as np
 
+from pyslam.utilities.logging import Printer
+
 
 # The ways of reading the depth at a keypoint (main_depth_prediction.py --keypoints)
 kMethods = ("nearest", "bilinear", "median")
+
+_warned = set()  # the methods not written yet whose warning has been printed
 
 
 def depth_at_keypoints(depth, keypoints, method="nearest", patch=5):
@@ -48,7 +52,26 @@ def depth_at_keypoints(depth, keypoints, method="nearest", patch=5):
     patch: the size of the window of "median", an odd number of pixels.
 
     Returns a float array of shape (N,): the depth at each keypoint in metres, 0 where no depth can be
-    read. As supplied, it returns None, and the keypoints are skipped.
+    read. As supplied, only "nearest" is written: "bilinear" and "median" return None, with a warning,
+    and the keypoints are then skipped.
     """
-    # TODO (COMP0227 Lab 03, Activity 6): write this function. As it is, it returns None: no depths.
+    keypoints = np.asarray(keypoints, dtype=np.float64).reshape(-1, 2)
+    h, w = depth.shape[:2]
+
+    if method == "nearest":
+        # The worked example. Pixel i covers the positions from i - 0.5 to i + 0.5, so the pixel which a
+        # keypoint falls in is its position rounded to the nearest whole number, and np.clip keeps it
+        # inside the image. u is the column and v the row, so the depth is depth[v, u]. Where the map
+        # has no depth it holds 0, and so does the result.
+        u = np.clip(np.rint(keypoints[:, 0]).astype(int), 0, w - 1)
+        v = np.clip(np.rint(keypoints[:, 1]).astype(int), 0, h - 1)
+        return np.asarray(depth, dtype=np.float64)[v, u]
+
+    # TODO (COMP0227 Lab 03, Activity 6): write "bilinear" and "median". As they are, they return None.
+    if method not in _warned:
+        _warned.add(method)
+        Printer.orange(
+            f'depth_at_keypoints() in pyslam/depth_estimation/depth_sampling.py: the method "{method}" is not '
+            "written yet (COMP0227 Lab 03, Activity 6), so it returns None"
+        )
     return None
