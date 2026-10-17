@@ -135,13 +135,20 @@ def sequence_config_path(args, parser, default_settings=None):
                 f"--tum: no {groundtruth_file} in {tum_path} (TUM sequences need their ground truth). "
                 f"For a sequence without ground truth, use its images: --images {os.path.join(args.tum, 'rgb')}"
             )
+        from pyslam.utilities.text_files import open_text
+
+        with open_text(os.path.join(tum_path, associations)) as f:
+            lines = [l.split() for l in f if l.strip() and not l.lstrip().startswith("#")]
+        has_depth = bool(lines) and len(lines[0]) >= 4
         sensor_type = args.sensor
         if sensor_type is None:  # rgbd if the list of the frames has depth images (4 columns)
-            from pyslam.utilities.text_files import open_text
-
-            with open_text(os.path.join(tum_path, associations)) as f:
-                lines = [l.split() for l in f if l.strip() and not l.lstrip().startswith("#")]
-            sensor_type = "rgbd" if lines and len(lines[0]) >= 4 else "mono"
+            sensor_type = "rgbd" if has_depth else "mono"
+        elif sensor_type == "rgbd" and not has_depth:
+            sys.exit(
+                f"--sensor rgbd: {associations} in {tum_path} lists no depth images. Pair the colour and depth "
+                f"images first: pixi run python scripts/associate.py {os.path.join(args.tum, 'rgb.txt')} "
+                f"{os.path.join(args.tum, 'depth.txt')} > {os.path.join(args.tum, 'associations.txt')}"
+            )
         dataset_type = "TUM_DATASET"
         dataset.update(
             type="tum",

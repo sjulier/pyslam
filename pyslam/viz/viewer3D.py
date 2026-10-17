@@ -261,6 +261,12 @@ class Viewer3DCameraTrajectoriesInput:
         self.camera_colors.append(camera_color)
 
 
+# The paths of tracked objects in the map (main_slam.py --tracks)
+class Viewer3DTracksInput:
+    def __init__(self):
+        self.paths = []  # a list of (N x 3 points, RGB colour)
+
+
 # ========================================================
 # SlamDrawerThread class
 # ========================================================
@@ -439,6 +445,10 @@ class Viewer3D(object):
         self.qcams = (
             self.mp_manager.Queue()
         )  # used to pass cameras and their poses to the viewer thread
+        # the paths of tracked objects in the map (main_slam.py --tracks): read by the viewer process
+        # from this attribute, which is pickled with the others
+        self.qtracks = self.mp_manager.Queue()
+        self.tracks_state: Viewer3DTracksInput | None = None
 
         self._is_running = mp.Value("i", 0)
         self._is_looping = mp.Value("i", 0)
@@ -697,6 +707,7 @@ class Viewer3D(object):
         empty_queue(qvo)  # empty the queue before exiting
         empty_queue(qdense)  # empty the queue before exiting
         empty_queue(qcams)
+        empty_queue(self.qtracks)
         is_running.value = 0
         is_closed.value = 1
         print("Viewer3D: loop exit...")
@@ -1257,6 +1268,22 @@ class Viewer3D(object):
                 glutils.DrawLine(self.vo_state.traj3d_gt)
 
         # ==============================
+        # draw the paths of the tracked objects (main_slam.py --tracks): one colour per identity
+        last_tracks_state = get_last_item_from_queue(self.qtracks)
+        if last_tracks_state is not None:
+            self.tracks_state = last_tracks_state
+        if self.tracks_state is not None:
+            gl.glLineWidth(2)
+            gl.glPointSize(4)
+            for points, colour in self.tracks_state.paths:
+                gl.glColor3f(colour[0], colour[1], colour[2])
+                if len(points) > 1:
+                    glutils.DrawTrajectory(points)
+                glutils.DrawPoints(points)
+            gl.glLineWidth(1)
+            gl.glPointSize(self.sparsePointSize)
+
+        # ==============================
         # draw camera pose arrays
         if self.camera_trajectories_state is not None:
             if len(self.camera_trajectories_state.camera_trajectories) > 0:
@@ -1564,6 +1591,15 @@ class Viewer3D(object):
                 camera_state.add(ca, cc)
 
         self.qcams.put(camera_state)
+
+    # inputs:
+    #   paths: a list of (N x 3 array of points in the map, RGB colour in [0, 1]), one per tracked object
+    def draw_tracks(self, paths):
+        if self.qtracks is None:
+            return
+        tracks_state = Viewer3DTracksInput()
+        tracks_state.paths = [(np.ascontiguousarray(p, dtype=np.float64), tuple(c)) for p, c in paths if len(p)]
+        self.qtracks.put(tracks_state)
 
     def draw_vo(self, vo):
         if self.qvo is None:
