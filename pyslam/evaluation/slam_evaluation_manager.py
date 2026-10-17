@@ -251,15 +251,18 @@ class SlamEvaluationManager:
                     problems.append(f"{name}: {sequence_path} does not exist")
             if self.dataset_type == "TUM_DATASET":
                 sequence_path = os.path.join(base_path, str(name))
-                associations = dataset.get("associations", "associations.txt")
                 groundtruth_file = dataset.get("groundtruth_file", "groundtruth.txt")
                 if os.path.isdir(sequence_path):
+                    associations = dataset.get("associations", "associations.txt")
                     if not os.path.exists(os.path.join(sequence_path, associations)):
                         problems.append(
                             f"{name}: no {associations} in {sequence_path}. It lists the frames: create "
                             f"it with scripts/associate.py rgb.txt depth.txt > associations.txt (RGB-D), "
                             f'or use rgb.txt for a monocular sequence ("associations": "rgb.txt")'
                         )
+                    for preset in self.presets:
+                        if preset.get("associations") and not os.path.exists(os.path.join(sequence_path, preset["associations"])):
+                            problems.append(f"{name}: no {preset['associations']} in {sequence_path} (preset {preset['name']})")
                     if not os.path.exists(os.path.join(sequence_path, groundtruth_file)):
                         problems.append(
                             f"{name}: no {groundtruth_file} in {sequence_path} (TUM sequences need "
@@ -370,9 +373,11 @@ class SlamEvaluationManager:
         # ------
         # Prepare the config file and update it with the preset parameters
         # Replace the template entries in the config file.
+        # a preset may run another sensor type than the evaluation's, e.g. "mono" on an RGB-D sequence
+        # (main_slam_evaluation.py --predicted-depth)
         config_vocabulary = {
             "dataset_type": self.dataset_type,
-            "sensor_type": self.sensor_type,
+            "sensor_type": preset.get("sensor_type", self.sensor_type),
             "output_path": iteration_output_path,
             "dataset_base_path": self.dataset_base_path_of(dataset),
             "dataset_name": f'"{dataset_name}"',  # wrap in quotes to avoid issues with names that contain only numbers
@@ -395,8 +400,9 @@ class SlamEvaluationManager:
             config_vocabulary["groundtruth_file"] = dataset["groundtruth_file"]
         elif self.dataset_type == "TUM_DATASET":
             config_vocabulary["groundtruth_file"] = "auto"
-        # TUM_DATASET: the list of the frames (timestamp and file of each image, and of its depth image)
-        config_vocabulary["associations"] = dataset.get("associations", "associations.txt")
+        # TUM_DATASET: the list of the frames (timestamp and file of each image, and of its depth image);
+        # a preset may have its own, e.g. one with predicted depth images (main_slam_evaluation.py --predicted-depth)
+        config_vocabulary["associations"] = preset.get("associations") or dataset.get("associations", "associations.txt")
         if "fps" in dataset:
             config_vocabulary["dataset_fps"] = str(dataset["fps"])
         # quoted: a glob pattern such as *png is not valid YAML
