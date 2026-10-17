@@ -156,6 +156,8 @@ def main():
             print(f"    {name:24s}{what}")
         print("The networks need the depth level: pixi run -e depth depth-prediction ... "
               "(pixi run -e depth models-depth installs their code and weights). --load needs no network.")
+        if sys.platform == "win32":
+            print("Native Windows has no depth level: there, only --load (and DEPTH_SGBM) run. Use WSL2 for the networks.")
         sys.exit(0)
 
     sequence_given = has_sequence_options(args)
@@ -197,6 +199,12 @@ def check_method(args):
         print(f"Unknown method '{args.method}'. Valid names (see --list):", file=sys.stderr)
         print("    " + " ".join(kMethods), file=sys.stderr)
         sys.exit(2)
+    if sys.platform == "win32" and args.method != "DEPTH_SGBM":
+        # pixi.toml has no depth level for native Windows (only default-win)
+        sys.exit(
+            f"{args.method} needs the depth level, which native Windows does not have: run it in WSL2, or score "
+            "the depth maps of a member of your group with --tum ... --load NAME, which runs here."
+        )
     if args.method in kNeeds and importlib.util.find_spec(kNeeds[args.method]) is None:
         sys.exit(f"{args.method} needs the depth level: run this command with `pixi run -e depth depth-prediction ...`.")
     if args.method in kStereo and (args.image or args.video or args.images or args.tum or args.test not in kTestRight):
