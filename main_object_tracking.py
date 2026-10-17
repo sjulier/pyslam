@@ -89,6 +89,8 @@ def main():
     parser.add_argument("--tracker", default="BYTETRACK", metavar="NAME", help="the tracker (default BYTETRACK; see --list)")
     parser.add_argument("--method", default="YOLO", metavar="NAME", help="the detector which feeds it (default YOLO; see --list)")
     parser.add_argument("--prompt", metavar="TEXT", help='YOLOE: the classes to detect, separated by commas, e.g. "monitor, keyboard, person"')
+    parser.add_argument("--device", choices=("auto", "cuda", "mps", "cpu"), default="auto",
+                        help="where the detector runs (default auto: an NVIDIA GPU, else Apple's GPU, else the CPU)")
     parser.add_argument("--conf", type=float, default=0.1,
                         help="the detector's lowest score: weaker boxes are not given to the tracker (default 0.1, as "
                         "Ultralytics' track mode: the second pass needs the weak boxes)")
@@ -345,13 +347,15 @@ class Tracker:
               + ("" if self.second_pass else f"; --second-pass off: track_low_thresh is set to track_high_thresh "
                  f"({self.settings['track_high_thresh']}), so no box is left for the second pass"))
 
-        # the device: CUDA, then Apple's MPS, then the CPU
-        if torch.cuda.is_available():
-            self.device = "cuda:0"
-        elif torch.backends.mps.is_available():
-            self.device = "mps"
+        # the device: CUDA, then Apple's MPS, then the CPU (or the one of --device)
+        if args.device == "auto":
+            self.device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+        elif args.device == "cuda" and not torch.cuda.is_available():
+            sys.exit("--device cuda: there is no NVIDIA GPU that torch can use here")
+        elif args.device == "mps" and not torch.backends.mps.is_available():
+            sys.exit("--device mps: Apple's GPU is not available here")
         else:
-            self.device = "cpu"
+            self.device = "cuda:0" if args.device == "cuda" else args.device
         self.device_name = self.device.split(":")[0]
 
         # the detector
