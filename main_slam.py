@@ -888,6 +888,11 @@ if __name__ == "__main__":
                     f"Tracks: {len(saved_tracks.lifted)} boxes lifted in {saved_tracks.num_frames_matched} frames, with "
                     f"{saved_tracks.depth_source}; {saved_tracks.num_not_lifted} boxes had too little depth"
                 )
+                if is_monocular:
+                    Printer.yellow(
+                        "Monocular: the map has a scale of its own, so --static-radius and --merge-radius are in its "
+                        "units, not in metres"
+                    )
                 Printer.green(saved_tracks.finish(est_poses, ids, save_folder=tracks_folder))
                 print(f"Written: {tracks_folder}/tracks_lifted.csv (every lifted box) and {tracks_folder}/objects.json")
 
