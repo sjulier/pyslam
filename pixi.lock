@@ -4351,6 +4351,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/kornia-rs-0.1.10-py311h946adb8_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/krb5-1.22.2-hbc21106_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lame-3.100-h166bdaf_1003.tar.bz2
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/lap-0.5.13-py311hebf75a8_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lcms2-2.19.1-h9073bf1_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/ld_impl_linux-64-2.46.1-default_hbd61a6d_102.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lerc-4.2.0-hdb68285_0.conda
@@ -5412,6 +5413,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/kornia-rs-0.1.10-py311hc2c6d2e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/krb5-1.22.2-h34f8a20_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lame-3.100-h1a8c8d9_1003.tar.bz2
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lap-0.5.13-py311h3f18286_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lcms2-2.19.1-hce41798_3.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/ld64-956.6-llvm21_1_h5d6df6c_6.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/ld64_osx-arm64-956.6-llvm21_1_h1a10cc4_6.conda
@@ -5837,6 +5839,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/kornia-rs-0.1.10-py311h946adb8_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/krb5-1.22.2-hbc21106_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lame-3.100-h166bdaf_1003.tar.bz2
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/lap-0.5.13-py311hebf75a8_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lcms2-2.19.1-h9073bf1_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/ld_impl_linux-64-2.46.1-default_hbd61a6d_102.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lerc-4.2.0-hdb68285_0.conda
@@ -6612,6 +6615,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/kornia-rs-0.1.10-py311h946adb8_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/krb5-1.22.2-hbc21106_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lame-3.100-h166bdaf_1003.tar.bz2
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/lap-0.5.13-py311hebf75a8_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lcms2-2.19.1-h9073bf1_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/ld_impl_linux-64-2.46.1-default_hbd61a6d_102.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lerc-4.2.0-hdb68285_0.conda
@@ -7551,6 +7555,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/kornia-rs-0.1.10-py311hc2c6d2e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/krb5-1.22.2-h34f8a20_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lame-3.100-h1a8c8d9_1003.tar.bz2
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lap-0.5.13-py311h3f18286_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lcms2-2.19.1-hce41798_3.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/ld64-956.6-llvm21_1_h5d6df6c_6.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/ld64_osx-arm64-956.6-llvm21_1_h1a10cc4_6.conda
@@ -7967,6 +7972,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/kornia-rs-0.1.10-py311h946adb8_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/krb5-1.22.2-hbc21106_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lame-3.100-h166bdaf_1003.tar.bz2
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/lap-0.5.13-py311hebf75a8_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lcms2-2.19.1-h9073bf1_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/ld_impl_linux-64-2.46.1-default_hbd61a6d_102.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lerc-4.2.0-hdb68285_0.conda
@@ -12829,6 +12835,24 @@ packages:
     - lame >=3.100,<3.101.0a0
   size: 508258
   timestamp: 1664996250081
+- conda: https://conda.anaconda.org/conda-forge/linux-64/lap-0.5.13-py311hebf75a8_1.conda
+  sha256: 5bb42df436f8406c3e3e32978aea4a6356ac83b5e32c7e293a3854cea0b7653f
+  md5: ee5360399c0abf9eb82670a49a946b07
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=15
+  - libstdcxx >=15
+  - numpy >=1.21.6
+  - numpy >=1.23,<3
+  - python >=3.11,<3.12.0a0
+  - python_abi 3.11.* *_cp311
+  license: BSD-2-Clause
+  license_family: BSD
+  purls:
+  - pkg:pypi/lap?source=compressed-mapping
+  run_exports: {}
+  size: 1504381
+  timestamp: 1789757479264
 - conda: https://conda.anaconda.org/conda-forge/linux-64/lcms2-2.19.1-h9073bf1_3.conda
   sha256: 03e675b9adaf235aab880e4133c72f4830e87bc7da2df59d6194771612239b22
   md5: 596464faa06e0b656b35416188ef9bba
@@ -24900,7 +24924,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/trimesh?source=compressed-mapping
+  - pkg:pypi/trimesh?source=hash-mapping
   run_exports: {}
   size: 610547
   timestamp: 1788211817157
@@ -27399,6 +27423,23 @@ packages:
     - lame >=3.100,<3.101.0a0
   size: 528805
   timestamp: 1664996399305
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/lap-0.5.13-py311h3f18286_1.conda
+  sha256: 69775dde9a638e9f251670a554c6086f1b46cc3c4fc78586df22e66cc4826258
+  md5: 3eccf89842ba93263f9b2eeb8d317b62
+  depends:
+  - __osx >=11.0
+  - libcxx >=21
+  - numpy >=1.21.6
+  - numpy >=1.23,<3
+  - python >=3.11,<3.12.0a0
+  - python_abi 3.11.* *_cp311
+  license: BSD-2-Clause
+  license_family: BSD
+  purls:
+  - pkg:pypi/lap?source=compressed-mapping
+  run_exports: {}
+  size: 1496294
+  timestamp: 1789757465688
 - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lcms2-2.19.1-hce41798_3.conda
   sha256: 5f9b511f918e13dfddb8495c1764aec894b66c5a88359737aa302b8899ae25fa
   md5: 4eed1ee02ef1992c046f2e81d5606633
