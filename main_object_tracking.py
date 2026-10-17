@@ -175,6 +175,9 @@ class SequenceFrames:
         self.dataset = dataset_factory(config)
         self.source = args.tum or args.video or args.images
         self.name = os.path.basename(os.path.normpath(self.source))
+        if args.video:  # e.g. kitti06/video_color.mp4
+            self.name = os.path.join(os.path.basename(os.path.dirname(os.path.abspath(self.source))), self.name)
+        self.option = "--tum" if args.tum else "--video" if args.video else "--images"
         self.num_total = getattr(self.dataset, "num_frames", None)
         self.list_name = None
         if args.tum:
@@ -205,6 +208,7 @@ class MotFrames:
         except FileNotFoundError as e:
             sys.exit(f"--evaluate {folder}: {e} (the layout of the MOTChallenge benchmark: img1/000001.jpg ..., gt/gt.txt)")
         self.source = folder
+        self.option = None
         self.num_total = len(self.images)
         self.list_name = None
 
@@ -678,8 +682,9 @@ def run(args, frames, tracker, Printer):
             predict=args.predict, conf=args.conf, device=tracker.device_name, sequence=os.path.abspath(frames.source),
             frames_list=frames.list_name, step=args.step, summary=summary,
         ))
-        print(f"Written to {args.save}: tracks.csv, tracks.txt (MOTChallenge format), masks/, info.json. The tracks in "
-              f"the map: pixi run slam --tum ... --settings ... --tracks {args.save}")
+        print(f"Written to {args.save}: tracks.csv, tracks.txt (MOTChallenge format), masks/, info.json."
+              + (f" The tracks in the map: pixi run slam {frames.option} {frames.source} --settings ... --tracks {args.save}"
+                 if frames.option else ""))
     if windows is not None:
         if not stopped and last_frame is not None:
             Printer.green("End of the sequence: the windows stay open; press q or Esc in one of them to close them.")
