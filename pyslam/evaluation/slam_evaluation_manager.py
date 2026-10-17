@@ -478,7 +478,7 @@ class SlamEvaluationManager:
             Printer.orange(
                 f"[{msg}] stalled (no progress, no CPU used), stopped"
                 + (", running it again" if attempt < kStallRetries else "")
-                + f" (threads' stacks in {stalled_log_path})"
+                + f" (log: {stalled_log_path})"
             )
         return result
 
