@@ -37,6 +37,7 @@
 
 import pyslam  # first: sets the OpenMP thread settings before numpy/torch are imported
 import argparse
+import atexit
 import csv
 import importlib.util
 import json
@@ -164,8 +165,8 @@ def main():
 
 
 class SequenceFrames:
-    """The frames of --tum, --video or --images, read by pySLAM's dataset readers (as main_slam.py reads
-    them, so that the frame numbers and timestamps are the same)."""
+    """The frames of --tum, --video or --images, read by pySLAM's dataset readers, with the timestamps
+    main_slam.py gives them (main_slam.py --tracks finds the boxes of each of its frames by timestamp)."""
 
     def __init__(self, args, parser):
         from pyslam.config import Config
@@ -178,7 +179,7 @@ class SequenceFrames:
             folder = os.path.abspath(os.path.expanduser(args.tum)).rstrip("/")
             if os.path.isfile(os.path.join(folder, "rgb.txt")):
                 args.associations = "rgb.txt"
-                args.sensor = args.sensor or "mono"
+                args.sensor = "mono"
         config_path = sequence_config_path(args, parser, default_settings=os.path.join(kScriptFolder, "settings", "KITTI04-12.yaml"))
         config = Config(config_path)
         os.remove(config_path)  # the temporary file of sequence_config_path(): it has been read
@@ -350,6 +351,7 @@ class Tracker:
 
                 yaml.safe_dump(settings, f)
             self.tracker_yaml = f.name
+            atexit.register(lambda path=f.name: os.path.exists(path) and os.remove(path))
         keys = ("track_high_thresh", "track_low_thresh", "new_track_thresh", "track_buffer", "match_thresh")
         print(f"{self.name} settings: {os.path.relpath(self.settings_path, kScriptFolder)} ("
               + ", ".join(f"{k} {self.settings.get(k)}" for k in keys) + ")"
