@@ -55,6 +55,8 @@ class DepthEstimatorDepthAnythingV2(DepthEstimator):
         "vitb": {"encoder": "vitb", "features": 128, "out_channels": [96, 192, 384, 768]},
         "vitl": {"encoder": "vitl", "features": 256, "out_channels": [256, 512, 1024, 1024]},
     }
+    # the max_depth each metric checkpoint was fine-tuned with (indoor: Hypersim, outdoor: Virtual KITTI)
+    checkpoint_max_depth = {"hypersim": 20.0, "vkitti": 80.0}
 
     def __init__(
         self,
@@ -71,19 +73,27 @@ class DepthEstimatorDepthAnythingV2(DepthEstimator):
             if device.type != "cuda":
                 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         if device.type == "cuda":
-            print("DepthEstimatorDepthPro: Using CUDA")
+            print("DepthEstimatorDepthAnythingV2: Using CUDA")
         elif device.type == "mps":
             if not torch.backends.mps.is_available():  # Should return True for MPS availability
-                raise Exception("DepthEstimatorDepthPro: MPS is not available")
-            print("DepthEstimatorDepthPro: Using MPS")
+                raise Exception("DepthEstimatorDepthAnythingV2: MPS is not available")
+            print("DepthEstimatorDepthAnythingV2: Using MPS")
         else:
-            print("DepthEstimatorDepthPro: Using CPU")
+            print("DepthEstimatorDepthAnythingV2: Using CPU")
         transform = None
-        model = DepthAnythingV2(
-            **{**DepthEstimatorDepthAnythingV2.model_configs[encoder_name], "max_depth": max_depth}
-        )
         dataset_name = (
             "vkitti" if dataset_env_type == DatasetEnvironmentType.OUTDOOR else "hypersim"
+        )
+        # The metric head is a sigmoid times the model's max_depth, so the model is built with the
+        # max_depth of its checkpoint (Depth-Anything-V2/metric_depth/README.md: 20 for Hypersim, 80
+        # for Virtual KITTI): any other value scales every depth by value / checkpoint value. The
+        # max_depth of the caller is only the range for display and clipping.
+        self.model_max_depth = DepthEstimatorDepthAnythingV2.checkpoint_max_depth[dataset_name]
+        model = DepthAnythingV2(
+            **{
+                **DepthEstimatorDepthAnythingV2.model_configs[encoder_name],
+                "max_depth": self.model_max_depth,
+            }
         )
         model_path = f"{DepthEstimatorDepthAnythingV2.depth_anything_v2_path}/depth_anything_v2_metric_{dataset_name}_{encoder_name}.pth"
         model.load_state_dict(torch.load(model_path, map_location="cpu"))
