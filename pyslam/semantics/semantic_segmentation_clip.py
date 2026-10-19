@@ -27,32 +27,19 @@ import platform
 
 import torch
 from PIL import Image
-import packaging
-import packaging.version
 import types
 
 from torchvision import transforms
 from torchvision.transforms import CenterCrop, Compose
 
-# f3rm's CLIP code does `from pkg_resources import packaging`. setuptools >= 81 no longer ships
-# pkg_resources, and recent builds that still do may not expose the vendored `packaging`. In that
-# case register a minimal in-process stand-in that provides only `packaging` (nothing is installed).
-try:
-    import pkg_resources
-except ImportError:
-    pkg_resources = types.ModuleType("pkg_resources")
-    sys.modules["pkg_resources"] = pkg_resources
-if not hasattr(pkg_resources, "packaging"):
-    pkg_resources.packaging = packaging
+import torch.nn.functional as F
 
-# f3rm is unpacked into thirdparty/f3rm_pkg by scripts/install_extra.sh (without its dependencies:
-# only its CLIP module is used here); a pip-installed f3rm is used if there is one.
-import pyslam.config as config
-
-config.cfg.set_lib("f3rm")
-
-from f3rm.features.clip import clip as f3rm_clip
-from f3rm.features.clip import tokenize
+# CLIP through open_clip (the package open-clip-torch, in the semantics level on every platform,
+# native Windows included), with OpenAI's own weight files: the files of OpenAI's clip package, from
+# the same address and checked against their SHA-256. The dense (per-patch) features are computed
+# here (OpenClipDense), as f3rm computed them for pySLAM's earlier CLIP.
+import open_clip
+from open_clip import tokenize  # OpenAI's tokenizer
 
 from .semantic_labels import get_ade20k_to_scannet40_map
 from .semantic_segmentation_base import SemanticSegmentationBase
@@ -73,19 +60,116 @@ kScriptFolder = os.path.dirname(kScriptPath)
 kRootFolder = kScriptFolder + "/../.."
 
 
+# OpenAI's CLIP models with a ViT image encoder (the dense features are its patch tokens): their
+# OpenAI names and their open_clip names
+kOpenAIModels = {
+    "ViT-B/32": "ViT-B-32",
+    "ViT-B/16": "ViT-B-16",
+    "ViT-L/14": "ViT-L-14",
+    "ViT-L/14@336px": "ViT-L-14-336",
+}
+
+
+def load_openai_clip(encoder_name, device):
+    """OpenAI's CLIP model `encoder_name` through open_clip, from OpenAI's weight file (fp16 on a GPU,
+    fp32 on the CPU, as OpenAI's clip.load() does). The file is downloaded once into ~/.cache/clip, the
+    folder of OpenAI's clip package. A copy that f3rm downloaded into ~/.torch_hub (pySLAM's CLIP
+    before open_clip) is used instead if there is one."""
+    name = kOpenAIModels[encoder_name]
+    f3rm_copy = os.path.join(
+        os.path.expanduser("~/.torch_hub"), os.path.basename(open_clip.get_pretrained_url(name, "openai"))
+    )
+    # given explicitly: open_clip's default compares the device with the string "cpu"
+    precision = "fp32" if device.type == "cpu" else "fp16"
+    model = open_clip.load_openai_model(
+        f3rm_copy if os.path.isfile(f3rm_copy) else name, precision=precision, device=device
+    )
+    # The image encoder runs sequence-first, as in OpenAI's code. open_clip's batch-first attention
+    # gives the same numbers, slower: 2.4x on Apple's GPU (MPS) and about 20% on the CPU (Apple M4).
+    model.visual.transformer.batch_first = False
+    for block in model.visual.transformer.resblocks:
+        block.attn.batch_first = False
+    preprocess = open_clip.image_transform(model.visual.image_size, is_train=False)
+    print(f"SemanticSegmentationCLIP: open_clip {name}, OpenAI weights, {precision}")
+    return OpenClipDense(model.eval()), preprocess
+
+
+def interpolate_positional_embedding(positional_embedding, x, patch_size, h, w):
+    """The positional embedding of a ViT, interpolated to an image of h x w pixels, i.e. (h // patch_size) x
+    (w // patch_size) patches (bicubic). The same computation as f3rm's interpolate_positional_embedding,
+    itself from DINO's interpolate_pos_encoding:
+    https://github.com/facebookresearch/dino/blob/7c446df5b9f45747937fb0d72314eb9f7b66930a/vision_transformer.py#L174
+    """
+    num_patches = x.shape[1] - 1
+    num_og_patches = positional_embedding.shape[0] - 1
+    if num_patches == num_og_patches and h == w:
+        return positional_embedding.to(x.dtype)
+    dim = x.shape[-1]
+    class_pos_embed = positional_embedding[:1]
+    patch_pos_embed = positional_embedding[1:]
+    h0, w0 = h // patch_size, w // patch_size
+    assert h0 * w0 == num_patches, "Number of patches does not match"
+    h0, w0 = h0 + 0.1, w0 + 0.1  # against floating point error in the interpolation (DINO issue 8)
+    patch_per_ax = int(np.sqrt(num_og_patches))
+    patch_pos_embed = F.interpolate(
+        patch_pos_embed.reshape(1, patch_per_ax, patch_per_ax, dim).permute(0, 3, 1, 2),
+        scale_factor=(h0 / patch_per_ax, w0 / patch_per_ax),
+        mode="bicubic",
+        align_corners=False,
+        recompute_scale_factor=False,
+    )
+    assert int(h0) == patch_pos_embed.shape[-2] and int(w0) == patch_pos_embed.shape[-1], "Interpolation error."
+    patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).reshape(-1, dim)
+    return torch.cat([class_pos_embed, patch_pos_embed], dim=0).to(x.dtype)
+
+
+class OpenClipDense(torch.nn.Module):
+    """An open_clip ViT CLIP model with the interface the rest of this module uses (that of f3rm's
+    CLIP, which pySLAM used before): encode_text(), get_patch_encodings() and visual.patch_size. The patch encodings follow MaskCLIP
+    (https://arxiv.org/abs/2112.01071), as f3rm does: the last transformer block is replaced by its value
+    projection alone (no attention between the patches, no MLP), then ln_post and the projection to the
+    space of the text embeddings."""
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+        patch_size = model.visual.patch_size
+        self.visual = types.SimpleNamespace(
+            patch_size=patch_size[0] if isinstance(patch_size, (tuple, list)) else patch_size
+        )
+
+    def encode_text(self, tokens):
+        return self.model.encode_text(tokens)
+
+    def get_patch_encodings(self, image):
+        v = self.model.visual
+        _, _, h, w = image.shape
+        x = v.conv1(image.to(v.conv1.weight.dtype))  # (B, width, h / patch, w / patch)
+        x = x.reshape(x.shape[0], x.shape[1], -1).permute(0, 2, 1)  # (B, patches, width)
+        cls = v.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)
+        x = torch.cat([cls, x], dim=1)
+        x = x + interpolate_positional_embedding(v.positional_embedding, x, self.visual.patch_size, h, w)
+        x = v.ln_pre(x)
+        batch_first = getattr(v.transformer, "batch_first", True)
+        if not batch_first:
+            x = x.permute(1, 0, 2)
+        *blocks, last = v.transformer.resblocks
+        for block in blocks:
+            x = block(x)
+        dim = last.attn.embed_dim
+        x = F.linear(last.ln_1(x), last.attn.in_proj_weight[-dim:], last.attn.in_proj_bias[-dim:])
+        x = F.linear(x, last.attn.out_proj.weight, last.attn.out_proj.bias)
+        if not batch_first:
+            x = x.permute(1, 0, 2)
+        x = v.ln_post(x[:, 1:, :])  # the patches, not the class token
+        if v.proj is not None:
+            x = x @ v.proj
+        return x
+
+
 class SemanticSegmentationCLIP(SemanticSegmentationBase):
-    # CLIP available models: https://github.com/f3rm/f3rm/tree/main/f3rm/features/clip
-    available_configs = [
-        "RN50",
-        "RN101",
-        "RN50x4",
-        "RN50x16",
-        "RN50x64",
-        "ViT-B/32",
-        "ViT-B/16",
-        "ViT-L/14",
-        "ViT-L/14@336px",
-    ]
+    # OpenAI CLIP models with a ViT image encoder (see kOpenAIModels)
+    available_configs = list(kOpenAIModels)
 
     supported_feature_types = [
         SemanticFeatureType.LABEL,
@@ -183,14 +267,14 @@ class SemanticSegmentationCLIP(SemanticSegmentationBase):
         # Check if selected config is available
         if encoder_name not in self.available_configs:
             raise ValueError(
-                f"Segformer does not support {encoder_name} model with size {image_size} and dataset {semantic_dataset_type}"
+                f"CLIP: {encoder_name} is not one of {self.available_configs} (the dense features need a ViT image encoder)"
             )
 
-        if model_path == "":  # Load pre-trained models
-            model, preprocess = f3rm_clip.load(encoder_name, device)
+        if model_path == "":  # OpenAI's pre-trained weights
+            model, preprocess = load_openai_clip(encoder_name, device)
         else:
             raise NotImplementedError(
-                "Segformer only supports pre-trained model for now"
+                "CLIP only supports pre-trained model for now"
             )  # TODO(dvdmc): allow to load a custom model
         model = model.eval()
 
@@ -235,11 +319,6 @@ class SemanticSegmentationCLIP(SemanticSegmentationBase):
             h_out = h_in // self.model.visual.patch_size
             w_out = w_in // self.model.visual.patch_size
             return h_out, w_out
-
-        if self.encoder_name.startswith("RN"):
-            h_out = max(h_in / w_in, 1.0) * self.model.visual.attnpool.spacial_dim
-            w_out = max(w_in / h_in, 1.0) * self.model.visual.attnpool.spacial_dim
-            return int(h_out), int(w_out)
 
         raise ValueError(f"unknown clip model: {self.encoder_name}")
 

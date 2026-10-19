@@ -505,21 +505,13 @@ function install_odise() {
     fi
 }
 
-function install_clip_segmentation() {
-    # CLIP segmentation uses the CLIP module of f3rm. The package depends on nerfstudio, which is
-    # not needed for that module, so it is unpacked without its dependencies as well.
-    if [ ! -f thirdparty/f3rm_pkg/f3rm/features/clip/clip.py ]; then
-        unpack_pypi_package "f3rm==0.0.6" f3rm_pkg
-    fi
-}
-
 function install_semantics() {
-    # DeepLabV3, SegFormer and YOLO need no code here: their weights are downloaded by the check below.
+    # DeepLabV3, SegFormer, YOLO and CLIP (open_clip, with OpenAI's weights) need no code here: their
+    # weights are downloaded by the check below.
     component "RF-DETR" install_rf_detr
     component "Detic" install_detic
     component "EOV-Seg" install_eov_seg
     component "ODISE" install_odise
-    component "CLIP segmentation" install_clip_segmentation
 }
 
 # cuda_home: the CUDA toolkit that torch's cpp_extension should use (it takes nvcc from $CUDA_HOME/bin):
