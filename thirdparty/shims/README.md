@@ -7,25 +7,16 @@ their expected top-level modules are missing or packaged differently).
     - `from pkg_resources import packaging`
   - Internally it simply re-exports the standard `packaging` module.
   - Used to unblock:
-    - The OpenAI CLIP repo during installation.
-    - Libraries (e.g. `f3rm`) that call `pkg_resources.packaging.version`.
+    - Older releases of OpenAI's CLIP package (e.g. `openai-clip` 1.0.1 on
+      PyPI and conda-forge), which call `pkg_resources.packaging.version`.
+      Detic installs OpenAI's CLIP from GitHub, which no longer needs it.
 
-- `clip/`:
-  - Minimal implementation of the `clip` package API expected by Detic and
-    similar projects:
-    - `import clip; clip.load(...)`
-    - `from clip.simple_tokenizer import SimpleTokenizer`
-  - It forwards all calls to the CLIP implementation vendored via
-    `f3rm.features.clip`, so there is a **single source of truth** for the
-    actual model code and weights.
-
-These directories are **not** imported directly from the repo root. Instead,
-they are copied into the active Python environment's `site-packages` by the
+This directory is **not** imported directly from the repo root. Instead,
+it is copied into the active Python environment's `site-packages` by the
 `scripts/install_mac_shims.sh` helper when:
 
-- `import pkg_resources` fails, and/or
-- `import clip` fails.
+- `import pkg_resources` fails.
 
-On Linux or properly configured environments, you typically don't need these
-shims at all; the script simply detects that the real modules are available
+On Linux or properly configured environments, you typically don't need this
+shim at all; the script simply detects that the real module is available
 and does nothing.
