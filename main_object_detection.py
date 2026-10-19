@@ -94,6 +94,11 @@ kCocoClasses = (
     "hair drier", "toothbrush",
 )
 
+# 20 distinct colours (Ultralytics' palette), as hex RGB; a COCO class takes the colour (7 x its number) mod 20,
+# so that the classes of one room differ; any other name (a YOLOE prompt) a colour from its hash
+kClassPalette = ("FF3838", "FF9D97", "FF701F", "FFB21D", "CFD231", "48F90A", "92CC17", "3DDB86", "1A9334", "00D4BB",
+                 "2C99A8", "00C2FF", "344593", "6473FF", "0018EC", "8438FF", "520085", "CB38FF", "FF95C8", "FF37C7")
+
 kCandidatesMax = 30000  # the candidates: every box above --conf (Ultralytics' NMS takes at most 30000)
 kMaxDet = 300  # boxes kept per image (Ultralytics' max_det)
 kEvaluateConf = 0.001  # --evaluate: AP is computed from every box above this score
@@ -524,9 +529,10 @@ class Sam:
 def class_colour(name):
     """The colour of a class, the same in every run (BGR); main_slam.py --detections draws the objects of
     the Map Viewer in the same colours (pyslam/semantics/object_lifting.py, class_colour_bgr)."""
-    hue = int((zlib.crc32(str(name).encode()) % 1000) / 1000.0 * 180)
-    bgr = cv2.cvtColor(np.uint8([[[hue, 210, 235]]]), cv2.COLOR_HSV2BGR)[0, 0]
-    return tuple(int(v) for v in bgr)
+    name = str(name)
+    i = (7 * kCocoClasses.index(name)) % 20 if name in kCocoClasses else zlib.crc32(name.encode()) % 20
+    h = kClassPalette[i]
+    return (int(h[4:6], 16), int(h[2:4], 16), int(h[0:2], 16))
 
 
 def label(img, text, x, y, colour):
