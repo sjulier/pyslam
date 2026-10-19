@@ -10,4 +10,5 @@ CLIP package only use `packaging.version.parse`.  Importing and re‑exporting t
 """
 
 import packaging as packaging  # re-export for consumers expecting `pkg_resources.packaging`
+import packaging.version  # noqa: F401  (a submodule: `import packaging` alone does not load it)
 
