@@ -237,7 +237,7 @@ if __name__ == "__main__":
         "--tracks",
         metavar="DIR",
         help="the folder of the tracks: the Map Viewer draws a path per identity, and the end of the run "
-        "merges the static tracks into objects",
+        "merges the static tracks into objects, which it draws and prints (no file of them is written)",
     )
     tracked.add_argument(
         "--static-radius",
@@ -304,7 +304,7 @@ if __name__ == "__main__":
         parser.error("--mask-classes, --mask-dilation and --mask-after-init go with --semantic-mask")
     saved_tracks = None
     if args.tracks:
-        from pyslam.semantics.track_lifting import SavedTracks
+        from pyslam.semantics.track_lifting import SavedTracks, class_colour_rgb
 
         try:
             saved_tracks = SavedTracks(args.tracks, args.static_radius, args.merge_radius)
@@ -694,6 +694,20 @@ if __name__ == "__main__":
                         break  # exit from the loop if headless
                     if not is_end_message_shown and not dataset.is_ok:
                         is_end_message_shown = True
+                        if saved_tracks and viewer3D and saved_tracks.num_frames_matched:
+                            # the objects, merged with the trajectory so far, drawn as large points (one colour
+                            # per class); the end of the run prints them, with the final trajectory
+                            poses_so_far, _, ids_so_far = slam.get_final_trajectory()
+                            if poses_so_far:
+                                _, objects = saved_tracks.objects(poses_so_far, ids_so_far)
+                                viewer3D.draw_tracks(
+                                    saved_tracks.paths(),
+                                    objects=[(o["centre"], class_colour_rgb(o["cls"])) for o in objects],
+                                )
+                                Printer.green(
+                                    f"Tracks: {len(objects)} objects drawn in the Map Viewer as large points, one colour "
+                                    "per class; the list is printed when you quit"
+                                )
                         Printer.green(
                             "End of the sequence. The windows stay open: press 'q' or Esc in the "
                             "Camera window to quit and compute the trajectory error."
@@ -883,7 +897,6 @@ if __name__ == "__main__":
             if saved_tracks.num_frames_matched == 0:
                 Printer.orange(f"--tracks {args.tracks}: no frame of this sequence has tracked boxes (another sequence?)")
             elif est_poses:
-                tracks_folder = metrics_save_dir or args.tracks
                 Printer.green(
                     f"Tracks: {len(saved_tracks.lifted)} boxes lifted in {saved_tracks.num_frames_matched} frames, with "
                     f"{saved_tracks.depth_source}; {saved_tracks.num_not_lifted} boxes had too little depth"
@@ -893,8 +906,10 @@ if __name__ == "__main__":
                         "Monocular: the map has a scale of its own, so --static-radius and --merge-radius are in its "
                         "units, not in metres"
                     )
-                Printer.green(saved_tracks.finish(est_poses, ids, save_folder=tracks_folder))
-                print(f"Written: {tracks_folder}/tracks_lifted.csv (every lifted box) and {tracks_folder}/objects.json")
+                objects_line, objects = saved_tracks.objects(est_poses, ids)
+                Printer.green(objects_line)
+                for line in saved_tracks.object_lines(objects, metric=not is_monocular):
+                    print(line)
 
         # The same run's trajectory with the frames' relative poses as tracked, as ORB-SLAM2/3 (they do not
         # follow the map's later scale changes): saved next to it with its ATE, to compare (see

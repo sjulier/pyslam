@@ -265,6 +265,7 @@ class Viewer3DCameraTrajectoriesInput:
 class Viewer3DTracksInput:
     def __init__(self):
         self.paths = []  # a list of (N x 3 points, RGB colour)
+        self.objects = []  # a list of (centre, RGB colour): the objects merged from the static tracks
 
 
 # ========================================================
@@ -1280,6 +1281,10 @@ class Viewer3D(object):
                 if len(points) > 1:
                     glutils.DrawTrajectory(points)
                 glutils.DrawPoints(points)
+            gl.glPointSize(14)
+            for centre, colour in getattr(self.tracks_state, "objects", []):
+                gl.glColor3f(colour[0], colour[1], colour[2])
+                glutils.DrawPoints(np.asarray(centre, dtype=np.float64).reshape(1, 3))
             gl.glLineWidth(1)
             gl.glPointSize(self.sparsePointSize)
 
@@ -1594,11 +1599,13 @@ class Viewer3D(object):
 
     # inputs:
     #   paths: a list of (N x 3 array of points in the map, RGB colour in [0, 1]), one per tracked object
-    def draw_tracks(self, paths):
+    #   objects: a list of (centre, RGB colour), drawn as large points
+    def draw_tracks(self, paths, objects=None):
         if self.qtracks is None:
             return
         tracks_state = Viewer3DTracksInput()
         tracks_state.paths = [(np.ascontiguousarray(p, dtype=np.float64), tuple(c)) for p, c in paths if len(p)]
+        tracks_state.objects = [(np.asarray(o, dtype=np.float64).reshape(3), tuple(c)) for o, c in (objects or [])]
         self.qtracks.put(tracks_state)
 
     def draw_vo(self, vo):
