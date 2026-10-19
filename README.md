@@ -612,7 +612,7 @@ Different segmentation methods are available (see [here](./docs/semantics.md) fo
     - Semantic segmentation model from torchvision DeepLab's v3.
   - `SEGFORMER`: from `transformers`, pre-trained on Cityscapes or ADE20k.
     - Semantic segmentation model from transformer's Segformer.
-  - `CLIP`: from `f3rm` package for open-vocabulary support.
+  - `CLIP`: OpenAI's CLIP (ViT-L/14 at 336 px) through `open_clip`, for open-vocabulary support. It runs on Linux, macOS and native Windows. The first run downloads OpenAI's weight file (934 MB) into `~/.cache/clip`.
     - Uses CLIP patch embeddings + text similarity to produce labels/probabilities (it is not a dedicated "segmentation head"). 
 
 **Instance segmentation:**
@@ -995,7 +995,7 @@ Both monocular and stereo depth prediction models are available. SGBM algorithm 
 
 - [DeepLabv3](https://arxiv.org/abs/1706.05587): from `torchvision`, pre-trained on COCO/VOC
 - [Segformer](https://arxiv.org/abs/2105.15203): from `transformers`, pre-trained on Cityscapes or ADE20k
-- [CLIP](https://arxiv.org/abs/2212.09506): from `f3rm` package for open-vocabulary support
+- [CLIP](https://arxiv.org/abs/2212.09506): OpenAI's weights through `open_clip`, for open-vocabulary support; dense patch features as in [f3rm](https://github.com/f3rm/f3rm) ([MaskCLIP](https://arxiv.org/abs/2112.01071))
 - [EOV-Seg](https://github.com/nhw649/EOV-Seg): [_"EOV-Seg: Efficient Open-Vocabulary Panoptic Segmentation"_](https://arxiv.org/abs/2412.08628)
 - [Detic](https://github.com/facebookresearch/Detic): [_"Detecting Twenty-thousand Classes using Image-level Supervision"_](https://arxiv.org/abs/2201.02605)
 - [ODISE](https://github.com/NVlabs/ODISE): [_"Open-Vocabulary Panoptic Segmentation with Text-to-Image Diffusion Models"_](https://arxiv.org/abs/2303.04803)

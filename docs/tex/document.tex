@@ -969,7 +969,7 @@ support semantic mapping using \textbf{dense semantic segmentation}.
 \begin{itemize}
 \item \texttt{DEEPLABV3}: from \texttt{torchvision}, pre-trained on COCO/VOC.
 \item \texttt{SEGFORMER}: from \texttt{transformers}, pre-trained on Cityscapes or ADE20k.
-\item \texttt{CLIP}: from \texttt{f3rm} package for open-vocabulary support.
+\item \texttt{CLIP}: OpenAI's CLIP (ViT-L/14 at 336 px) through \texttt{open\_clip}, for open-vocabulary support (Linux, macOS and native Windows; the first run downloads OpenAI's 934 MB weight file into \texttt{\textasciitilde/.cache/clip}).
 \item \texttt{EOV\_SEG}: open-vocabulary panoptic segmentation model.
 \item \texttt{DETIC}: open-vocabulary object detection and segmentation model.
 \item \texttt{ODISE}: open-vocabulary diffusion-based panoptic segmentation model.
@@ -1859,7 +1859,7 @@ methods}\label{supported-semantic-segmentation-methods}}
 \item
   \href{https://arxiv.org/abs/2105.15203}{Segformer}~\cite{xie2021segformer}: from \texttt{transformers}, pre-trained on Cityscapes or ADE20k.
 \item
-  \href{https://arxiv.org/abs/2212.09506}{CLIP}~\cite{lin2023clip}: from \texttt{f3rm} package for open-vocabulary support.
+  \href{https://arxiv.org/abs/2212.09506}{CLIP}~\cite{lin2023clip}: OpenAI's weights through \texttt{open\_clip}, for open-vocabulary support; dense patch features as in \href{https://github.com/f3rm/f3rm}{f3rm} (MaskCLIP).
 \item
   \href{https://arxiv.org/abs/2412.08628v1}{EOV\_SEG}~\cite{eov_seg}: EOV-Seg: Efficient Open-Vocabulary Panoptic Segmentation.
 \item

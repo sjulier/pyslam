@@ -52,7 +52,6 @@ LIB_PATHS:
   fast3r: thirdparty/fast3r
   vggt: thirdparty/vggt
   vggt_robust: thirdparty/vggt_robust
-  f3rm: thirdparty/f3rm_pkg
   eov_segmentation: thirdparty/eov_segmentation
   detic: thirdparty/detic, thirdparty/detic/third_party/CenterNet2
   odise: thirdparty/odise, thirdparty/odise/third_party/Mask2Former, thirdparty/stable_diffusion_sdkit
