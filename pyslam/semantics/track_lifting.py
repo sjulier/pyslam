@@ -30,7 +30,7 @@
 # A track becomes a path in the map. At the end, the boxes are lifted again with the final trajectory
 # (after bundle adjustment and loop closing); a track whose points stay within --static-radius of their
 # median is static, and the static tracks of one class whose centres lie within --merge-radius of each
-# other are merged into one object.
+# other are merged into one object. The objects are printed and drawn; no file of them is written.
 
 import csv
 import json
@@ -169,10 +169,12 @@ class SavedTracks:
             by_id.setdefault(l["id"], []).append(l["p_w"])
         return [(np.asarray(p, np.float64), id_colour_rgb(i)) for i, p in by_id.items()]
 
-    def finish(self, poses, frame_ids, save_folder=None):
+    def objects(self, poses, frame_ids):
         """Lift the boxes again with the final trajectory (poses: T_wc of the frames frame_ids), split the
-        tracks into static and moving, merge the static ones into objects, and write tracks_lifted.csv
-        and objects.json to save_folder. Returns the line to print."""
+        tracks into static and moving, and merge the static ones into objects. Returns the summary line
+        and the objects: dicts with the class, the centre, the tracks, the number of boxes and the spread
+        (the distance from the centre within which 90 % of the object's points lie). Nothing is written to
+        a file: the objects are printed and drawn only."""
         final = {int(i): np.asarray(T, np.float64) for i, T in zip(frame_ids, poses)}
         by_id = {}
         for l in self.lifted:
@@ -189,9 +191,7 @@ class SavedTracks:
             P = np.array([l["p_final"] for l in ls])
             centre = np.median(P, axis=0)
             spread = float(np.percentile(np.linalg.norm(P - centre, axis=1), kStaticPercentile))
-            tracks.append(dict(id=track_id, cls=max(counts, key=counts.get), n=len(ls), centre=centre, spread=spread,
-                               first=ls[0]["frame"], last=ls[-1]["frame"],
-                               path=float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum()) if len(P) > 1 else 0.0))
+            tracks.append(dict(id=track_id, cls=max(counts, key=counts.get), n=len(ls), centre=centre, spread=spread, points=P))
         used = [t for t in tracks if t["n"] >= kMinLifted]
         static = [t for t in used if t["spread"] < self.static_radius]
         moving = [t for t in used if t["spread"] >= self.static_radius]
@@ -205,14 +205,17 @@ class SavedTracks:
                 if d <= self.merge_radius and (best is None or d < best[0]):
                     best = (d, o)
             if best is None:
-                objects.append(dict(cls=t["cls"], centre=t["centre"].copy(), tracks=[t["id"]], n=t["n"]))
+                objects.append(dict(cls=t["cls"], centre=t["centre"].copy(), tracks=[t["id"]], n=t["n"], points=[t["points"]]))
             else:
                 o = best[1]
                 o["centre"] = (o["centre"] * o["n"] + t["centre"] * t["n"]) / (o["n"] + t["n"])
                 o["tracks"].append(t["id"])
                 o["n"] += t["n"]
+                o["points"].append(t["points"])
+        for o in objects:
+            P = np.concatenate(o.pop("points"))
+            o["spread"] = float(np.percentile(np.linalg.norm(P - o["centre"], axis=1), kStaticPercentile))
         objects.sort(key=lambda o: -o["n"])
-        static_ids = {t["id"] for t in static}
         counts = {}
         for o in objects:
             counts[o["cls"]] = counts.get(o["cls"], 0) + 1
@@ -221,28 +224,22 @@ class SavedTracks:
                 + f"; moving: {len(moving)} tracks (static: within {self.static_radius:.2f} m of their centre; "
                 f"merged: the same class within {self.merge_radius:.2f} m; {len(tracks) - len(used)} tracks with fewer "
                 f"than {kMinLifted} lifted boxes left out)")
-        if save_folder:
-            os.makedirs(save_folder, exist_ok=True)
-            with open(os.path.join(save_folder, "tracks_lifted.csv"), "w", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow(["frame", "timestamp", "id", "class", "u", "v", "z", "x_online", "y_online", "z_online",
-                                 "x_final", "y_final", "z_final"])
-                for l in self.lifted:
-                    pf = l.get("p_final")
-                    writer.writerow([l["frame"], repr(l["timestamp"]), l["id"], l["cls"], f"{l['uv'][0]:.1f}", f"{l['uv'][1]:.1f}",
-                                     f"{l['z']:.4f}", *(f"{v:.4f}" for v in l["p_w"]), *((f"{v:.4f}" for v in pf) if pf is not None else ("", "", ""))])
-            with open(os.path.join(save_folder, "objects.json"), "w") as f:
-                json.dump(dict(
-                    tracks_folder=os.path.abspath(self.folder), static_radius=self.static_radius, merge_radius=self.merge_radius,
-                    depth=self.depth_source, summary=line,
-                    objects=[dict(cls=o["cls"], centre=[round(float(v), 4) for v in o["centre"]], tracks=o["tracks"], boxes=o["n"])
-                             for o in objects],
-                    tracks=[dict(id=t["id"], cls=t["cls"], boxes=t["n"], first=t["first"], last=t["last"],
-                                 centre=[round(float(v), 4) for v in t["centre"]], spread=round(t["spread"], 4),
-                                 path=round(t["path"], 3), static=t["id"] in static_ids, used=t["n"] >= kMinLifted)
-                            for t in tracks],
-                ), f, indent=1)
-        return line
+        return line, objects
+
+    def object_lines(self, objects, metric=True):
+        """One line per object, for the terminal: its class, centre, tracks, boxes and spread."""
+        unit = "m" if metric else "map units"
+        return [
+            f"  {o['cls']}: centre ({o['centre'][0]:.2f}, {o['centre'][1]:.2f}, {o['centre'][2]:.2f}) {unit}; "
+            f"{len(o['tracks'])} track{'s' if len(o['tracks']) != 1 else ''} ({', '.join(str(i) for i in o['tracks'])}), "
+            f"{o['n']} boxes; 90 % of its points within {o['spread']:.2f} {unit}"
+            for o in objects
+        ]
+
+
+def class_colour_rgb(name):
+    """A colour for each class (the same in every run), RGB in [0, 1], for the objects in the Map Viewer."""
+    return id_colour_rgb(sum((i + 1) * ord(c) for i, c in enumerate(name)))
 
 
 def map_points_in_camera(frame):
