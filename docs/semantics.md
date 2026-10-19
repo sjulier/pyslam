@@ -129,7 +129,7 @@ Different models are available. See the following **video** for a quick preview.
     - Semantic segmentation model from torchvision DeepLab's v3.
   - `SEGFORMER`: from `transformers`, pre-trained on Cityscapes or ADE20k.
     - Semantic segmentation model from transformer's Segformer.
-  - `CLIP`: from `f3rm` package for open-vocabulary support.
+  - `CLIP`: OpenAI's CLIP (ViT-L/14 at 336 px) through `open_clip`, for open-vocabulary support. It runs on Linux, macOS and native Windows. The first run downloads OpenAI's weight file (934 MB) into `~/.cache/clip`.
     - Uses CLIP patch embeddings + text similarity to produce labels/probabilities (it is not a dedicated "segmentation head"). 
 
 
