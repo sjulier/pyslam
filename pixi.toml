@@ -391,12 +391,16 @@ semantic-segmentation = "python main_semantic_image_segmentation.py"
 feature-matching = "python main_feature_matching.py"
 map-viewer = "python main_map_viewer.py"
 slam-evaluation = "python main_slam_evaluation.py"
+# the depth networks need the depth level (pixi run -e depth depth-prediction ...); --load, which scores depth
+# maps saved earlier, runs at this level too
+depth-prediction = "python main_depth_prediction.py"
 dense-reconstruction = "python main_map_dense_reconstruction.py"
 
 [feature.depth.tasks]
 # Depth and stereo models (group i.a): clone, patch, download the weights, check each one
 models-depth = "bash scripts/install_extra.sh depth"
-depth-prediction = "python main_depth_prediction.py"
+# only the small Depth Anything V2 models (0.2 GB), when the disk is short
+models-depth-small = "bash scripts/install_extra.sh depth-small"
 
 [feature.semantics.tasks]
 # Segmentation and detection models (group ii): clone, patch, download the weights, check each one

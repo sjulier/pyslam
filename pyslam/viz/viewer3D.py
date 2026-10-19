@@ -412,8 +412,9 @@ class SlamDrawerThread:
 
 
 class Viewer3D(object):
-    def __init__(self, scale=0.1):
+    def __init__(self, scale=0.1, title="Map Viewer"):
         self.scale = scale
+        self.title = title  # of the window
 
         self.map_state: Viewer3DMapInput | None = None
         self.vo_state: Viewer3DVoInput | None = None
@@ -717,7 +718,7 @@ class Viewer3D(object):
             and wsl_d3d12_renders()
         ):
             os.environ["GALLIUM_DRIVER"] = "d3d12"
-        pangolin.CreateWindowAndBind("Map Viewer", w, h)
+        pangolin.CreateWindowAndBind(self.title, w, h)
         print(f"Viewer3D: OpenGL renderer: {gl.glGetString(gl.GL_RENDERER).decode()}", flush=True)
         gl.glEnable(gl.GL_DEPTH_TEST)
 
