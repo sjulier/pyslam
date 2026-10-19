@@ -261,6 +261,12 @@ class Viewer3DCameraTrajectoriesInput:
         self.camera_colors.append(camera_color)
 
 
+# The detected objects in the map (main_slam.py --detections)
+class Viewer3DObjectsInput:
+    def __init__(self):
+        self.groups = []  # a list of (N x 3 points, RGB colour, point size)
+
+
 # ========================================================
 # SlamDrawerThread class
 # ========================================================
@@ -439,6 +445,10 @@ class Viewer3D(object):
         self.qcams = (
             self.mp_manager.Queue()
         )  # used to pass cameras and their poses to the viewer thread
+        # the detected objects in the map (main_slam.py --detections): read by the viewer process from
+        # this attribute, which is pickled with the others
+        self.qobjects = self.mp_manager.Queue()
+        self.objects_state: Viewer3DObjectsInput | None = None
 
         self._is_running = mp.Value("i", 0)
         self._is_looping = mp.Value("i", 0)
@@ -697,6 +707,7 @@ class Viewer3D(object):
         empty_queue(qvo)  # empty the queue before exiting
         empty_queue(qdense)  # empty the queue before exiting
         empty_queue(qcams)
+        empty_queue(self.qobjects)
         is_running.value = 0
         is_closed.value = 1
         print("Viewer3D: loop exit...")
@@ -1257,6 +1268,18 @@ class Viewer3D(object):
                 glutils.DrawLine(self.vo_state.traj3d_gt)
 
         # ==============================
+        # draw the detected objects (main_slam.py --detections): points in the colour of their class
+        last_objects_state = get_last_item_from_queue(self.qobjects)
+        if last_objects_state is not None:
+            self.objects_state = last_objects_state
+        if self.objects_state is not None:
+            for points, colour, size in self.objects_state.groups:
+                gl.glPointSize(size)
+                gl.glColor3f(colour[0], colour[1], colour[2])
+                glutils.DrawPoints(points)
+            gl.glPointSize(self.sparsePointSize)
+
+        # ==============================
         # draw camera pose arrays
         if self.camera_trajectories_state is not None:
             if len(self.camera_trajectories_state.camera_trajectories) > 0:
@@ -1564,6 +1587,15 @@ class Viewer3D(object):
                 camera_state.add(ca, cc)
 
         self.qcams.put(camera_state)
+
+    # inputs:
+    #   groups: a list of (N x 3 array of points in the map, RGB colour in [0, 1], point size in pixels)
+    def draw_objects(self, groups):
+        if self.qobjects is None:
+            return
+        objects_state = Viewer3DObjectsInput()
+        objects_state.groups = [(np.ascontiguousarray(p, dtype=np.float64), tuple(c), float(z)) for p, c, z in groups if len(p)]
+        self.qobjects.put(objects_state)
 
     def draw_vo(self, vo):
         if self.qvo is None:
