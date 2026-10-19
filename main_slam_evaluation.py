@@ -129,7 +129,11 @@ def config_overrides_from_args(args, argparser):
             overrides["dataset_type"] = "TUM_DATASET"
             overrides["dataset_base_path"] = os.path.dirname(tum_path)
             dataset["name"] = os.path.basename(tum_path)
-            associations = args.associations
+            from pyslam.io.sequence_options import tum_list_name
+
+            associations = tum_list_name(tum_path, args.associations) if args.associations else None
+            if args.predicted_depth:
+                args.predicted_depth = tum_list_name(tum_path, args.predicted_depth)
             if associations is None:
                 has_associations = os.path.exists(os.path.join(tum_path, "associations.txt"))
                 associations = "associations.txt" if has_associations else "rgb.txt"
@@ -156,38 +160,73 @@ def config_overrides_from_args(args, argparser):
     elif args.settings or args.groundtruth or args.timestamps:
         argparser.error("--settings, --groundtruth and --timestamps go with --video, --images or --tum")
     features = args.features
-    if args.semantic_mask and not features:
+    if (args.semantic_mask or args.predicted_depth) and not features:
         features = ["ORB2"]
-    elif (args.mask_classes or args.mask_dilation is not None or args.mask_after_init) and not args.semantic_mask:
+    if (args.mask_classes or args.mask_dilation is not None or args.mask_after_init) and not args.semantic_mask:
         argparser.error("--mask-classes, --mask-dilation and --mask-after-init go with --semantic-mask")
+    if args.predicted_depth:
+        if not args.tum:
+            argparser.error("--predicted-depth goes with --tum: the predicted depth maps are in the folder of a TUM sequence")
+        if args.sensor:
+            argparser.error("--predicted-depth runs SLAM as mono, rgbd and pseudo-rgbd itself: leave out --sensor")
+        tum_path = os.path.join(overrides["dataset_base_path"], overrides["datasets"][0]["name"])
+        rgbd_list = overrides["datasets"][0]["associations"]
+        for list_name, what in ((rgbd_list, "the camera's depth images"), (args.predicted_depth, "the predicted depth maps")):
+            if not os.path.isfile(os.path.join(tum_path, list_name)):
+                sys.exit(
+                    f"--predicted-depth: no {list_name} in {tum_path}"
+                    + (" (depth-prediction --tum ... --save NAME writes associations_NAME.txt)" if list_name == args.predicted_depth else "")
+                )
+            if tum_sensor_type(os.path.join(tum_path, list_name)) != "rgbd":
+                sys.exit(f"--predicted-depth: {list_name} lists no depth images: it must list {what} (4 columns)")
+        overrides["sensor_type"] = "rgbd"
     if features:
         unknown = [name for name in features if name not in feature_config_names()]
         if unknown:
             print(f"Unknown feature configuration(s): {' '.join(unknown)}. Valid names:", file=sys.stderr)
             print("    " + " ".join(feature_config_names()), file=sys.stderr)
             sys.exit(2)
-        overrides["presets"] = [feature_preset(name) for name in features]
+        if args.predicted_depth:
+            # each feature configuration three ways: monocular, with the camera's depth, and with the
+            # predicted depth as if a depth camera had measured it (pseudo RGB-D)
+            presets = []
+            for name in features:
+                prefix = "" if len(features) == 1 else f"{name}-"
+                for kind, sensor_type, associations in (
+                    ("mono", "mono", None),
+                    ("rgbd", "rgbd", None),
+                    ("pseudo-rgbd", "rgbd", args.predicted_depth),
+                ):
+                    preset = feature_preset(name)
+                    preset["name"] = prefix + kind
+                    preset["sensor_type"] = sensor_type
+                    if associations:
+                        preset["associations"] = associations
+                    presets.append(preset)
+        else:
+            presets = [feature_preset(name) for name in features]
+        overrides["presets"] = presets
         if args.semantic_mask:
-            # each configuration again, with the detector masked: the options of main_slam.py go
-            # with the preset ("main_slam_options" of a preset, see slam_evaluation_manager.py)
+            # each preset again, with the detector masked: the options of main_slam.py go with the
+            # preset ("main_slam_options" of a preset, see slam_evaluation_manager.py)
             mask_options = f'--semantic-mask "{os.path.abspath(os.path.expanduser(args.semantic_mask))}"'
             if args.mask_classes:
-                mask_options += " --mask-classes " + " ".join(args.mask_classes)
+                mask_options += " --mask-classes " + " ".join(f'"{c}"' if " " in c else c for c in args.mask_classes)
             if args.mask_dilation is not None:
                 mask_options += f" --mask-dilation {args.mask_dilation}"
             if args.mask_after_init:
                 mask_options += " --mask-after-init"
             masked = []
-            for name in features:
-                preset = feature_preset(name)
-                preset["name"] = f"{name}+mask"
-                preset["main_slam_options"] = mask_options
+            for preset in presets:
+                preset = dict(preset, name=f"{preset['name']}+mask", main_slam_options=mask_options)
                 masked.append(preset)
             overrides["presets"] += masked
     if args.runs is not None:
         overrides["number_of_runs_per_dataset"] = args.runs
     if args.jobs is not None:
         overrides["num_threads"] = args.jobs
+    if args.stall_factor is not None:
+        overrides["stall_factor"] = args.stall_factor
     main_slam_options = []
     if args.throttle:
         main_slam_options.append("--throttle")
@@ -290,6 +329,14 @@ if __name__ == "__main__":
         help="number of runs at the same time (results may get worse with more than one)",
     )
     runs.add_argument(
+        "--stall-factor",
+        type=float,
+        metavar="N",
+        help="stop a run, and run it again once, when it has had no new frame and used no CPU for N "
+        "times its mean time per frame (at least a minute): a rare deadlock "
+        "(docs/TROUBLESHOOTING.md); default 100, 0 never stops a run",
+    )
+    runs.add_argument(
         "--throttle",
         action="store_true",
         help="slow the playback down when tracking gets weak (main_slam.py --throttle): for features "
@@ -299,6 +346,14 @@ if __name__ == "__main__":
         "--speed",
         type=float,
         help="playback speed relative to the camera's frame rate (main_slam.py --speed), e.g. 0.5",
+    )
+    runs.add_argument(
+        "--predicted-depth",
+        metavar="LIST",
+        help="with --tum: run SLAM three ways, in one report: mono (monocular), rgbd (with the camera's depth "
+        "images of associations.txt) and pseudo-rgbd (with the predicted depth maps listed in LIST, e.g. "
+        "associations_dav2.txt, which depth-prediction --save dav2 writes). With --features, each configuration "
+        "three ways; with --semantic-mask, each preset also with the mask",
     )
     runs.add_argument(
         "--semantic-mask",

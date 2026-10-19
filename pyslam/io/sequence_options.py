@@ -47,7 +47,10 @@ def add_sequence_options(parser, need_settings=True):
         help="a sequence in the layout of the TUM RGB-D datasets, with its ground truth "
         "(groundtruth.txt); the frames come from associations.txt, or from rgb.txt (monocular)",
     )
-    sequence.add_argument("--associations", help="with --tum: the list of the frames")
+    sequence.add_argument(
+        "--associations",
+        help="with --tum: the list of the frames, in the folder of the sequence (its name, or a path to it)",
+    )
     sequence.add_argument(
         "--sensor",
         choices=("mono", "rgbd"),
@@ -71,6 +74,28 @@ def add_sequence_options(parser, need_settings=True):
         "--timestamps", help="with --video or --images: a file of the timestamps of the frames"
     )
     return sequence
+
+
+def tum_list_name(tum_path, name):
+    """A list of the frames of a TUM sequence (--associations), as the TUM reader opens it: by its path
+    relative to the folder of the sequence. Both the name in the folder (associations_dav2.txt) and a
+    path to the file ($S/associations_dav2.txt) are accepted. The paths of the images in a list are
+    relative to the folder of the sequence, so a list must be in that folder."""
+    if not os.path.isabs(name) and os.path.isfile(os.path.join(tum_path, name)):
+        return name
+    path = os.path.abspath(os.path.expanduser(name))
+    if not os.path.isfile(path):
+        return name  # not found: the caller says so
+    try:
+        relative = os.path.relpath(path, tum_path)
+    except ValueError:  # another drive (Windows)
+        relative = ".."
+    if relative.startswith(".."):
+        sys.exit(
+            f"{name}: the list of the frames must be in the folder of the sequence ({tum_path}), because the "
+            "paths of the images in it are relative to that folder"
+        )
+    return relative.replace(os.sep, "/")
 
 
 def has_sequence_options(args):
@@ -123,7 +148,7 @@ def sequence_config_path(args, parser, default_settings=None):
         # a sequence in the layout of the TUM RGB-D datasets: the images, their timestamps and
         # their order come from the list of the frames, as for the TUM datasets themselves
         tum_path = os.path.abspath(os.path.expanduser(args.tum)).rstrip("/")
-        associations = args.associations
+        associations = tum_list_name(tum_path, args.associations) if args.associations else None
         if associations is None:
             has_associations = os.path.exists(os.path.join(tum_path, "associations.txt"))
             associations = "associations.txt" if has_associations else "rgb.txt"

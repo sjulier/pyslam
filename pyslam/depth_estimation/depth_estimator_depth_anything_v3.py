@@ -78,6 +78,11 @@ class DepthEstimatorDepthAnythingV3(DepthEstimator):
         model = model.to(device=device).eval()
 
         self.use_linear_interpolation = use_linear_interpolation
+        # DA3METRIC gives depth for a focal length of 300 pixels at the size of the image it was given
+        # (the README's FAQ: metric depth = focal * output / 300; its nested model scales the same way,
+        # with the focal at the network's input size, in utils/alignment.py apply_metric_scaling)
+        self.metric_from_focal = "METRIC" in model_type.upper()
+        self.warned_no_camera = False
 
         super().__init__(
             model,
@@ -92,9 +97,12 @@ class DepthEstimatorDepthAnythingV3(DepthEstimator):
 
     # Return the predicted depth map and the point cloud (if any)
     def infer(self, image, image_right=None):
-        # DepthAnything3.inference expects a list of images
-        # Wrap single image in a list
-        images = [image]
+        # DepthAnything3.inference expects a list of images, and reads a numpy image as RGB
+        # (InputProcessor._load_image); pySLAM's images are BGR
+        if image.ndim == 2:
+            images = [cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)]
+        else:
+            images = [cv2.cvtColor(image, cv2.COLOR_BGR2RGB)]
 
         # Run inference
         depth_prediction = self.model.inference(images)
@@ -106,6 +114,23 @@ class DepthEstimatorDepthAnythingV3(DepthEstimator):
         # Convert to numpy if it's a tensor
         if isinstance(depth_map, torch.Tensor):
             depth_map = depth_map.cpu().numpy()
+
+        # Metric depth: the output times the focal length at the network's input size, over 300.
+        # The input is the image resized (longest side 504 by default, then to multiples of 14), so
+        # the focal length is scaled with each side: on TUM fr1 (640x480, fx 517) the factor is
+        # 407/300, on KITTI (1226x370, fx 707) 292/300.
+        if self.metric_from_focal:
+            if self.camera is not None:
+                h_net, w_net = depth_map.shape[:2]
+                h_img, w_img = image.shape[:2]
+                focal = 0.5 * (self.camera.fx * w_net / w_img + self.camera.fy * h_net / h_img)
+                depth_map = depth_map * (focal / 300.0)
+            elif not self.warned_no_camera:
+                Printer.orange(
+                    "DepthEstimatorDepthAnythingV3: no camera, so no focal length: the depth is not in "
+                    "metres (it is the depth for a focal length of 300 pixels at the network's input size)"
+                )
+                self.warned_no_camera = True
 
         # Rescale depth prediction to match original image dimensions if needed
         if depth_map.shape[:2] != image.shape[:2]:

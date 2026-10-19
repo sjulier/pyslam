@@ -35,7 +35,7 @@ import concurrent.futures
 from pyslam.config import load_settings_yaml
 from pyslam.utilities.data_management import merge_dicts
 from pyslam.utilities.logging import Printer
-from pyslam.utilities.run_command import run_command_async, run_command_sync
+from pyslam.utilities.run_command import run_command_async, run_command_sync, kStalledReturnCode
 import traceback
 from pathlib import Path
 
@@ -53,6 +53,13 @@ kRootFolder = kScriptFolder + "/../.."
 kSettingsFolder = kRootFolder + "/settings"
 kResultsFolder = kRootFolder + "/results"
 kEvaluationFolder = kRootFolder + "/pyslam/evaluation"
+
+# A run with no new frame, no file written and no CPU used for this many times its mean time per frame
+# (at least a minute; see pyslam/utilities/run_command.py) has stalled (a rare deadlock, see
+# docs/TROUBLESHOOTING.md): it is stopped and run again, up to kStallRetries times. The evaluation's
+# "stall_factor" (main_slam_evaluation.py --stall-factor) overrides it; 0: never stop a run.
+kDefaultStallFactor = 100
+kStallRetries = 1
 
 
 date_time_now = datetime.now()
@@ -244,15 +251,18 @@ class SlamEvaluationManager:
                     problems.append(f"{name}: {sequence_path} does not exist")
             if self.dataset_type == "TUM_DATASET":
                 sequence_path = os.path.join(base_path, str(name))
-                associations = dataset.get("associations", "associations.txt")
                 groundtruth_file = dataset.get("groundtruth_file", "groundtruth.txt")
                 if os.path.isdir(sequence_path):
+                    associations = dataset.get("associations", "associations.txt")
                     if not os.path.exists(os.path.join(sequence_path, associations)):
                         problems.append(
                             f"{name}: no {associations} in {sequence_path}. It lists the frames: create "
                             f"it with scripts/associate.py rgb.txt depth.txt > associations.txt (RGB-D), "
                             f'or use rgb.txt for a monocular sequence ("associations": "rgb.txt")'
                         )
+                    for preset in self.presets:
+                        if preset.get("associations") and not os.path.exists(os.path.join(sequence_path, preset["associations"])):
+                            problems.append(f"{name}: no {preset['associations']} in {sequence_path} (preset {preset['name']})")
                     if not os.path.exists(os.path.join(sequence_path, groundtruth_file)):
                         problems.append(
                             f"{name}: no {groundtruth_file} in {sequence_path} (TUM sequences need "
@@ -363,9 +373,11 @@ class SlamEvaluationManager:
         # ------
         # Prepare the config file and update it with the preset parameters
         # Replace the template entries in the config file.
+        # a preset may run another sensor type than the evaluation's, e.g. "mono" on an RGB-D sequence
+        # (main_slam_evaluation.py --predicted-depth)
         config_vocabulary = {
             "dataset_type": self.dataset_type,
-            "sensor_type": self.sensor_type,
+            "sensor_type": preset.get("sensor_type", self.sensor_type),
             "output_path": iteration_output_path,
             "dataset_base_path": self.dataset_base_path_of(dataset),
             "dataset_name": f'"{dataset_name}"',  # wrap in quotes to avoid issues with names that contain only numbers
@@ -388,8 +400,9 @@ class SlamEvaluationManager:
             config_vocabulary["groundtruth_file"] = dataset["groundtruth_file"]
         elif self.dataset_type == "TUM_DATASET":
             config_vocabulary["groundtruth_file"] = "auto"
-        # TUM_DATASET: the list of the frames (timestamp and file of each image, and of its depth image)
-        config_vocabulary["associations"] = dataset.get("associations", "associations.txt")
+        # TUM_DATASET: the list of the frames (timestamp and file of each image, and of its depth image);
+        # a preset may have its own, e.g. one with predicted depth images (main_slam_evaluation.py --predicted-depth)
+        config_vocabulary["associations"] = preset.get("associations") or dataset.get("associations", "associations.txt")
         if "fps" in dataset:
             config_vocabulary["dataset_fps"] = str(dataset["fps"])
         # quoted: a glob pattern such as *png is not valid YAML
@@ -449,6 +462,32 @@ class SlamEvaluationManager:
         print("")
         return command, main_log_output_file
 
+    def run_slam_command(self, command, log_path, msg):
+        """Run one SLAM run. A run that stalls (a rare deadlock, see docs/TROUBLESHOOTING.md) is stopped
+        after "stall_factor" times its mean time per frame without progress (0: never), its log is kept
+        as log_stalled_<n>.txt next to log.txt, and it is run again, up to kStallRetries times."""
+        stall_factor = self.json_data.get("stall_factor", kDefaultStallFactor)
+        iteration_folder = os.path.dirname(os.path.dirname(log_path))  # <iteration>/<logs>/log.txt
+        for attempt in range(kStallRetries + 1):
+            result = run_command_async(
+                command,
+                log_path,
+                True,
+                msg,
+                stall_factor=stall_factor,
+                stall_watch_folder=iteration_folder,
+            )
+            if result[0] != kStalledReturnCode:
+                return result
+            stalled_log_path = log_path.replace("log.txt", f"log_stalled_{attempt + 1}.txt")
+            os.replace(log_path, stalled_log_path)
+            Printer.orange(
+                f"[{msg}] stalled (no progress, no CPU used), stopped"
+                + (", running it again" if attempt < kStallRetries else "")
+                + f" (threads' stacks in {stalled_log_path})"
+            )
+        return result
+
     def run_evaluation(self):
         self.check_inputs()
         commands = []
@@ -485,7 +524,7 @@ class SlamEvaluationManager:
             for item_run_command, item_log_output_path in commands:
                 msg = f"{num_started_tasks}/{num_tasks}"
                 item_future = executor.submit(
-                    run_command_async, item_run_command, item_log_output_path, True, msg
+                    self.run_slam_command, item_run_command, item_log_output_path, msg
                 )
                 futures.append(item_future)
                 future_to_command[item_future] = item_run_command
@@ -504,6 +543,12 @@ class SlamEvaluationManager:
                 if returncode == 0:
                     Printer.green(
                         f'Command {msg} "{item_run_command}" returned {returncode}, (completed {num_completed_tasks}/{num_tasks})'
+                    )
+                elif returncode == kStalledReturnCode:
+                    Printer.red(
+                        f"Command {msg} stalled {kStallRetries + 1} times and was stopped (completed "
+                        f"{num_completed_tasks}/{num_tasks}); see docs/TROUBLESHOOTING.md (log: "
+                        f"{future_to_log[future]})"
                     )
                 else:
                     Printer.red(
