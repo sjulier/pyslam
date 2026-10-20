@@ -299,7 +299,13 @@ gdrive_download_with_retry("https://drive.google.com/uc?id=" + sys.argv[1], sys.
 function unpack_archive() {
     local rc=0
     case "$1" in
-        *.zip) unzip -o -q "$1" -d "$2" || rc=1 ;;
+        *.zip)
+            # a fresh Ubuntu (e.g. WSL2) has no unzip; Python's zipfile is always there
+            if command -v unzip >/dev/null 2>&1; then
+                unzip -o -q "$1" -d "$2" || rc=1
+            else
+                "$PYTHON_EXE" -m zipfile -e "$1" "$2" || rc=1
+            fi ;;
         *) tar -C "$2" -xf "$1" || rc=1 ;;
     esac
     rm -f "$1"

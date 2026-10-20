@@ -10,5 +10,10 @@ mkdir -p datasets
 cd datasets
 
 wget https://cvg-data.inf.ethz.ch/nice-slam/data/Replica.zip
-unzip Replica.zip
+# a fresh Ubuntu (e.g. WSL2) has no unzip; Python's zipfile is always there
+if command -v unzip >/dev/null 2>&1; then
+    unzip Replica.zip
+else
+    python3 -m zipfile -e Replica.zip .
+fi
 mv Replica replica
