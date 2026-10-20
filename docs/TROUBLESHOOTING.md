@@ -113,9 +113,11 @@ See the related discussion [here](https://github.com/luigifreda/pyslam/issues/22
 
 **What you see:** `pixi run slam` or one run of `pixi run slam-evaluation` stops processing frames part-way through a sequence and never continues. The process uses no CPU, the logs end in the middle of a frame (local mapping at `>>>> local optimization (LBA) ...`), and Ctrl-C does nothing.
 
-`slam-evaluation` stops such a run by itself and runs it again once: when a run has had no new frame, written no file and used almost no CPU for 100 times its mean time per frame (at least a minute; `--stall-factor` changes the 100, 0 turns it off). The stalled run's log, with every thread's stack at the end (Linux, macOS), is kept as `logs/log_stalled_1.txt` in its folder: please send it to the course team.
+`slam-evaluation` stops such a run by itself and runs it again once: when a run has had no new frame, written no file and used almost no CPU for 100 times its mean time per frame (at least a minute; `--stall-factor` changes the 100, 0 turns it off). The stalled run's log, with every thread's stack at the end, is kept as `logs/log_stalled_1.txt` in its folder: please send it to the course team. (Native Windows has no SIGUSR1 to ask a run for its stacks, so there the run writes them itself after half that time without a new frame.)
 
 **What to do** with `pixi run slam`: kill the process (close the terminal, or `pkill -f main_slam.py`; on Windows, end the `python.exe` processes in Task Manager) and run the command again. It is rare and timing-dependent, so the next run normally finishes.
+
+**On native Windows** (`pixi run -e default-win slam`) it is more frequent (2 of 14 runs on one PC on 17 Oct 2026, against 0 of 18 under WSL2 on the same PC), and Ctrl-C does not end a frozen run: it stops only the loop-detection worker, which prints a `KeyboardInterrupt` traceback, and the terminal stays frozen. Close the terminal window (or end the `python.exe` processes in Task Manager), then run the command again.
 
 **What is known** (12–13 Oct 2026). It was seen twice in about 30 RGB-D runs of TUM `walking_halfsphere`, both on a 24-thread AMD laptop:
 - under WSL2 (course branch `comp0227-2026`) at frame 497;

@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     if hasattr(signal, "SIGUSR1"):  # Linux, macOS
         # every thread's stack to the log on SIGUSR1, even in a deadlock: slam-evaluation sends it
-        # to a run that stalls (pyslam/utilities/run_command.py)
+        # to a run that stalls (pyslam/utilities/run_command.py); Windows: see StallStackTimer below
         faulthandler.register(signal.SIGUSR1, all_threads=True)
 
 import time
@@ -69,6 +69,7 @@ if __name__ != "__mp_main__":
 
     from pyslam.viz.viewer3D import Viewer3D
     from pyslam.utilities.logging import Printer, LoggerQueue, FrameLog
+    from pyslam.utilities.run_command import StallStackTimer
     from pyslam.utilities.system import force_kill_all_and_exit
     from pyslam.utilities.img_management import ImgWriter
     from pyslam.utilities.evaluation import eval_ate
@@ -520,6 +521,9 @@ if __name__ == "__main__":
     # with the times of the first and the latest, from this file
     progress_file_path = os.environ.get("PYSLAM_PROGRESS_FILE")
     progress_first_time = None
+    # Windows has no SIGUSR1 to ask a stalled run for its threads' stacks: there the run writes them
+    # itself when it has had no new frame for a while (None elsewhere, and without the stall check)
+    stall_stack_timer = StallStackTimer.create_if_needed(progress_file_path)
 
     img_id = 0  # 210, 340, 400, 770   # you can start from a desired frame id if needed
 
@@ -632,6 +636,8 @@ if __name__ == "__main__":
                                 f.write(f"{num_frames} {progress_first_time:.3f} {now:.3f}\n")
                         except OSError:
                             pass
+                        if stall_stack_timer:
+                            stall_stack_timer.restart()
                     if FrameLog.is_to_file() and (num_frames == 1 or num_frames % 100 == 0):
                         # the first frame (tracking has started), then every 100 frames; the details of
                         # every frame are in logs/tracking.log

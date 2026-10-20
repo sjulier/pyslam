@@ -17,6 +17,7 @@
 * along with PYSLAM. If not, see <http://www.gnu.org/licenses/>.
 """
 
+import faulthandler
 import os
 import shutil
 import signal
@@ -35,6 +36,12 @@ kStallMaxCpuShare = 0.05
 # frames: loading the models), for kStallStartupSeconds
 kStallMinSeconds = 60
 kStallStartupSeconds = 600
+# Windows has no SIGUSR1, so a stalled run cannot be asked for its threads' stacks. There the run
+# (main_slam.py, see StallStackTimer) writes them itself to this file, next to its progress file,
+# once it has had no new frame for this share of its stall limit; run_command_async() then moves
+# them into its log.
+kStallStacksFilename = "stall_stacks.txt"
+kStallStacksShare = 0.5
 
 
 def run_command_sync(command, debug=False):
@@ -46,10 +53,13 @@ def run_command_sync(command, debug=False):
 
 
 def _latest_file_time(folder):
-    """The latest modification time of a file in a folder and its subfolders (0 if none)."""
+    """The latest modification time of a file in a folder and its subfolders (0 if none), except the
+    stacks a stalling run writes itself (StallStackTimer)."""
     latest = 0.0
     for root, _, files in os.walk(folder):
         for name in files:
+            if name == kStallStacksFilename:
+                continue
             try:
                 latest = max(latest, os.path.getmtime(os.path.join(root, name)))
             except OSError:
@@ -96,6 +106,37 @@ def stall_limit(progress_file, stall_factor):
     return max(kStallMinSeconds, stall_factor * mean)
 
 
+class StallStackTimer:
+    """For a run which cannot be sent SIGUSR1 (Windows): faulthandler writes every thread's stack to
+    kStallStacksFilename once the run has had no new frame for kStallStacksShare of its stall limit.
+    Its own thread needs no GIL, so this works in a deadlock too. restart() after each frame starts
+    the timer again, and empties the file when an earlier pause, which has ended, filled it."""
+
+    def __init__(self, progress_file, stall_factor):
+        self.progress_file = progress_file
+        self.stall_factor = stall_factor
+        path = os.path.join(os.path.dirname(progress_file), kStallStacksFilename)
+        self.file = open(path, "wb", buffering=0)  # faulthandler writes to its descriptor
+        self.restart()
+
+    @staticmethod
+    def create_if_needed(progress_file):
+        """A timer for a run of run_command_async() with its stall check on, on a system without
+        SIGUSR1; None otherwise."""
+        stall_factor = float(os.environ.get("PYSLAM_STALL_FACTOR") or 0)
+        if not progress_file or not stall_factor or hasattr(signal, "SIGUSR1"):
+            return None
+        return StallStackTimer(progress_file, stall_factor)
+
+    def restart(self):
+        fd = self.file.fileno()
+        if os.fstat(fd).st_size:
+            os.ftruncate(fd, 0)
+            os.lseek(fd, 0, os.SEEK_SET)
+        seconds = kStallStacksShare * stall_limit(self.progress_file, self.stall_factor)
+        faulthandler.dump_traceback_later(seconds, file=self.file)
+
+
 def _wait_unless_stalled(process, watch_folder, stall_factor, progress_file):
     """Wait for a command to finish. Return False when it does, and the idle time (seconds) when it
     stalls: no file in watch_folder changed (no new frame, no log line) and its processes used almost no
@@ -124,14 +165,18 @@ def _wait_unless_stalled(process, watch_folder, stall_factor, progress_file):
 
 def _dump_and_kill(process, dump_path):
     """Write the threads' stacks of a stalled command, then kill it with all its processes. The Python
-    stacks go to its own log: main_slam.py dumps them on SIGUSR1 (Linux, macOS). With py-spy installed,
-    the native stacks go to dump_path too."""
+    stacks go to its own log: main_slam.py dumps them on SIGUSR1 (Linux, macOS). Windows has no
+    SIGUSR1: there main_slam.py has written them to kStallStacksFilename already (StallStackTimer).
+    With py-spy installed, the native stacks go to dump_path too. Return whether SIGUSR1 was
+    sent."""
     processes = _process_tree(process)
+    signalled = False
     if hasattr(signal, "SIGUSR1"):
         for p in processes:
             try:
                 if any("main_slam.py" in arg for arg in p.cmdline()):
                     p.send_signal(signal.SIGUSR1)
+                    signalled = True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
         time.sleep(2)
@@ -161,6 +206,25 @@ def _dump_and_kill(process, dump_path):
         except psutil.NoSuchProcess:
             pass
     process.wait()
+    return signalled
+
+
+def _move_stall_stacks_to_log(stacks_path, log_path, after_seconds):
+    """Append the stacks a run wrote itself (StallStackTimer) to its log, and remove their file.
+    Return whether there were any."""
+    try:
+        with open(stacks_path, "rb") as f:
+            stacks = f.read()
+        os.remove(stacks_path)
+    except OSError:
+        return False
+    if not stacks.strip():
+        return False
+    with open(log_path, "ab") as f:
+        header = "\n---- every thread's stack, written by the run itself after "
+        header += f"{after_seconds:.0f} s without a new frame ----\n"
+        f.write(header.encode() + stacks)
+    return True
 
 
 def run_command_async(
@@ -174,7 +238,8 @@ def run_command_async(
     """Run a command and wait for it. With an output log file and stall_factor, a command which stalls
     (see _wait_unless_stalled(); stall_watch_folder defaults to the log's folder) is killed after its
     threads' stacks are dumped, and kStalledReturnCode is returned. The command gets the path of its
-    progress file in PYSLAM_PROGRESS_FILE (main_slam.py writes it)."""
+    progress file in PYSLAM_PROGRESS_FILE (main_slam.py writes it), and stall_factor in
+    PYSLAM_STALL_FACTOR (for StallStackTimer)."""
     # Redirect the standard output and standard error output if specifying an output file
     redirected_std_out = subprocess.PIPE
     redirected_std_err = subprocess.PIPE
@@ -192,9 +257,13 @@ def run_command_async(
     if check_stall:
         watch_folder = stall_watch_folder or os.path.dirname(os.path.abspath(output_log_filename))
         progress_file = os.path.join(watch_folder, "progress.txt")
-        if os.path.exists(progress_file):
-            os.remove(progress_file)  # from an earlier attempt
-        env = dict(os.environ, PYSLAM_PROGRESS_FILE=progress_file)
+        stacks_path = os.path.join(watch_folder, kStallStacksFilename)
+        for path in (progress_file, stacks_path):
+            if os.path.exists(path):
+                os.remove(path)  # from an earlier attempt
+        env = dict(
+            os.environ, PYSLAM_PROGRESS_FILE=progress_file, PYSLAM_STALL_FACTOR=str(stall_factor)
+        )
     process = subprocess.Popen(
         command,
         shell=True,
@@ -207,20 +276,31 @@ def run_command_async(
         stdout, stderr = process.communicate()
         return process.returncode, stdout, stderr
     idle_seconds = _wait_unless_stalled(process, watch_folder, stall_factor, progress_file)
-    if idle_seconds:
-        mean = mean_frame_time(progress_file)
-        dump_path = os.path.join(watch_folder, "stall_dump.txt")
-        _dump_and_kill(process, dump_path)
-    output_log_file.close()
     if not idle_seconds:
+        output_log_file.close()
+        if os.path.exists(stacks_path):
+            os.remove(stacks_path)  # written during a pause, or after the last frame
         return process.returncode, None, None
+    mean = mean_frame_time(progress_file)
+    dump_path = os.path.join(watch_folder, "stall_dump.txt")
+    signalled = _dump_and_kill(process, dump_path)
+    output_log_file.close()
+    after = kStallStacksShare * stall_limit(progress_file, stall_factor)
+    in_log = signalled or _move_stall_stacks_to_log(stacks_path, output_log_filename, after)
+    where = ["above"] if in_log else []
+    if os.path.exists(dump_path):
+        where.append(f"in {dump_path}")
     with open(output_log_filename, "a") as f:
         f.write(
             f"\nERROR: stalled: no new frame, no file written and no CPU used for {idle_seconds:.0f} s"
             + (f" ({idle_seconds / mean:.0f} times the mean time per frame, {mean:.2f} s)" if mean else "")
-            + ", so the run was stopped (a deadlock, see docs/TROUBLESHOOTING.md; the threads' stacks "
-            "are above"
-            + (f" and in {dump_path}" if os.path.exists(dump_path) else "")
+            + ", so the run was stopped (a deadlock, see docs/TROUBLESHOOTING.md; "
+            + (
+                "the threads' stacks are " + " and ".join(where)
+                if where
+                else "the threads' stacks were not written; with py-spy installed they go to "
+                + dump_path
+            )
             + ")\n"
         )
     return kStalledReturnCode, None, None
