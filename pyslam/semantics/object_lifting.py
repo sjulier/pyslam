@@ -167,7 +167,7 @@ def lift_mask(mask, box, camera, Twc, depth=None, map_uv=None, map_depth=None, h
 
 
 def merge_into_objects(items, radius):
-    """Greedy merge of points into objects, as in Lecture 03.
+    """Greedy merge of points into objects.
 
     items: dicts with "cls", "centre" (3 values), "order" (the higher first: a detection's score, or a
         track's length) and "weight" (1 for a detection, or a track's number of boxes).
