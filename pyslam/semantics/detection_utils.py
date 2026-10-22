@@ -72,14 +72,14 @@ def nms(boxes, scores, iou_threshold=0.7):
 
 
 def self_test():
-    """Run nms() on the 30 chair boxes of Lecture 03's example and say whether it kept the right 3."""
+    """Run nms() on 30 chair boxes of one Replica room0 image and say whether it kept the right 3."""
     with open(kTestBoxes) as f:
         test = json.load(f)
     boxes = np.array(test["boxes"], dtype=np.float64)
     scores = np.array(test["scores"], dtype=np.float64)
     expected = test["expected_kept_scores"]
     threshold = test["iou_threshold"]
-    print(f"{len(boxes)} chair boxes of Lecture 03's example of NMS (Replica room0, keyframe 42), IoU threshold {threshold}")
+    print(f"{len(boxes)} chair boxes of one image (Replica room0, keyframe 42), IoU threshold {threshold}")
     keep = nms(boxes, scores, threshold)
     if keep is None:
         print("nms() returned None: it is not written yet (Lab 04, Activity 5).")
@@ -88,12 +88,12 @@ def self_test():
     kept_scores = [round(float(scores[i]), 4) for i in keep]
     print(f"nms() kept {len(keep)} boxes, with the scores {', '.join(f'{s:.4f}' for s in kept_scores)}")
     if kept_scores == expected:
-        print("Right: these are the 3 boxes of the lecture, in order of decreasing score.")
+        print("Right: these are the 3 boxes that NMS keeps at this threshold, in order of decreasing score.")
         return 0
     if sorted(kept_scores) == sorted(expected):
         print("The right 3 boxes, but not in order of decreasing score.")
     else:
-        print(f"Not right: the lecture kept 3 boxes, with the scores {', '.join(f'{s:.4f}' for s in expected)}.")
+        print(f"Not right: NMS keeps 3 boxes at this threshold, with the scores {', '.join(f'{s:.4f}' for s in expected)}.")
     return 1
 
 

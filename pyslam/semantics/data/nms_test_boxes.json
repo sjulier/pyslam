@@ -1,5 +1,5 @@
 {
- "description": "The 30 chair boxes with a score above 0.10 of Lecture 03's example of non-maximum suppression: keyframe 42 of the Replica room0 run (frame 302), detected by YOLOv8x-seg. NMS at IoU 0.7 keeps 3 of them.",
+ "description": "The 30 chair boxes with a score above 0.10 in keyframe 42 of a Replica room0 SLAM run (frame 302), detected by YOLOv8x-seg. Non-maximum suppression at IoU 0.7 keeps 3 of them.",
  "image": "Replica room0, frame 302 (1200x680 pixels)",
  "iou_threshold": 0.7,
  "boxes": [
