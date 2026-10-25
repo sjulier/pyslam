@@ -27,15 +27,16 @@
 # The candidates of a detector are all its boxes above --conf, before non-maximum suppression (NMS)
 # removed the overlapping ones. --nms own uses nms() of pyslam/semantics/detection_utils.py in place of
 # the detector's own NMS. --evaluate DIR scores the detector against the true boxes of a labelled set
-# (AP, with pycocotools). --save DIR writes the detections of every frame of a sequence, for
-# main_slam.py --detections DIR, which lifts them into the map.
+# (AP, with pycocotools); --images PATH says where its images are (for data/detection_sets/room0, the
+# room0 folder of the Replica package which the README links). --save DIR writes the detections of every
+# frame of a sequence, for main_slam.py --detections DIR, which lifts them into the map.
 #
 #   pixi run -e semantics object-detection --list
 #   pixi run -e semantics object-detection --method YOLO --test desk
 #   pixi run -e semantics object-detection --method YOLOE --test desk --prompt "monitor, keyboard, mug"
 #   pixi run -e semantics object-detection --method SAM --test desk --point 523,651
 #   pixi run -e semantics object-detection --method YOLO --test desk --nms own
-#   pixi run -e semantics object-detection --method YOLO --evaluate data/detection_sets/room0
+#   pixi run -e semantics object-detection --method YOLO --evaluate data/detection_sets/room0 --images path/to/Replica/room0
 #   pixi run -e semantics object-detection --method YOLO --tum $S --settings settings/TUM1.yaml --save detections/NAME --step 5
 
 import pyslam  # first: sets the OpenMP thread settings (and, on macOS, the MPS fallback) before torch is imported
@@ -114,8 +115,8 @@ def main():
         "for every object a detector finds; SAM gives the masks of what a point or a box points at",
         epilog="examples: pixi run -e semantics object-detection --method YOLO --test desk; pixi run -e semantics "
         "object-detection --method SAM --test desk --point 523,651; pixi run -e semantics object-detection --method "
-        "YOLO --evaluate data/detection_sets/room0; pixi run -e semantics object-detection --method YOLO --tum $S "
-        "--settings settings/TUM1.yaml --save detections/NAME --step 5",
+        "YOLO --evaluate data/detection_sets/room0 --images path/to/Replica/room0; pixi run -e semantics "
+        "object-detection --method YOLO --tum $S --settings settings/TUM1.yaml --save detections/NAME --step 5",
     )
     parser.add_argument("--method", default="YOLO", metavar="NAME", help="YOLO, YOLOE or SAM (default YOLO; see --list)")
     parser.add_argument("--test", default="desk", choices=sorted(kTests), help="the image (default desk)")
@@ -146,8 +147,10 @@ def main():
     add_sequence_options(parser, need_settings=False)
     sequence = parser.add_argument_group("with a sequence or a labelled set")
     sequence.add_argument("--evaluate", metavar="DIR",
-                          help="detect the images of a labelled set (DIR/boxes.json and DIR/images/) and score the "
-                          "detector against their true boxes: AP50 per class, mAP50 and mAP50:95")
+                          help="detect the images of a labelled set and score the detector against their true boxes "
+                          "(DIR/boxes.json): AP50 per class, mAP50 and mAP50:95. The images are read from the folder "
+                          "given with --images (for data/detection_sets/room0, the room0 folder of the Replica "
+                          "package, or its results/ folder), or else from DIR/images/")
     sequence.add_argument("--save", metavar="DIR",
                           help="write the detections of every frame to this folder (detections.csv, masks/, counts.csv, "
                           "info.json), for main_slam.py --detections DIR")
@@ -185,8 +188,11 @@ def main():
         parser.error("--one-to-one uses no NMS, so --nms does not go with it")
     if args.all_classes and args.nms != "own":
         parser.error("--all-classes goes with --nms own")
-    if args.evaluate and on_sequence:
-        parser.error("--evaluate DIR detects the images of DIR: give it without --video, --images or --tum")
+    if args.evaluate and (args.tum or args.video):
+        parser.error("--evaluate DIR scores the images of a labelled set: give it without --video or --tum "
+                     "(--images PATH says where its images are)")
+    if args.evaluate and args.save:
+        parser.error("--save goes with a sequence (--tum, --video or --images), not with --evaluate")
     if args.save and not on_sequence:
         parser.error("--save goes with a sequence (--tum, --video or --images)")
     if args.evaluate and args.sam:
@@ -795,16 +801,27 @@ def run_sam(args, Printer):
 
 
 class LabelledSet:
-    """DIR/boxes.json (the true boxes, in the COCO format) and DIR/images/."""
+    """DIR/boxes.json (the true boxes, in the COCO format), and the images it names: in the folder given
+    with --images, or in its results/ folder (the layout of the Replica package), or else in DIR/images/."""
 
-    def __init__(self, folder):
+    def __init__(self, folder, images=None):
         path = os.path.join(folder, "boxes.json")
         if not os.path.isfile(path):
-            sys.exit(f"--evaluate {folder}: no boxes.json there. The labelled set of Lab 04 is downloaded by "
-                     "`pixi run -e semantics models-detection` into data/detection_sets/room0.")
+            sys.exit(f"--evaluate {folder}: no boxes.json there. The labelled set of Lab 04 is data/detection_sets/room0.")
         with open(path) as f:
             self.gt = json.load(f)
         self.folder = folder
+        places = [os.path.expanduser(images), os.path.join(os.path.expanduser(images), "results")] if images \
+            else [os.path.join(folder, "images")]
+        names = [im["file_name"] for im in self.gt["images"]]
+        found = [sum(os.path.isfile(os.path.join(p, n)) for n in names) for p in places]
+        self.image_folder = places[int(np.argmax(found))]
+        if max(found) < len(names):
+            missing = [n for n in names if not os.path.isfile(os.path.join(self.image_folder, n))]
+            where = f"neither in {images} nor in its results/ folder" if images else f"not in {places[0]}"
+            sys.exit(f"--evaluate {folder}: {len(missing)} of its {len(names)} images (e.g. {missing[0]}) are {where}. "
+                     "The images of data/detection_sets/room0 are frames of Replica room0: give the room0 folder of "
+                     "the Replica package which pySLAM's README links, with --images path/to/Replica/room0.")
         self.name = os.path.basename(os.path.normpath(folder))
         cats = self.gt["categories"]
         with_boxes = {a["category_id"] for a in self.gt["annotations"]}
@@ -818,7 +835,7 @@ class LabelledSet:
             self.boxes_of.setdefault(a["image_id"], []).append((x, y, x + bw, y + bh, name))
 
     def image_path(self, im):
-        return os.path.join(self.folder, "images", im["file_name"])
+        return os.path.join(self.image_folder, im["file_name"])
 
 
 def coco_scores(gt, dets, cat_ids):
@@ -875,7 +892,7 @@ def draw_pr_curves(curves, names, title, size=(720, 560)):
 
 
 def run_evaluate(args, Printer):
-    data = LabelledSet(args.evaluate)
+    data = LabelledSet(args.evaluate, args.images)
     detector = Detector(args, Printer)
     own = OwnNMS(Printer) if args.nms == "own" else None
     dets, seconds = [], []

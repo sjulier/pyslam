@@ -6,23 +6,25 @@ in the semantics level):
 
 - the weights of the three methods, from Ultralytics' releases, into data/models/: yolo26s-seg.pt (YOLO),
   yoloe-26s-seg.pt and its text encoder mobileclip2_b.ts (YOLOE), mobile_sam.pt (SAM): 0.35 GB;
-- the labelled set of Lab 04 (59 images of a room with the true boxes of their objects) into
-  data/detection_sets/room0/. Its images are not part of pySLAM: they come from a staff address, and
-  the download is checked against its SHA-256. PYSLAM_DETECTION_SET_URL overrides the address.
+- nothing for the labelled set of Lab 04: its true boxes are part of pySLAM
+  (data/detection_sets/room0/boxes.json, 351 boxes in 59 images of a room), and its images are frames
+  of Replica room0, which are not: they are read from your own copy of the Replica package which the
+  README links (--images of main_object_detection.py --evaluate).
 
 Then each method runs once on the test image desk, and one line per component says OK or what failed.
-What is already there is not downloaded again. Exit code: 0 if every component is OK, 1 otherwise.
+The labelled set's line checks boxes.json and, with --images PATH, that the 59 images are in PATH (the
+room0 folder of the Replica package) or in PATH/results. What is already there is not downloaded again.
+Exit code: 0 if every component is OK, 1 otherwise.
 
-usage: pixi run -e semantics models-detection
+usage: pixi run -e semantics models-detection [--images path/to/Replica/room0]
 """
+import argparse
 import hashlib
 import json
 import os
-import shutil
 import sys
 import time
 import urllib.request
-import zipfile
 
 # torchvision's NMS has no kernel for Apple's GPU: set the CPU fallback before torch is imported, as
 # `import pyslam` does (pyslam/__init__.py)
@@ -34,11 +36,12 @@ SETS_DIR = os.path.join(ROOT_DIR, "data", "detection_sets")
 WEIGHTS_URL = "https://github.com/ultralytics/assets/releases/download/v8.4.0/{}"
 WEIGHTS = ("yolo26s-seg.pt", "yoloe-26s-seg.pt", "mobileclip2_b.ts", "mobile_sam.pt")
 
-# The labelled set: a zip of room0/ (boxes.json, images/, README.txt), checked by its SHA-256
+# The labelled set: data/detection_sets/room0/boxes.json (part of pySLAM), whose 59 images are frames of
+# Replica room0 (results/frameNNNNNN.jpg in the Replica package). IMAGES_SHA256 is the SHA-256 of the lines
+# "<file name> <SHA-256 of the file>\n" of the 59 images, in the order of their names, as in that package.
 DETECTION_SET = "room0"
-DETECTION_SET_URL = ""  # TODO (COMP0227 staff): the address of room0.zip, once it is decided where it is kept
-DETECTION_SET_SHA256 = "ab9b4676b7a5ed52317a93a48ad4b51b9f7dd2b026272e3847f2c9b220ad46b1"
 DETECTION_SET_IMAGES, DETECTION_SET_BOXES = 59, 351
+IMAGES_SHA256 = "11a92a1ca412d1aed815f9a28d243139db3e15577f7599cc5620b1f6035100ba"
 
 TEST_IMAGE = os.path.join(ROOT_DIR, "data", "images", "desk_detic.jpeg")
 
@@ -84,44 +87,32 @@ def install_weights():
         download(WEIGHTS_URL.format(name), path)
 
 
-def install_detection_set():
-    """data/detection_sets/room0/ from the staff address, checked against its SHA-256. Returns a reason
-    if the set is not there and cannot be downloaded, else None."""
-    folder = os.path.join(SETS_DIR, DETECTION_SET)
-    if os.path.isfile(os.path.join(folder, "boxes.json")):
-        return None
-    url = os.environ.get("PYSLAM_DETECTION_SET_URL") or DETECTION_SET_URL
-    if not url:
-        return ("the address of the labelled set is not set yet (DETECTION_SET_URL in scripts/install_detection.py): "
-                "ask the module team, or set PYSLAM_DETECTION_SET_URL")
-    os.makedirs(SETS_DIR, exist_ok=True)
-    zip_path = os.path.join(SETS_DIR, DETECTION_SET + ".zip")
-    print(f"Downloading the labelled set {DETECTION_SET} to data/detection_sets/")
-    download(url, zip_path)
-    digest = sha256(zip_path)
-    if digest != DETECTION_SET_SHA256:
-        os.remove(zip_path)
-        return f"the download is not the expected file (SHA-256 {digest[:12]}..., expected {DETECTION_SET_SHA256[:12]}...)"
-    with zipfile.ZipFile(zip_path) as z:
-        names = [n for n in z.namelist() if not n.startswith("__MACOSX")]
-        if any(os.path.isabs(n) or ".." in n.split("/") for n in names) or not all(n.startswith(DETECTION_SET + "/") for n in names):
-            os.remove(zip_path)
-            return "the zip file has an unexpected layout"
-        if os.path.isdir(folder):
-            shutil.rmtree(folder)
-        z.extractall(SETS_DIR, members=names)
-    os.remove(zip_path)
-    return None
-
-
-def check_set():
-    folder = os.path.join(SETS_DIR, DETECTION_SET)
-    with open(os.path.join(folder, "boxes.json")) as f:
+def check_set(images):
+    """The labelled set: boxes.json, and with images (the --images PATH) its 59 images. Returns
+    (ok, text)."""
+    path = os.path.join(SETS_DIR, DETECTION_SET, "boxes.json")
+    if not os.path.isfile(path):
+        return False, f"no data/detection_sets/{DETECTION_SET}/boxes.json: update pySLAM to the version for Lab 04"
+    with open(path) as f:
         gt = json.load(f)
-    missing = [im["file_name"] for im in gt["images"] if not os.path.isfile(os.path.join(folder, "images", im["file_name"]))]
-    if missing:
-        raise RuntimeError(f"{len(missing)} images of boxes.json are missing from images/")
-    return f"{len(gt['images'])} images, {len(gt['annotations'])} true boxes in data/detection_sets/{DETECTION_SET}"
+    text = f"{len(gt['annotations'])} true boxes of {len(gt['images'])} images in data/detection_sets/{DETECTION_SET}"
+    if not images:
+        return True, (text + "; its images are those of Replica room0: to check your copy, run this command "
+                      "again with --images path/to/Replica/room0")
+    names = sorted(im["file_name"] for im in gt["images"])
+    places = [os.path.expanduser(images), os.path.join(os.path.expanduser(images), "results")]
+    found = [sum(os.path.isfile(os.path.join(p, n)) for n in names) for p in places]
+    folder = places[found.index(max(found))]
+    if max(found) < len(names):
+        return False, (f"{len(names) - max(found)} of the {len(names)} images (e.g. frame000000.jpg) are neither in "
+                       f"{images} nor in its results/ folder: give the room0 folder of the Replica package")
+    h = hashlib.sha256()
+    for n in names:
+        h.update(f"{n} {sha256(os.path.join(folder, n))}\n".encode())
+    text += f", and its {len(names)} images in {folder}"
+    if h.hexdigest() != IMAGES_SHA256:
+        text += " (but not the same files as those the boxes were made on, so your scores may differ from the sheet's)"
+    return True, text
 
 
 def check_methods():
@@ -171,6 +162,11 @@ def check_methods():
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Download and check what object-detection needs (COMP0227 Lab 04)")
+    parser.add_argument("--images", metavar="PATH",
+                        help="your copy of Replica room0 (the folder with results/ in it): check that the images of "
+                        "the labelled set are there")
+    args = parser.parse_args()
     ok = 0
     total = 4
     try:
@@ -183,12 +179,9 @@ def main():
         (green if good else red)(f"{'OK     ' if good else 'FAILED '} {name}: {text}")
         ok += bool(good)
     try:
-        reason = install_detection_set()
-        if reason:
-            red(f"FAILED  the labelled set: {reason}")
-        else:
-            green(f"OK      the labelled set: {check_set()}")
-            ok += 1
+        good, text = check_set(args.images)
+        (green if good else red)(f"{'OK     ' if good else 'FAILED '} the labelled set: {text}")
+        ok += bool(good)
     except Exception as e:
         red(f"FAILED  the labelled set: {e}")
     (green if ok == total else red)(f"{ok}/{total} components of 'detection' OK")
