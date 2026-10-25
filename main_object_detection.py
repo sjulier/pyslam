@@ -638,6 +638,8 @@ def key_action(wait_ms):
         return "stop"
     if key == ord("p"):
         return "pause"
+    if key == ord("n"):
+        return "next"
     return None
 
 
@@ -704,7 +706,7 @@ def run_image(args, Printer):
         px = f", mask {int(mask[i].sum())} px" if mask is not None and i < len(mask) else ""
         print(f"    {det['classes'][i]:16s} {det['scores'][i]:.3f}  box ({x1:.0f}, {y1:.0f}, {x2:.0f}, {y2:.0f}){px}")
 
-    extra = f", {detector.text_seconds:.2f} s for the text encoder, once for the list" if detector.method == "YOLOE" else ""
+    extra = f", {detector.text_seconds:.2f} s to load and run the text encoder, once for the list" if detector.method == "YOLOE" else ""
     summary = (f"{detector.method} on {name} ({w}x{h} pixels): {detector.describe_classes()} on {detector.device_name}; "
                + timing_text(per_image, times, first, detector.load_time, extra) + "; ")
     num = len(det["scores"])
@@ -915,7 +917,7 @@ def run_evaluate(args, Printer):
             shown = draw_detections(img, det, min_score=kShowScore, true_boxes=data.boxes_of.get(im["id"]))
             cv2.imshow("Detections", fit_width(shown))
             cv2.setWindowTitle("Detections", f"Detections: {im['file_name']} ({n + 1} of {len(data.images)}; boxes with a "
-                               f"score of at least {kShowScore}; the true boxes dashed)")
+                               f"score of at least {kShowScore}; the true boxes dashed; p pauses, n steps, q stops)")
             action = key_action(1)
             if action == "pause":
                 paused = True
@@ -923,6 +925,8 @@ def run_evaluate(args, Printer):
                 action = key_action(50)
                 if action in ("pause", "stop"):
                     paused = False
+                elif action == "next":  # one image on, still paused
+                    break
             if action == "stop":
                 break
     per, map50, map5095, curves = coco_scores(data.gt, dets, [c["id"] for c in data.categories])
@@ -1075,7 +1079,7 @@ def run_sequence(args, parser, Printer):
         if not args.headless:
             cv2.imshow("Detections", fit_width(draw_detections(img, det)))
             cv2.setWindowTitle("Detections", f"Detections: frame {frame_id}" + (f" of {frames.num_total}" if frames.num_total else "")
-                               + f" ({len(det['scores'])} objects; p pauses, q stops)")
+                               + f" ({len(det['scores'])} objects; p pauses, n steps, q stops)")
             action = key_action(1)
             if action == "pause":
                 paused = True
@@ -1083,6 +1087,8 @@ def run_sequence(args, parser, Printer):
                 action = key_action(50)
                 if action in ("pause", "stop"):
                     paused = False
+                elif action == "next":  # one image on, still paused
+                    break
             if action == "stop":
                 break
         if args.max_frames and num_detected >= args.max_frames:
