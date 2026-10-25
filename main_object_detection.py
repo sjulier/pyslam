@@ -931,6 +931,9 @@ def run_evaluate(args, Printer):
                 break
     per, map50, map5095, curves = coco_scores(data.gt, dets, [c["id"] for c in data.categories])
     per_image = float(np.mean(seconds[1:])) if len(seconds) > 1 else float(np.mean(seconds))
+    if len(seconds) < len(data.images):
+        Printer.orange(f"Stopped after {len(seconds)} of the {len(data.images)} images: the true boxes of the others count as "
+                       "missed, so these scores are not those of the whole set.")
     if args.one_to_one:
         how = f"conf {args.conf:g}, the one-to-one head, no NMS"
     elif args.nms == "none":
@@ -940,7 +943,8 @@ def run_evaluate(args, Printer):
         if args.nms == "own" and not (own and own.missing):
             how += ", your nms(), " + ("one call for all the classes" if args.all_classes else "one call per class")
     what = detector.describe_classes() if detector.method == "YOLOE" else ""
-    summary = (f"{detector.method} on {data.name} ({len(data.images)} images, {len(data.gt['annotations'])} true boxes, "
+    stopped = f", stopped after {len(seconds)}" if len(seconds) < len(data.images) else ""
+    summary = (f"{detector.method} on {data.name} ({len(data.images)} images{stopped}, {len(data.gt['annotations'])} true boxes, "
                f"{len(data.categories)} classes{', ' + what if what else ''}) on {detector.device_name}, {how}: AP50 "
                + ", ".join(f"{names[cid]} {per[cid][0]:.2f}" for cid in names)
                + f"; mAP50 {map50:.2f}, mAP50:95 {map5095:.2f}; {per_image:.2f} s per image")
