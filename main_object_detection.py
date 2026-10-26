@@ -18,7 +18,7 @@
 * along with PYSLAM. If not, see <http://www.gnu.org/licenses/>.
 """
 
-# The objects in one image, or in every frame of a sequence (COMP0227 Lab 04): a box, a class, a score
+# The objects in one image, or in every frame of a sequence: a box, a class, a score
 # and a mask for every object a detector finds. The detectors are YOLO (YOLO26-S with masks, the 80
 # classes of COCO) and YOLOE (YOLOE-26-S with masks, the classes named by a text prompt); SAM
 # (MobileSAM) gives the masks of what a point or a box points at, without any class. All three come
@@ -27,8 +27,8 @@
 # The candidates of a detector are all its boxes above --conf, before non-maximum suppression (NMS)
 # removed the overlapping ones. --nms own uses nms() of pyslam/semantics/detection_utils.py in place of
 # the detector's own NMS. --evaluate DIR scores the detector against the true boxes of a labelled set
-# (AP, with pycocotools); --images PATH says where its images are (for data/detection_sets/room0, the
-# room0 folder of the Replica package which the README links). --save DIR writes the detections of every
+# (AP, with pycocotools); --images PATH says where its images are, if they are not in DIR/images/ (for
+# frames of Replica, the scene's folder of the Replica package which the README links). --save DIR writes the detections of every
 # frame of a sequence, for main_slam.py --detections DIR, which lifts them into the map.
 #
 #   pixi run -e semantics object-detection --list
@@ -36,7 +36,7 @@
 #   pixi run -e semantics object-detection --method YOLOE --test desk --prompt "monitor, keyboard, mug"
 #   pixi run -e semantics object-detection --method SAM --test desk --point 523,651
 #   pixi run -e semantics object-detection --method YOLO --test desk --nms own
-#   pixi run -e semantics object-detection --method YOLO --evaluate data/detection_sets/room0 --images path/to/Replica/room0
+#   pixi run -e semantics object-detection --method YOLO --evaluate path/to/set --images path/to/Replica/room0
 #   pixi run -e semantics object-detection --method YOLO --tum $S --settings settings/TUM1.yaml --save detections/NAME --step 5
 
 import pyslam  # first: sets the OpenMP thread settings (and, on macOS, the MPS fallback) before torch is imported
@@ -115,7 +115,7 @@ def main():
         "for every object a detector finds; SAM gives the masks of what a point or a box points at",
         epilog="examples: pixi run -e semantics object-detection --method YOLO --test desk; pixi run -e semantics "
         "object-detection --method SAM --test desk --point 523,651; pixi run -e semantics object-detection --method "
-        "YOLO --evaluate data/detection_sets/room0 --images path/to/Replica/room0; pixi run -e semantics "
+        "YOLO --evaluate path/to/set --images path/to/Replica/room0; pixi run -e semantics "
         "object-detection --method YOLO --tum $S --settings settings/TUM1.yaml --save detections/NAME --step 5",
     )
     parser.add_argument("--method", default="YOLO", metavar="NAME", help="YOLO, YOLOE or SAM (default YOLO; see --list)")
@@ -149,8 +149,8 @@ def main():
     sequence.add_argument("--evaluate", metavar="DIR",
                           help="detect the images of a labelled set and score the detector against their true boxes "
                           "(DIR/boxes.json): AP50 per class, mAP50 and mAP50:95. The images are read from the folder "
-                          "given with --images (for data/detection_sets/room0, the room0 folder of the Replica "
-                          "package, or its results/ folder), or else from DIR/images/")
+                          "given with --images, or from its results/ folder (the layout of the Replica package), or "
+                          "else from DIR/images/")
     sequence.add_argument("--save", metavar="DIR",
                           help="write the detections of every frame to this folder (detections.csv, masks/, counts.csv, "
                           "info.json), for main_slam.py --detections DIR")
@@ -810,7 +810,7 @@ class LabelledSet:
     def __init__(self, folder, images=None):
         path = os.path.join(folder, "boxes.json")
         if not os.path.isfile(path):
-            sys.exit(f"--evaluate {folder}: no boxes.json there. The labelled set of Lab 04 is data/detection_sets/room0.")
+            sys.exit(f"--evaluate {folder}: no boxes.json there (the true boxes of a labelled set, in the COCO format).")
         with open(path) as f:
             self.gt = json.load(f)
         self.folder = folder
@@ -823,8 +823,8 @@ class LabelledSet:
             missing = [n for n in names if not os.path.isfile(os.path.join(self.image_folder, n))]
             where = f"neither in {images} nor in its results/ folder" if images else f"not in {places[0]}"
             sys.exit(f"--evaluate {folder}: {len(missing)} of its {len(names)} images (e.g. {missing[0]}) are {where}. "
-                     "The images of data/detection_sets/room0 are frames of Replica room0: give the room0 folder of "
-                     "the Replica package which pySLAM's README links, with --images path/to/Replica/room0.")
+                     "Give the folder of its images with --images: for frames of Replica, the scene's folder of the "
+                     "Replica package which pySLAM's README links, e.g. --images path/to/Replica/room0.")
         self.name = os.path.basename(os.path.normpath(folder))
         cats = self.gt["categories"]
         with_boxes = {a["category_id"] for a in self.gt["annotations"]}

@@ -74,7 +74,6 @@ data/slam_state
 data/kitti_trajectory.txt
 data/skyseg.onnx
 data/models/
-data/detection_sets/*/images/
 detections/
 
 pyslam/slam/cpp/tests_py/test_data
