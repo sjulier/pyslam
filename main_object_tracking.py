@@ -56,8 +56,8 @@ kScriptFolder = os.path.dirname(kScriptPath)
 
 # The trackers (--tracker): their settings file in settings/trackers/ (copies of Ultralytics' own) and what each does
 kTrackers = {
-    "BYTETRACK": ("bytetrack.yaml", "ByteTrack: a Kalman filter on each box, matched by box overlap in two passes, the "
-                  "confident boxes first, then the weak ones. The camera's motion is ignored"),
+    "BYTETRACK": ("bytetrack.yaml", "ByteTrack: a Kalman filter on each box, matched by box overlap in two stages, the "
+                  "high-score boxes first, then the low-score ones. The camera's motion is ignored"),
     "BOTSORT": ("botsort.yaml", "BoT-SORT: as ByteTrack, after compensating the camera's motion, estimated from the "
                 "image (sparse optical flow); appearance vectors can be added (with_reid, off by default)"),
 }
@@ -95,9 +95,9 @@ def main():
                         help="where the detector runs (default auto: an NVIDIA GPU, else Apple's GPU, else the CPU)")
     parser.add_argument("--conf", type=float, default=0.1,
                         help="the detector's lowest score: weaker boxes are not given to the tracker (default 0.1, as "
-                        "Ultralytics' track mode: the second pass needs the weak boxes)")
-    parser.add_argument("--second-pass", choices=("on", "off"), default="on",
-                        help="off: no second pass, so the weak boxes (between track_low_thresh and track_high_thresh) "
+                        "Ultralytics' track mode: the second stage needs the low-score boxes)")
+    parser.add_argument("--second-stage", choices=("on", "off"), default="on",
+                        help="off: no second stage, so the low-score boxes (between track_low_thresh and track_high_thresh) "
                         "are never matched to a track (default on)")
     parser.add_argument("--predict", choices=("tracker", "own"), default="tracker",
                         help="own: predict each box with predict_box() of pyslam/semantics/track_utils.py instead of the "
@@ -331,7 +331,7 @@ class Tracker:
 
         self.name, self.method, self.Printer = args.tracker, args.method, Printer
         self.conf = args.conf
-        self.second_pass = args.second_pass == "on"
+        self.second_stage = args.second_stage == "on"
 
         # the tracker's settings: settings/trackers/NAME.yaml (or Ultralytics' own, if the copy is missing)
         settings_name = kTrackers[self.name][0]
@@ -343,8 +343,8 @@ class Tracker:
             self.settings_path = str(check_yaml(settings_name))
         self.settings = read_yaml(self.settings_path)
         self.tracker_yaml = self.settings_path
-        if not self.second_pass:
-            # no box lies between the two thresholds, so the second pass has nothing to match
+        if not self.second_stage:
+            # no box lies between the two thresholds, so the second stage has nothing to match
             settings = dict(self.settings, track_low_thresh=self.settings["track_high_thresh"])
             with tempfile.NamedTemporaryFile("w", prefix="pyslam_tracker_", suffix=".yaml", delete=False) as f:
                 import yaml
@@ -355,8 +355,8 @@ class Tracker:
         keys = ("track_high_thresh", "track_low_thresh", "new_track_thresh", "track_buffer", "match_thresh")
         print(f"{self.name} settings: {os.path.relpath(self.settings_path, kScriptFolder)} ("
               + ", ".join(f"{k} {self.settings.get(k)}" for k in keys) + ")"
-              + ("" if self.second_pass else f"; --second-pass off: track_low_thresh is set to track_high_thresh "
-                 f"({self.settings['track_high_thresh']}), so no box is left for the second pass"))
+              + ("" if self.second_stage else f"; --second-stage off: track_low_thresh is set to track_high_thresh "
+                 f"({self.settings['track_high_thresh']}), so no box is left for the second stage"))
 
         # the device: CUDA, then Apple's MPS, then the CPU (or the one of --device)
         if args.device == "auto":
@@ -428,7 +428,7 @@ class Tracker:
 
     def track(self, img):
         """The tracked boxes of the next frame: a list of dicts (id, class, score, box x1 y1 x2 y2, mask or
-        None, second: matched in the second pass), and the time of the detector and the tracker."""
+        None, second: matched in the second stage), and the time of the detector and the tracker."""
         self.predicted = {}
         start = time.time()
         result = self.model.track(
@@ -523,7 +523,7 @@ class Windows:
             x1, y1, x2, y2 = (int(round(v)) for v in t["box"])
             colour = id_colour(t["id"])
             cv2.rectangle(shown, (x1, y1), (x2, y2), colour, 1 if t["second"] else 2, cv2.LINE_AA)
-            label(shown, f"{t['id']} {t['cls']}" + (" (2nd pass)" if t["second"] else ""), x1, y1, colour)
+            label(shown, f"{t['id']} {t['cls']}" + (" (2nd stage)" if t["second"] else ""), x1, y1, colour)
         cv2.imshow("Tracks", shown)
         cv2.setWindowTitle("Tracks", f"Tracks: {title}")
         cv2.imshow("Timeline", self._timeline(frame_id, history))
@@ -621,7 +621,7 @@ class Saver:
     def close(self, info):
         with open(os.path.join(self.folder, "tracks.csv"), "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["frame", "timestamp", "id", "class", "score", "x1", "y1", "x2", "y2", "second_pass", "mask_pixels"])
+            writer.writerow(["frame", "timestamp", "id", "class", "score", "x1", "y1", "x2", "y2", "second_stage", "mask_pixels"])
             for r in sorted(self.rows, key=lambda r: (r["frame"], r["id"])):
                 writer.writerow([r["frame"], repr(float(r["timestamp"])), r["id"], r["cls"], f"{r['score']:.4f}",
                                  *(f"{v:.1f}" for v in r["box"]), r["second"], r["mask_pixels"]])
@@ -693,7 +693,7 @@ def run(args, frames, tracker, Printer):
     if saver is not None:
         saver.close(dict(
             tracker=tracker.name, method=tracker.method, prompt=args.prompt, settings=tracker.settings,
-            settings_file=os.path.relpath(tracker.settings_path, kScriptFolder), second_pass=args.second_pass,
+            settings_file=os.path.relpath(tracker.settings_path, kScriptFolder), second_stage=args.second_stage,
             predict=args.predict, conf=args.conf, device=tracker.device_name, sequence=os.path.abspath(frames.source),
             frames_list=frames.list_name, step=args.step, summary=summary,
         ))
@@ -739,10 +739,10 @@ def print_summary(args, frames, tracker, history, seconds, num_boxes, num_second
             longest_id = max(history, key=lambda i: len(history[i]["frames"]))
             parts.append(f"longest track {len(history[longest_id]['frames'])} frames ({history[longest_id]['cls']}, identity {longest_id})")
             parts.append(f"{sum(1 for h in history.values() if len(h['frames']) < kShortTrack)} tracks shorter than {kShortTrack} frames")
-    if args.second_pass == "off":
-        parts.append("second pass off")
+    if args.second_stage == "off":
+        parts.append("second stage off")
     else:
-        parts.append(f"{num_second} of {num_boxes} boxes matched in the second pass")
+        parts.append(f"{num_second} of {num_boxes} boxes matched in the second stage")
     own = tracker.own_prediction
     if own is not None:
         if own.returned_none or own.failed or own.used == 0:
