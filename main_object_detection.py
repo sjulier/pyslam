@@ -620,13 +620,14 @@ class ImageWindow:
             cv2.setWindowTitle("Image", f"Image: {self.name}; the pixel ({int(x * self.scale)}, {int(y * self.scale)})")
 
 
-def wait_for_key():
+def wait_for_key(window="Image"):
+    """Until q or Esc, or until the window is closed with the mouse."""
     while True:
         key = cv2.waitKey(50) & 0xFF
         if key in (ord("q"), 27):
             return
         try:
-            if cv2.getWindowProperty("Image", cv2.WND_PROP_VISIBLE) < 1:
+            if cv2.getWindowProperty(window, cv2.WND_PROP_VISIBLE) < 1:
                 return
         except cv2.error:
             return
@@ -842,7 +843,7 @@ class LabelledSet:
 
 def coco_scores(gt, dets, cat_ids):
     """AP50 and AP50:95 of each class, and their means, with pycocotools (101 recall points, at most 100
-    detections per image); also the precision-recall curve of each class at IoU 0.5."""
+    detections of each class in each image); also the precision-recall curve of each class at IoU 0.5."""
     from pycocotools.coco import COCO
     from pycocotools.cocoeval import COCOeval
 
@@ -955,8 +956,7 @@ def run_evaluate(args, Printer):
         cv2.imshow("Precision-recall", draw_pr_curves(curves, names, f"{detector.method}, IoU 0.5: mAP50 {map50:.2f}"))
         cv2.setWindowTitle("Precision-recall", f"Precision-recall: each class at IoU 0.5 ({data.name})")
         print("Press q or Esc in a window to stop.")
-        while key_action(50) != "stop":
-            pass
+        wait_for_key("Precision-recall")
         cv2.destroyAllWindows()
 
 
