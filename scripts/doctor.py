@@ -204,6 +204,19 @@ def hidden_entries(folder, flags_of=None):
     return hidden
 
 
+def hidden_pth_files():
+    """The .pth files of the active Python's site-packages (macOS) that carry the BSD 'hidden' flag."""
+    import stat
+    import sysconfig
+    folder = sysconfig.get_paths()["purelib"]
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return []
+    return [os.path.join(folder, n) for n in names
+            if n.endswith(".pth") and getattr(os.lstat(os.path.join(folder, n)), "st_flags", 0) & stat.UF_HIDDEN]
+
+
 def check_macos_qt_plugins(r):
     # Qt lists its plugin folders without hidden entries: with the BSD 'hidden' flag on the environment's
     # files (seen on a Mac where every entry of .pixi had it; the cause is unknown), cv2.imshow stops with
@@ -308,7 +321,11 @@ def check_environment(r):
     # pySLAM is installed in editable mode, so the environment's pyslam package points into the checkout it belongs to
     ok, out = run_python("import pyslam, os; print(os.path.dirname(os.path.dirname(os.path.abspath(pyslam.__file__))))",
                          timeout=60, isolated=True)
-    if not ok:
+    if not ok and hidden_pth_files():
+        # Python 3.11.9+ ignores a .pth file with the BSD 'hidden' flag, and pySLAM's editable install is one
+        r.add("FAIL", "pyslam package", f"the environment's .pth files are marked hidden, so Python ignores them and the pyslam "
+              f"package is not found away from this folder: run `chflags -R nohidden {os.path.join(ROOT_DIR, '.pixi')}`")
+    elif not ok:
         r.add("WARN", "pyslam package", "the active Python has no pyslam package: is this the pySLAM environment? (the checks below use this checkout anyway)")
     elif os.path.realpath(out) != os.path.realpath(ROOT_DIR):
         r.add("WARN", "pyslam package", f"the active Python imports pyslam from {out}, not from this checkout: its native modules may not match")
