@@ -113,27 +113,22 @@ See the related discussion [here](https://github.com/luigifreda/pyslam/issues/22
 
 **What you see:** `pixi run slam` or one run of `pixi run slam-evaluation` stops processing frames part-way through a sequence and never continues. The process uses no CPU, the logs end in the middle of a frame (local mapping at `>>>> local optimization (LBA) ...`), and Ctrl-C does nothing.
 
-`slam-evaluation` stops such a run by itself and runs it again once: when a run has had no new frame, written no file and used almost no CPU for 100 times its mean time per frame (at least a minute; `--stall-factor` changes the 100, 0 turns it off). The stalled run's log, with every thread's stack at the end, is kept as `logs/log_stalled_1.txt` in its folder: please send it to the course team. (Native Windows has no SIGUSR1 to ask a run for its stacks, so there the run writes them itself after half that time without a new frame.)
+**Fixed** by the change to `cpp/casters/opencv_type_casters.h` described below. Native modules built (or prebuilt bundles fetched) before that change can still freeze: after updating, run `pixi run build`.
 
-**What to do** with `pixi run slam`: kill the process (close the terminal, or `pkill -f main_slam.py`; on Windows, end the `python.exe` processes in Task Manager) and run the command again. It is rare and timing-dependent, so the next run normally finishes.
+**What to do** with an older checkout: end the frozen process and run the command again. It is timing-dependent, so the next run normally finishes.
+- Linux, macOS, WSL2: press Ctrl-\ (SIGQUIT), or close the terminal, or `pkill -f main_slam.py`.
+- Native Windows (`pixi run -e default-win slam`): close the terminal window, or end the `python.exe` processes in Task Manager. Ctrl-C stops only the loop-detection worker, which prints a `KeyboardInterrupt` traceback. The freeze was more frequent there (2 of 14 runs on one PC, against 0 of 18 under WSL2 on the same PC).
 
-**On native Windows** (`pixi run -e default-win slam`) it is more frequent (2 of 14 runs on one PC on 17 Oct 2026, against 0 of 18 under WSL2 on the same PC), and Ctrl-C does not end a frozen run: it stops only the loop-detection worker, which prints a `KeyboardInterrupt` traceback, and the terminal stays frozen. Close the terminal window (or end the `python.exe` processes in Task Manager), then run the command again.
+`slam-evaluation` stops such a run by itself and runs it again once: when a run has had no new frame, written no file and used almost no CPU for 100 times its mean time per frame (at least a minute; `--stall-factor` changes the 100, 0 turns it off). The stalled run's log, with every thread's stack at the end, is kept as `logs/log_stalled_1.txt` in its folder: with the fix in place a stall is something new, so please report it with that log. (Native Windows has no SIGUSR1 to ask a run for its stacks, so there the run writes them itself after half that time without a new frame.)
 
-**What is known** (12–13 Oct 2026). It was seen twice in about 30 RGB-D runs of TUM `walking_halfsphere`, both on a 24-thread AMD laptop:
-- under WSL2 (course branch `comp0227-2026`) at frame 497;
-- under native Windows 11 (sjulier/pyslam#103) at frame 298.
+**Cause:** a deadlock between Python's GIL and the local map's lock.
+- Local mapping runs `local_BA()` with the GIL released. In `Map::locally_optimize()` → `LocalCovisibilityMap::update()` → `update_from_keyframes()` it holds `LocalMapBase::_lock` while it assigns the local map's point set (`pyslam/slam/cpp/map.cpp`). That assignment can free the last reference to a culled keyframe, and with it the keyframe's descriptors: a NumPy array that a `cv::Mat` uses without a copy. The allocator of such a Mat (`py_owned_mat_allocator::deallocate()`) took the GIL to release the array, so local mapping waited for the GIL while it held the lock.
+- Tracking holds the GIL and calls `self.map.local_map.is_empty()` (`pyslam/slam/tracking.py`). That binding keeps the GIL while `is_empty()` waits for the same lock.
+- Neither can go on, and every other Python thread waits for the GIL. Ctrl-C does nothing because Python runs its SIGINT handler only when the main thread (tracking) is back in Python code.
 
-It never happened in about 40 runs on two Macs. A `py-spy dump` of the Windows run shows where the threads are waiting:
-- **Tracking** waits in `track_local_map` on `self.map.local_map.is_empty()` (`pyslam/slam/tracking.py:695`). That is inside `with self.map.update_lock:` (`tracking.py:1370-1541`).
-- **Local mapping** waits inside the C++ `self.local_mapping_core.local_BA()` (`pyslam/slam/local_mapping.py:568`).
+Native stacks of real hangs (macOS `sample`, Linux `py-spy dump --native` and gdb) all show these two threads. Since evicted frames are freed (`Map::add_frame` drops their map point views), a keyframe often holds the last reference to its frame's descriptors, so a culled keyframe can free them inside local mapping. In tests on TUM fr1_xyz (RGB-D, headless) it froze in 28 of 515 runs (Apple M4 Max and WSL2), more often when the machine was busy.
 
-A possible cause is a lock-order inversion:
-- `is_empty` is bound without releasing the GIL (`pyslam/slam/cpp/py_module/map_module.h:524`), so tracking holds the GIL and the map's update lock while it waits for the local map's lock (`map.cpp:582`).
-- `local_BA` releases the GIL (`local_mapping_core_module.h:72`), and `Map::locally_optimize()` takes the local map's lock in `local_map->update()` before the bundle adjustment.
-
-This is not confirmed. For a deadlock, local mapping must be waiting on something tracking holds, but the path of `local_BA` takes neither the GIL nor the map's update lock (`locally_optimize()` passes no map lock to the bundle adjustment). It may instead wait on the lock of a keyframe or a map point: `update_keyframes()` holds the local map's lock while it reads the covisible keyframes of the reference keyframe. The lock local mapping waits on is not yet known: `py-spy dump --native --pid <pid>` during the next hang would show it. Candidate fixes, once it is:
-- release the GIL in the `LocalMapBase` getters bound for Python, as `local_BA` already does;
-- take the map's update lock and the local map's lock in the same order on both sides.
+**The fix:** `deallocate()` no longer waits for the GIL. A thread that holds it releases the NumPy array at once. Any other thread queues the array, and `Py_AddPendingCall()` has the interpreter's main thread release it with the GIL held. With the fix: 0 of 480 runs froze. `pyslam/slam/cpp/tests_py/test_slam_cpp_gil_lock_deadlock.py` reproduces the deadlock without SLAM (a thread updating the local map against a GIL-holding `is_empty()` loop, in a child process with a time limit).
 
 ---
 
