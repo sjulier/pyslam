@@ -405,6 +405,11 @@ models-depth-small = "bash scripts/install_extra.sh depth-small"
 [feature.semantics.tasks]
 # Segmentation and detection models (group ii): clone, patch, download the weights, check each one
 models-semantics = "bash scripts/install_extra.sh semantics"
+# Object detection (YOLO, YOLOE and SAM, from Ultralytics) on one image, a labelled set or a sequence;
+# models-detection downloads their weights (0.35 GB) and checks them (--set DIR also checks a labelled
+# set, and --images PATH its images)
+object-detection = "python main_object_detection.py"
+models-detection = "python scripts/install_detection.py"
 
 [feature.recon3d.tasks]
 # 3R models and Gaussian splatting (group iv): clone, patch, build the CUDA extensions, download the

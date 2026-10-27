@@ -3,37 +3,28 @@
 # This file is part of https://github.com/luigifreda/pyslam
 
 SCRIPT_DIR_=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd ) # get script dir
-# macOS-only helper to install lightweight compatibility shims for:
+# macOS-only helper to install a lightweight compatibility shim for:
 #   - pkg_resources  (so that:  from pkg_resources import packaging  works)
-#   - clip           (so that:  import clip; clip.load(...)          works)
 #
 # Motivation:
-#   - On some macOS + Python 3.11 setups, the legacy OpenAI CLIP repo
-#     and some third-party code (Detic, f3rm, etc.) still rely on:
+#   - On some macOS + Python 3.11 setups, some third-party code (e.g. older
+#     releases of OpenAI's CLIP package) still relies on:
 #         import pkg_resources
 #         from pkg_resources import packaging
 #     but the runtime environment may not ship a standalone
 #     `pkg_resources` package (it is often only an internal part of
 #     setuptools), causing ModuleNotFoundError during installation
 #     and import.
-#   - Similarly, Detic expects a top-level `clip` package that provides:
-#         import clip
-#         from clip.simple_tokenizer import SimpleTokenizer
-#     For pySLAM we can safely reuse the CLIP implementation already
-#     vendored via `f3rm`, and expose a thin wrapper under the standard
-#     `clip` module name.
 #
 # What this script does:
 #   - Detects the active Python environment (virtualenv / conda / system).
 #   - Resolves its `site-packages` directory.
 #   - If `import pkg_resources` fails, copies:
 #         thirdparty/shims/pkg_resources  ->  <site-packages>/pkg_resources
-#   - If `import clip` fails, copies:
-#         thirdparty/shims/clip           ->  <site-packages>/clip
-#   - If the real modules are already importable, it leaves them untouched.
+#   - If the real module is already importable, it leaves it untouched.
 #
-# This keeps the shims:
-#   - Optional (Linux users usually don't need them),
+# This keeps the shim:
+#   - Optional (Linux users usually don't need it),
 #   - Isolated to the Python env rather than the repo root,
 #   - Safe to run multiple times.
 SCRIPT_DIR_=$(readlink -f $SCRIPT_DIR_)  # this reads the actual path if a symbolic directory is used
@@ -91,7 +82,6 @@ fi
 print_blue "Detected site-packages: $SITE_PACKAGES"
 echo ""
 
-CLIP_SHIM_SRC="$ROOT_DIR/thirdparty/shims/clip"
 PKG_SHIM_SRC="$ROOT_DIR/thirdparty/shims/pkg_resources"
 
 install_shim_module () {
@@ -122,7 +112,6 @@ install_shim_module () {
 }
 
 install_shim_module "pkg_resources" "$PKG_SHIM_SRC"
-install_shim_module "clip" "$CLIP_SHIM_SRC"
 
 echo ""
 print_green "Done installing mac shims (where needed)."

@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     if hasattr(signal, "SIGUSR1"):  # Linux, macOS
         # every thread's stack to the log on SIGUSR1, even in a deadlock: slam-evaluation sends it
-        # to a run that stalls (pyslam/utilities/run_command.py)
+        # to a run that stalls (pyslam/utilities/run_command.py); Windows: see StallStackTimer below
         faulthandler.register(signal.SIGUSR1, all_threads=True)
 
 import time
@@ -69,6 +69,7 @@ if __name__ != "__mp_main__":
 
     from pyslam.viz.viewer3D import Viewer3D
     from pyslam.utilities.logging import Printer, LoggerQueue, FrameLog
+    from pyslam.utilities.run_command import StallStackTimer
     from pyslam.utilities.system import force_kill_all_and_exit
     from pyslam.utilities.img_management import ImgWriter
     from pyslam.utilities.evaluation import eval_ate
@@ -228,6 +229,40 @@ if __name__ == "__main__":
         metavar="PIXELS",
         help="grow the masked regions by this many pixels (default 0)",
     )
+    detected = parser.add_argument_group(
+        "detected objects in the map (COMP0227 Lab 04)",
+        "the detections written by `pixi run -e semantics object-detection --save DIR` for the same "
+        "sequence: each detection is lifted into the map with the pose and the depth of its frame, and "
+        "the end of the run merges the detections into objects (printed and drawn; no file is written)",
+    )
+    detected.add_argument(
+        "--detections",
+        metavar="DIR",
+        help="the folder of the detections: the Map Viewer draws each lifted detection, and the objects "
+        "merged so far, in the colour of its class",
+    )
+    detected.add_argument(
+        "--merge-radius",
+        type=float,
+        default=0.35,
+        metavar="M",
+        help="a detection joins the nearest object of its class whose centre lies within this distance "
+        "(default 0.35, in the map's units: metres with RGB-D)",
+    )
+    detected.add_argument(
+        "--lift-depth",
+        choices=("median", "centre"),
+        default="median",
+        help="median: the median depth under the mask, at the mask's centroid; centre: the depth at the "
+        "centre of the box (default median)",
+    )
+    detected.add_argument(
+        "--min-score",
+        type=float,
+        default=0.5,
+        metavar="S",
+        help="only the detections with at least this score are lifted (default 0.5)",
+    )
     parser.add_argument(
         "--plot-window",
         type=int,
@@ -276,6 +311,17 @@ if __name__ == "__main__":
         semantic_masks = SavedLabelMaps(args.semantic_mask, args.mask_classes, args.mask_dilation)
     elif args.mask_classes or args.mask_dilation or args.mask_after_init:
         parser.error("--mask-classes, --mask-dilation and --mask-after-init go with --semantic-mask")
+    saved_detections = None
+    if args.detections:
+        from pyslam.semantics.object_lifting import SavedDetections
+
+        try:
+            saved_detections = SavedDetections(args.detections, args.merge_radius, args.lift_depth, args.min_score)
+        except FileNotFoundError as e:
+            sys.exit(str(e))
+        Printer.green(f"Detections: {saved_detections.describe()}")
+    elif any(o in sys.argv for o in ("--merge-radius", "--lift-depth", "--min-score")):
+        parser.error("--merge-radius, --lift-depth and --min-score go with --detections")
     num_total_frames = dataset.num_frames
 
     online_trajectory_writer = None
@@ -520,6 +566,9 @@ if __name__ == "__main__":
     # with the times of the first and the latest, from this file
     progress_file_path = os.environ.get("PYSLAM_PROGRESS_FILE")
     progress_first_time = None
+    # Windows has no SIGUSR1 to ask a stalled run for its threads' stacks: there the run writes them
+    # itself when it has had no new frame for a while (None elsewhere, and without the stall check)
+    stall_stack_timer = StallStackTimer.create_if_needed(progress_file_path)
 
     img_id = 0  # 210, 340, 400, 770   # you can start from a desired frame id if needed
 
@@ -588,6 +637,15 @@ if __name__ == "__main__":
                         mask_right = mask if (mask is not None and img_right is not None) else None
                         slam.track(img, img_right, depth, img_id, timestamp, mask=mask, mask_right=mask_right)  # main SLAM function
 
+                        # the detections of this frame, lifted with its pose and depth (--detections)
+                        if saved_detections and slam.tracking.state == SlamState.OK and slam.tracking.cur_R is not None:
+                            Twc = np.eye(4)
+                            Twc[:3, :3] = slam.tracking.cur_R
+                            Twc[:3, 3] = np.asarray(slam.tracking.cur_t).reshape(3)
+                            depth_m = depth.astype(np.float32) * camera.depth_factor if depth is not None else None
+                            if saved_detections.lift_frame(img_id, timestamp, camera, Twc, depth=depth_m, frame=slam.tracking.f_cur) and viewer3D:
+                                viewer3D.draw_objects(saved_detections.viewer_groups())
+
                         # 3D display (map display)
                         if viewer3D:
                             viewer3D.draw_slam_map(slam)
@@ -632,6 +690,8 @@ if __name__ == "__main__":
                                 f.write(f"{num_frames} {progress_first_time:.3f} {now:.3f}\n")
                         except OSError:
                             pass
+                        if stall_stack_timer:
+                            stall_stack_timer.restart()
                     if FrameLog.is_to_file() and (num_frames == 1 or num_frames % 100 == 0):
                         # the first frame (tracking has started), then every 100 frames; the details of
                         # every frame are in logs/tracking.log
@@ -831,6 +891,25 @@ if __name__ == "__main__":
         if final_trajectory_writer:
             final_trajectory_writer.write_full_trajectory(est_poses, timestamps)
             final_trajectory_writer.close_file()
+
+        # --detections: lifted again with the final trajectory, and merged into objects (printed, not saved)
+        if saved_detections:
+            if saved_detections.num_frames_matched == 0:
+                Printer.orange(f"--detections {args.detections}: no frame of this sequence has detections (another sequence?)")
+            elif est_poses:
+                Printer.green(
+                    f"Detections: {len(saved_detections.lifted)} of {saved_detections.num_used} with a score of at least "
+                    f"{args.min_score:g} lifted in {saved_detections.num_frames_matched} frames, with {saved_detections.depth_source} "
+                    f"({'the median under the mask' if args.lift_depth == 'median' else 'the depth at the box centre'}); "
+                    f"{saved_detections.num_not_lifted} had no depth there"
+                )
+                if is_monocular:
+                    Printer.yellow("Monocular: the map has a scale of its own, so the positions and --merge-radius are in its units, not in metres")
+                line, objects = saved_detections.finish(est_poses, ids, unit="map units" if is_monocular else "m")
+                for o in objects:  # the class, the number of detections and their spread; the positions are in the Map Viewer
+                    spread = f"{o['spread']:.2f} map units" if is_monocular else f"{o['spread'] * 100:3.0f} cm"
+                    print(f"    {o['cls']:16s} {o['n']:4d} detection{'s' if o['n'] != 1 else ' '}  spread {spread}")
+                Printer.green(line)
 
         # The same run's trajectory with the frames' relative poses as tracked, as ORB-SLAM2/3 (they do not
         # follow the map's later scale changes): saved next to it with its ATE, to compare (see

@@ -351,13 +351,12 @@ class SemanticSegmentationYolo(SemanticSegmentationBase):
 
     @torch.no_grad()
     def infer(self, image) -> SemanticSegmentationOutput:
-        import cv2  # type: ignore[import-not-found]
-
         image = self._prepare_image(image)
-        img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+        # pySLAM's images are BGR (OpenCV), and ultralytics reads a NumPy array as BGR too, so the image
+        # is passed as it is: converting it to RGB here made the network see red and blue swapped
         results = self.model.predict(
-            source=img_rgb,
+            source=image,
             task="segment",
             conf=self.confidence_threshold,
             device=str(self.device),
@@ -453,9 +452,10 @@ class SemanticSegmentationYolo(SemanticSegmentationBase):
         except Exception:
             return self.semantic_color_map_obj.to_rgb(semantics, bgr=bgr)
 
+        # plot() draws on the image as it was given to predict(): BGR
         if bgr:
-            return cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR)
-        return annotated
+            return annotated
+        return cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
 
     def sem_img_to_rgb(self, semantic_img, bgr=False):
         return self.semantic_color_map_obj.sem_img_to_rgb(semantic_img, bgr=bgr)
