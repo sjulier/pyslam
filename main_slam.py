@@ -344,7 +344,8 @@ if __name__ == "__main__":
         parser.error("--lift-depth and --min-score go with --detections")
     saved_tracks = None
     if args.tracks:
-        from pyslam.semantics.track_lifting import SavedTracks, class_colour_rgb
+        from pyslam.semantics.object_lifting import class_colour_rgb
+        from pyslam.semantics.track_lifting import SavedTracks
 
         try:
             saved_tracks = SavedTracks(args.tracks, args.static_radius, args.merge_radius)
@@ -981,7 +982,7 @@ if __name__ == "__main__":
                         "Monocular: the map has a scale of its own, so --static-radius and --merge-radius are in its "
                         "units, not in metres"
                     )
-                objects_line, objects = saved_tracks.objects(est_poses, ids)
+                objects_line, objects = saved_tracks.objects(est_poses, ids, unit="map units" if is_monocular else "m")
                 Printer.green(objects_line)
                 for line in saved_tracks.object_lines(objects, metric=not is_monocular):
                     print(line)

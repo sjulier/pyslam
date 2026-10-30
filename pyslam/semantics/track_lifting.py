@@ -19,18 +19,22 @@
 
 # Tracks in the map: main_slam.py --tracks DIR reads the tracked boxes which main_object_tracking.py
 # --save DIR wrote for the same sequence, and lifts each box of each frame into the map with the pose
-# of that frame (every frame, not only the keyframes) and its depth:
+# of that frame (every frame, not only the keyframes) and its depth, as main_slam.py --detections
+# lifts a detection (lift_mask() of pyslam/semantics/object_lifting.py, with the median depth):
 #
 #   the point of the box in the camera:  p_c = z K^-1 [u, v, 1]^T
-#       (u, v): the centroid of the box's mask (the centre of the box if there is no mask)
+#       (u, v): the centroid of the box's mask (the inner half of the box if there is no mask)
 #       z:      the median depth of the mask's pixels (with RGB-D), or of the map points SLAM
 #               tracks inside the mask (monocular: in the map's own, unknown, scale)
 #   the point in the map:                p_w = T_wc p_c
 #
 # A track becomes a path in the map. At the end, the boxes are lifted again with the final trajectory
-# (after bundle adjustment and loop closing); a track whose points stay within --static-radius of their
-# median is static, and the static tracks of one class whose centres lie within --merge-radius of each
-# other are merged into one object. The objects are printed and drawn; no file of them is written.
+# (after bundle adjustment and loop closing). A track with kMinLifted or more lifted boxes is static if
+# 90 % of its points lie within --static-radius of their median, which is its centre; its class is the
+# class most of its boxes carry. The static tracks are merged into objects by merge_into_objects() of
+# object_lifting.py, as the detections are, with the track's number of lifted boxes as its order (the
+# longest first) and as its weight in the object's centre. The objects are printed and drawn; no file
+# of them is written.
 
 import csv
 import json
@@ -39,10 +43,9 @@ import os
 import cv2
 import numpy as np
 
-kMinMaskPixels = 50  # pixels with a depth inside the mask (as Lecture 03's object map), else the box is not lifted
-kMinMapPoints = 3  # monocular: map points inside the mask
+from pyslam.semantics.object_lifting import kTimestampTolerance, lift_mask, map_points_in_camera, merge_into_objects
+
 kMinLifted = 5  # lifted boxes a track needs to be called static or moving
-kTimestampTolerance = 1e-3  # s: a box belongs to the frame of SLAM with this timestamp
 kStaticPercentile = 90  # the spread of a track: this percentile of the distances of its points to their median
 
 
@@ -106,7 +109,7 @@ class SavedTracks:
         if not os.path.isfile(path):
             return None
         ids = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-        if ids is None or ids.shape[:2] != shape[:2]:
+        if ids is None or ids.shape[:2] != tuple(shape[:2]):
             return None
         return ids
 
@@ -123,42 +126,16 @@ class SavedTracks:
         map_uv = map_depth = None
         if depth is None and frame is not None:
             map_uv, map_depth = map_points_in_camera(frame)
-        Kinv = np.linalg.inv(np.array([[camera.fx, 0, camera.cx], [0, camera.fy, camera.cy], [0, 0, 1.0]]))
+        self.depth_source = ("the depth images" if depth is not None else "the map points (monocular: the map's own scale)")
         num = 0
         for r in rows:
-            x1, y1, x2, y2 = r["box"]
-            if ids is not None:
-                mask = ids == r["id"]
-            else:  # no mask: the inner half of the box
-                mask = np.zeros(shape, bool)
-                cx, cy, w, h = (x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1
-                mask[max(int(cy - h / 4), 0):int(cy + h / 4) + 1, max(int(cx - w / 4), 0):int(cx + w / 4) + 1] = True
-            vv, uu = np.nonzero(mask)
-            if len(uu) == 0:
+            mask = (ids == r["id"]) if ids is not None else None
+            lifted = lift_mask(mask, r["box"], camera, Twc, depth=depth, map_uv=map_uv, map_depth=map_depth, how="median")
+            if lifted is None:
                 self.num_not_lifted += 1
                 continue
-            u, v = float(uu.mean()), float(vv.mean())
-            z = None
-            if depth is not None:
-                self.depth_source = "the depth images"
-                zs = depth[mask]
-                zs = zs[zs > 0]
-                if len(zs) >= kMinMaskPixels:
-                    z = float(np.median(zs))
-            elif map_uv is not None and len(map_uv):
-                self.depth_source = "the map points (monocular: the map's own scale)"
-                pu = np.clip(np.rint(map_uv[:, 0]).astype(int), 0, shape[1] - 1)
-                pv = np.clip(np.rint(map_uv[:, 1]).astype(int), 0, shape[0] - 1)
-                inside = mask[pv, pu]
-                if np.count_nonzero(inside) >= kMinMapPoints:
-                    z = float(np.median(map_depth[inside]))
-            if z is None:
-                self.num_not_lifted += 1
-                continue
-            p_c = z * (Kinv @ np.array([u, v, 1.0]))
-            p_w = (Twc @ np.append(p_c, 1.0))[:3]
-            self.lifted.append(dict(frame=int(slam_frame_id), timestamp=float(timestamp), id=r["id"], cls=r["cls"],
-                                    uv=(u, v), z=z, p_c=p_c, p_w=p_w))
+            lifted.update(frame=int(slam_frame_id), timestamp=float(timestamp), id=r["id"], cls=r["cls"])
+            self.lifted.append(lifted)
             num += 1
         return num
 
@@ -169,12 +146,13 @@ class SavedTracks:
             by_id.setdefault(l["id"], []).append(l["p_w"])
         return [(np.asarray(p, np.float64), id_colour_rgb(i)) for i, p in by_id.items()]
 
-    def objects(self, poses, frame_ids):
+    def objects(self, poses, frame_ids, unit="m"):
         """Lift the boxes again with the final trajectory (poses: T_wc of the frames frame_ids), split the
-        tracks into static and moving, and merge the static ones into objects. Returns the summary line
-        and the objects: dicts with the class, the centre, the tracks, the number of boxes and the spread
-        (the distance from the centre within which 90 % of the object's points lie). Nothing is written to
-        a file: the objects are printed and drawn only."""
+        tracks into static and moving, and merge the static ones into objects (merge_into_objects():
+        the longest first, each weighted by its lifted boxes). unit: "m", or "map units" for a monocular
+        map. Returns the summary line and the objects: dicts with the class, the centre, the tracks, the
+        number of boxes and the spread (the distance from the centre within which 90 % of the object's
+        points lie). Nothing is written to a file: the objects are printed and drawn only."""
         final = {int(i): np.asarray(T, np.float64) for i, T in zip(frame_ids, poses)}
         by_id = {}
         for l in self.lifted:
@@ -195,34 +173,22 @@ class SavedTracks:
         used = [t for t in tracks if t["n"] >= kMinLifted]
         static = [t for t in used if t["spread"] < self.static_radius]
         moving = [t for t in used if t["spread"] >= self.static_radius]
+        # a track is an item of merge_into_objects(): its lifted boxes are its order and its weight
+        merged = merge_into_objects([dict(cls=t["cls"], centre=t["centre"], order=t["n"], weight=t["n"]) for t in static],
+                                    self.merge_radius)
         objects = []
-        for t in sorted(static, key=lambda t: -t["n"]):  # greedy, the longest tracks first
-            best = None
-            for o in objects:
-                if o["cls"] != t["cls"]:
-                    continue
-                d = float(np.linalg.norm(o["centre"] - t["centre"]))
-                if d <= self.merge_radius and (best is None or d < best[0]):
-                    best = (d, o)
-            if best is None:
-                objects.append(dict(cls=t["cls"], centre=t["centre"].copy(), tracks=[t["id"]], n=t["n"], points=[t["points"]]))
-            else:
-                o = best[1]
-                o["centre"] = (o["centre"] * o["n"] + t["centre"] * t["n"]) / (o["n"] + t["n"])
-                o["tracks"].append(t["id"])
-                o["n"] += t["n"]
-                o["points"].append(t["points"])
-        for o in objects:
-            P = np.concatenate(o.pop("points"))
-            o["spread"] = float(np.percentile(np.linalg.norm(P - o["centre"], axis=1), kStaticPercentile))
-        objects.sort(key=lambda o: -o["n"])
+        for o in merged:  # the largest first
+            members = [static[i] for i in o["members"]]
+            P = np.concatenate([t["points"] for t in members])
+            objects.append(dict(cls=o["cls"], centre=o["centre"], tracks=[t["id"] for t in members], n=o["n"],
+                                spread=float(np.percentile(np.linalg.norm(P - o["centre"], axis=1), kStaticPercentile))))
         counts = {}
         for o in objects:
             counts[o["cls"]] = counts.get(o["cls"], 0) + 1
         listed = ", ".join(f"{c} x{n}" for c, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
         line = (f"Objects: {len(objects)} from {len(static)} static tracks" + (f": {listed}" if listed else "")
-                + f"; moving: {len(moving)} tracks (static: within {self.static_radius:.2f} m of their centre; "
-                f"merged: the same class within {self.merge_radius:.2f} m; {len(tracks) - len(used)} tracks with fewer "
+                + f"; moving: {len(moving)} tracks (static: within {self.static_radius:.2f} {unit} of their centre; "
+                f"merged: the same class within {self.merge_radius:.2f} {unit}; {len(tracks) - len(used)} tracks with fewer "
                 f"than {kMinLifted} lifted boxes left out)")
         return line, objects
 
@@ -235,38 +201,3 @@ class SavedTracks:
             f"{o['n']} boxes; 90 % of its points within {o['spread']:.2f} {unit}"
             for o in objects
         ]
-
-
-def class_colour_rgb(name):
-    """A colour for each class (the same in every run), RGB in [0, 1], for the objects in the Map Viewer."""
-    return id_colour_rgb(sum((i + 1) * ord(c) for i, c in enumerate(name)))
-
-
-def map_points_in_camera(frame):
-    """The pixel positions (N x 2) and depths (N) of the map points which SLAM tracks in its current
-    frame, from the frame's keypoints, its map points and its pose; (None, None) if they cannot be read."""
-    try:
-        kps = np.asarray(frame.kps, np.float64).reshape(-1, 2)
-        points = frame.get_points() if hasattr(frame, "get_points") else frame.points
-        Tcw = np.asarray(frame.Tcw() if callable(getattr(frame, "Tcw", None)) else frame.pose(), np.float64)
-    except Exception:
-        return None, None
-    if points is None:
-        return None, None
-    uv, zs = [], []
-    for i, p in enumerate(points):
-        if p is None or i >= len(kps):
-            continue
-        try:
-            if p.is_bad():
-                continue
-            pw = p.pt() if callable(getattr(p, "pt", None)) else p.pt
-        except Exception:
-            continue
-        pc = Tcw[:3, :3] @ np.asarray(pw, np.float64).reshape(3) + Tcw[:3, 3]
-        if pc[2] > 0:
-            uv.append(kps[i])
-            zs.append(pc[2])
-    if not uv:
-        return np.zeros((0, 2)), np.zeros(0)
-    return np.asarray(uv), np.asarray(zs)
