@@ -22,9 +22,11 @@
 # rgb.txt, unless --associations names another list): every object the tracker keeps gets
 # an identity, a number which should stay the same while the object is in view. The detector is
 # YOLO (or YOLOE with a text prompt), the trackers ByteTrack and BoT-SORT, through Ultralytics' track
-# mode (model.track(persist=True, tracker=...)), with their settings in settings/trackers/.
+# mode (model.track(persist=True, tracker=...)), with their settings in settings/trackers/. SORT
+# (pyslam/semantics/sort_tracker.py), one association on the high-score boxes, runs the same way, for
+# comparison.
 #
-# --predict own replaces the trackers' prediction step with predict_box() of
+# --predict own replaces the ByteTrack and BoT-SORT prediction step with predict_box() of
 # pyslam/semantics/track_utils.py. --evaluate DIR scores the tracker against known tracks (MOTA, IDF1
 # and HOTA, pyslam/semantics/tracking_scores.py). --save DIR writes the tracked boxes (and masks) of
 # every frame for main_slam.py --tracks DIR, which lifts them into the map.
@@ -32,6 +34,7 @@
 #   pixi run -e semantics object-tracking --list
 #   pixi run -e semantics object-tracking --tracker BYTETRACK --tum $S --settings settings/TUM3.yaml
 #   pixi run -e semantics object-tracking --tracker BOTSORT --video data/videos/kitti06/video_color.mp4
+#   pixi run -e semantics object-tracking --tracker SORT --tum $S --settings settings/TUM3.yaml
 #   pixi run -e semantics object-tracking --tracker BYTETRACK --evaluate data/tracking_sets/NAME
 #   pixi run -e semantics object-tracking --tracker BOTSORT --tum $S --settings settings/TUM3.yaml --save tracks/NAME
 
@@ -60,6 +63,15 @@ kTrackers = {
                   "high-score boxes first, then the low-score ones. The camera's motion is ignored"),
     "BOTSORT": ("botsort.yaml", "BoT-SORT: as ByteTrack, after compensating the camera's motion, estimated from the "
                 "image (sparse optical flow); appearance vectors can be added (with_reid, off by default)"),
+    "SORT": ("sort.yaml", "SORT: a Kalman filter on each box (its centre, area and aspect ratio), matched once by box "
+             "overlap to the high-score boxes; a track is reported after 3 matches in a row and deleted at its second "
+             "frame without a box. No second stage, no camera motion, no appearance"),
+}
+# The settings each tracker's run prints
+kTrackerKeys = {
+    "BYTETRACK": ("track_high_thresh", "track_low_thresh", "new_track_thresh", "track_buffer", "match_thresh"),
+    "BOTSORT": ("track_high_thresh", "track_low_thresh", "new_track_thresh", "track_buffer", "match_thresh"),
+    "SORT": ("det_thresh", "iou_threshold", "min_hits", "max_age"),
 }
 # The detectors (--method) which feed them: their weights, in data/models/
 kMethods = {
@@ -143,6 +155,11 @@ def main():
         parser.error("give a sequence (--tum, --video or --images) or --evaluate DIR")
     if args.step < 1:
         parser.error("--step must be 1 or more")
+    if args.tracker == "SORT" and args.predict == "own":
+        parser.error("--predict own is for BYTETRACK and BOTSORT: SORT's Kalman state (centre, area, aspect ratio and "
+                     "three velocities) is not the one of predict_box()")
+    if args.tracker == "SORT" and args.second_stage == "off":
+        parser.error("SORT has no second stage: --second-stage is for BYTETRACK and BOTSORT")
     if importlib.util.find_spec("ultralytics") is None or importlib.util.find_spec("lap") is None:
         sys.exit("object-tracking needs the semantics level: run this command with `pixi run -e semantics object-tracking ...`.")
 
@@ -322,7 +339,7 @@ class OwnPrediction:
 
 
 class Tracker:
-    """A detector (YOLO or YOLOE) and a tracker (ByteTrack or BoT-SORT), through Ultralytics' track mode."""
+    """A detector (YOLO or YOLOE) and a tracker (ByteTrack, BoT-SORT or SORT), through Ultralytics' track mode."""
 
     def __init__(self, args, Printer):
         import torch
@@ -352,7 +369,7 @@ class Tracker:
                 yaml.safe_dump(settings, f)
             self.tracker_yaml = f.name
             atexit.register(lambda path=f.name: os.path.exists(path) and os.remove(path))
-        keys = ("track_high_thresh", "track_low_thresh", "new_track_thresh", "track_buffer", "match_thresh")
+        keys = kTrackerKeys[self.name]
         print(f"{self.name} settings: {os.path.relpath(self.settings_path, kScriptFolder)} ("
               + ", ".join(f"{k} {self.settings.get(k)}" for k in keys) + ")"
               + ("" if self.second_stage else f"; --second-stage off: track_low_thresh is set to track_high_thresh "
@@ -409,15 +426,25 @@ class Tracker:
                     self.predicted[t.track_id] = box_from_state(t.mean, _state)
 
             tracker_class.multi_predict = multi_predict
-        original_update = BYTETracker.update  # BoT-SORT uses ByteTrack's update()
+        # SORT: added to Ultralytics' trackers, as tracker_type "sort" of settings/trackers/sort.yaml
+        from ultralytics.trackers import track as ultralytics_track
+        from pyslam.semantics.sort_tracker import SORT
 
-        def update(tracker, *a, **kw):
-            start = time.time()
-            out = original_update(tracker, *a, **kw)
-            self.tracker_seconds.append(time.time() - start)
-            return out
+        ultralytics_track.TRACKER_MAP["sort"] = SORT
+        self.sort = None  # the SORT tracker of the run, for its counts in the summary
+        for tracker_class in (BYTETracker, SORT):  # BoT-SORT uses ByteTrack's update()
+            original_update = tracker_class.__dict__["update"]
 
-        BYTETracker.update = update
+            def update(tracker, *a, _original=original_update, **kw):
+                start = time.time()
+                out = _original(tracker, *a, **kw)
+                self.tracker_seconds.append(time.time() - start)
+                if isinstance(tracker, SORT):
+                    self.sort = tracker
+                    self.predicted = dict(tracker.predicted)
+                return out
+
+            tracker_class.update = update
         self.own_prediction = None
         if args.predict == "own":
             self.own_prediction = OwnPrediction(Printer)
@@ -443,7 +470,7 @@ class Tracker:
         scores = boxes.conf.cpu().numpy()
         classes = boxes.cls.int().cpu().tolist()
         masks = result.masks.data.cpu().numpy() > 0.5 if result.masks is not None else None
-        high = float(self.settings["track_high_thresh"])
+        high = float(self.settings["track_high_thresh"] if "track_high_thresh" in self.settings else self.settings["det_thresh"])
         tracks = []
         for k, track_id in enumerate(ids):
             mask = masks[k] if masks is not None else None
@@ -739,7 +766,12 @@ def print_summary(args, frames, tracker, history, seconds, num_boxes, num_second
             longest_id = max(history, key=lambda i: len(history[i]["frames"]))
             parts.append(f"longest track {len(history[longest_id]['frames'])} frames ({history[longest_id]['cls']}, identity {longest_id})")
             parts.append(f"{sum(1 for h in history.values() if len(h['frames']) < kShortTrack)} tracks shorter than {kShortTrack} frames")
-    if args.second_stage == "off":
+    if tracker.name == "SORT":
+        sort = tracker.sort
+        parts.append(f"no second stage (boxes of {tracker.settings['det_thresh']} or more)"
+                     + (f"; {sort.num_started} tracks started, {sort.num_held} matched boxes held back while their track "
+                        f"was on probation" if sort is not None else ""))
+    elif args.second_stage == "off":
         parts.append("second stage off")
     else:
         parts.append(f"{num_second} of {num_boxes} boxes matched in the second stage")
