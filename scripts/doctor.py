@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-IS_WINDOWS = sys.platform == "win32"  # native Windows (experimental): the environment default-win
+IS_WINDOWS = sys.platform == "win32"  # native Windows (experimental): the same environments, on the CPU
 GB = 1024**3
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
@@ -42,9 +42,8 @@ class Report:
         print(f"\n== {title}", flush=True)
 
     def add(self, status, name, detail=""):
-        if IS_WINDOWS:  # the commands that the messages name, as they are typed on Windows
+        if IS_WINDOWS:  # the commands that the messages name, as they are typed on Windows (one build task)
             detail = re.sub(r"pixi run build(-[a-z0-9-]+)?", "pixi run build", detail)
-            detail = detail.replace("pixi run ", "pixi run -e default-win ")
         self.items.append({"status": status, "name": name, "detail": detail})
         print(f"  {status:<4}  {name}" + (f": {detail}" if detail else ""), flush=True)
 
