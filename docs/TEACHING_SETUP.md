@@ -48,9 +48,9 @@ The steps are those of this page, with these differences:
   winget install --id Git.Git -e
   powershell -ExecutionPolicy ByPass -c "irm -useb https://pixi.sh/install.ps1 | iex"
   ```
-- **Every `pixi run` command takes `-e default-win`**: `pixi run -e default-win build`,
-  `pixi run -e default-win check`, `pixi run -e default-win models`,
-  `pixi run -e default-win slam --headless`, `pixi run -e default-win doctor`.
+- **The commands are the same as on Linux and macOS**: `pixi run build`, `pixi run check`,
+  `pixi run models`, `pixi run slam --headless`, `pixi run doctor`, `pixi run -e semantics ...`.
+  `-e default-win`, the name of the default level there in earlier instructions, still works.
 - **Nothing is compiled**: `build` installs pySLAM's C++ modules ready-made (about 40 MB of
   downloads). If there is no ready-made copy for your version of pySLAM, `build` needs Microsoft's
   compiler, and stops with a message when it does not find it.
@@ -59,11 +59,16 @@ The steps are those of this page, with these differences:
   6.5 minutes against 3 with ORB features, and tracked every frame. If tracking is lost, slow the
   playback down with `--speed 0.2` or `--throttle` (see the next section).
 
-Not available on native Windows: a GPU for PyTorch, the other learned features and place recognition
-models (`models-all-features`, `models-all-vpr`), the TensorFlow-based features, and the levels
-above the default one (depth prediction, semantic segmentation, 3D reconstruction).
+- **Part of the semantics level** (`-e semantics`): Ultralytics' detectors and trackers
+  (`object-detection`, `object-tracking`, `models-detection`) and SegFormer and CLIP
+  (`semantic-segmentation`), on the CPU. `-e depth` exists too, but without the depth models.
 
-**Not tested yet** (please report what you find, with the output of `pixi run -e default-win doctor`):
+Not available on native Windows: a GPU for PyTorch, the other learned features and place recognition
+models (`models-all-features`, `models-all-vpr`), the TensorFlow-based features, the depth and 3D
+reconstruction levels, and the rest of the semantics level (RF-DETR, Detic, EOV-Seg, ODISE,
+`models-semantics`).
+
+**Not tested yet** (please report what you find, with the output of `pixi run doctor`):
 
 - a machine **without Visual Studio**: both test machines had it installed. pySLAM should not need
   it, but this has not been shown;

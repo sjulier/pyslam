@@ -200,9 +200,9 @@ def check_method(args):
         print("    " + " ".join(kMethods), file=sys.stderr)
         sys.exit(2)
     if sys.platform == "win32" and args.method != "DEPTH_SGBM":
-        # pixi.toml has no depth level for native Windows (only default-win)
+        # the depth level exists on native Windows, but without the depth models (pixi.toml)
         sys.exit(
-            f"{args.method} needs the depth level, which native Windows does not have: run it in WSL2, or score "
+            f"{args.method} needs the depth models, which the depth level does not have on native Windows: run it in WSL2, or score "
             "the depth maps of a member of your group with --tum ... --load NAME, which runs here."
         )
     if args.method in kNeeds and importlib.util.find_spec(kNeeds[args.method]) is None:

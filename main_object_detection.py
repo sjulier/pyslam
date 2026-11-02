@@ -202,8 +202,6 @@ def main():
     if args.conf is None:
         args.conf = kEvaluateConf if args.evaluate else 0.25
     if importlib.util.find_spec("ultralytics") is None:
-        if os.name == "nt":
-            sys.exit("object-detection needs the semantics level, which does not exist on native Windows: use WSL2.")
         sys.exit("object-detection needs the semantics level: run this command with `pixi run -e semantics object-detection ...`.")
 
     from pyslam.utilities.logging import Printer
