@@ -31,6 +31,7 @@
 #include <gtsam/geometry/Cal3_S2.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/inference/Symbol.h>
+#include <gtsam/nonlinear/NoiseModelFactorN.h>  // GTSAM 4.3: needed before gtsam_factors' headers
 #include <gtsam_factors/weighted_projection_factors.h>
 
 #include "camera_factors_gtsam.h"
@@ -74,9 +75,9 @@ void test_gtsam_pinhole_matches_cal3_s2() {
     gtsam::Matrix point_jacobian;
     gtsam::Matrix reference_pose;
     gtsam::Matrix reference_point;
-    const gtsam::Vector error = factor.evaluateError(pose, point, pose_jacobian, point_jacobian);
+    const gtsam::Vector error = factor.evaluateError(pose, point, &pose_jacobian, &point_jacobian);
     const gtsam::Vector reference_error =
-        reference.evaluateError(pose, point, reference_pose, reference_point);
+        reference.evaluateError(pose, point, &reference_pose, &reference_point);
     require_close(error, reference_error, 1e-9, "pinhole gtsam residual");
     require_close(pose_jacobian, reference_pose, 1e-8, "pinhole gtsam pose Jacobian");
     require_close(point_jacobian, reference_point, 1e-8, "pinhole gtsam point Jacobian");
@@ -85,7 +86,7 @@ void test_gtsam_pinhole_matches_cal3_s2() {
     const gtsam::Point3 behind(0.0, 0.0, -1.0);
     gtsam::Matrix behind_pose;
     gtsam::Matrix behind_point;
-    const gtsam::Vector behind_error = factor.evaluateError(identity, behind, behind_pose, behind_point);
+    const gtsam::Vector behind_error = factor.evaluateError(identity, behind, &behind_pose, &behind_point);
     require_close(behind_error, gtsam::Vector2::Constant(2.0 * camera.fx), 1e-12,
                   "invalid pinhole residual");
     require_close(behind_pose, gtsam::Matrix::Zero(2, 6), 1e-12, "invalid pinhole pose Jacobian");
@@ -103,9 +104,9 @@ void test_gtsam_kannala_brandt_jacobian() {
 
     gtsam::Matrix pose_jacobian;
     gtsam::Matrix point_jacobian;
-    factor.evaluateError(pose, point, pose_jacobian, point_jacobian);
+    factor.evaluateError(pose, point, &pose_jacobian, &point_jacobian);
     gtsam::Matrix resection_jacobian;
-    resection.evaluateError(pose, resection_jacobian);
+    resection.evaluateError(pose, &resection_jacobian);
     require_close(resection_jacobian, pose_jacobian, 1e-12, "resectioning matches the projection factor");
 
     const double eps = 1e-6;
@@ -166,8 +167,8 @@ void benchmark_pinhole_factors() {
     };
     compare("gtsam error", [&] { sink = reference.evaluateError(pose_wc, point).sum(); },
             [&] { sink = model.evaluateError(pose_wc, point).sum(); });
-    compare("gtsam linearize", [&] { sink = reference.evaluateError(pose_wc, point, H1, H2).sum(); },
-            [&] { sink = model.evaluateError(pose_wc, point, H1, H2).sum(); });
+    compare("gtsam linearize", [&] { sink = reference.evaluateError(pose_wc, point, &H1, &H2).sum(); },
+            [&] { sink = model.evaluateError(pose_wc, point, &H1, &H2).sum(); });
 }
 
 } // namespace

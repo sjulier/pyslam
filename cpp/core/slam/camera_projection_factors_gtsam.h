@@ -33,6 +33,9 @@
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/linear/NoiseModel.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
+// GTSAM 4.3: NoiseModelFactorN (and the deprecated NoiseModelFactor2 macro that gtsam_factors still uses)
+// live here, and NonlinearFactor.h does not include it
+#include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam_factors/weighted_projection_factors.h>
 
 #include <cassert>
@@ -68,9 +71,9 @@ CameraWorldProjection project_world_point(const CameraT &camera, const gtsam::Po
 }
 
 template <typename CameraT>
-class CameraProjectionFactor : public gtsam::NoiseModelFactor2<gtsam::Pose3, gtsam::Point3> {
+class CameraProjectionFactor : public gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Point3> {
   public:
-    using Base = gtsam::NoiseModelFactor2<gtsam::Pose3, gtsam::Point3>;
+    using Base = gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Point3>;
 
     template <typename Ptr>
     CameraProjectionFactor(const gtsam::Point2 &measured, const gtsam::SharedNoiseModel &model,
@@ -83,8 +86,8 @@ class CameraProjectionFactor : public gtsam::NoiseModelFactor2<gtsam::Pose3, gts
     }
 
     gtsam::Vector evaluateError(const gtsam::Pose3 &pose, const gtsam::Point3 &point,
-                                gtsam::OptionalMatrixType H1 = gtsam::OptionalNone,
-                                gtsam::OptionalMatrixType H2 = gtsam::OptionalNone) const override {
+                                gtsam::OptionalMatrixType H1 = OptionalNone,
+                                gtsam::OptionalMatrixType H2 = OptionalNone) const override {
         if (weight_ <= std::numeric_limits<double>::epsilon()) {
             if (H1) *H1 = gtsam::Matrix::Zero(2, 6);
             if (H2) *H2 = gtsam::Matrix::Zero(2, 3);
@@ -131,7 +134,7 @@ template <typename CameraT> class CameraResectioningFactor : public gtsam::Noise
     }
 
     gtsam::Vector evaluateError(const gtsam::Pose3 &pose,
-                                gtsam::OptionalMatrixType H = gtsam::OptionalNone) const override {
+                                gtsam::OptionalMatrixType H = OptionalNone) const override {
         if (weight_ <= std::numeric_limits<double>::epsilon()) {
             if (H) *H = gtsam::Matrix::Zero(2, 6);
             return gtsam::Vector2::Zero();
@@ -168,7 +171,7 @@ template <typename CameraT>
 gtsam::Vector3 stereo_world_error(const CameraT &camera, const gtsam::Pose3 &pose, const gtsam::Point3 &point,
                                   const gtsam::StereoPoint2 &measurement, double weight,
                                   gtsam::OptionalMatrixType H1,
-                                  gtsam::OptionalMatrixType H2 = gtsam::OptionalNone) {
+                                  gtsam::OptionalMatrixType H2 = OptionalNone) {
     gtsam::Matrix36 dpose;
     gtsam::Matrix33 dpoint;
     const auto X = (H1 || H2) ? pose.transformTo(point, dpose, dpoint) : pose.transformTo(point);
@@ -209,8 +212,8 @@ class StereoCameraProjectionFactor : public gtsam_factors::WeightedGenericStereo
           camera_(std::move(camera)), measured_(measured) {}
 
     gtsam::Vector evaluateError(const gtsam::Pose3 &pose, const gtsam::Point3 &point,
-                                gtsam::OptionalMatrixType H1 = gtsam::OptionalNone,
-                                gtsam::OptionalMatrixType H2 = gtsam::OptionalNone) const override {
+                                gtsam::OptionalMatrixType H1 = OptionalNone,
+                                gtsam::OptionalMatrixType H2 = OptionalNone) const override {
         return stereo_world_error(*camera_, pose, point, measured_, getWeight(), H1, H2);
     }
 
@@ -233,7 +236,7 @@ template <typename CameraT> class StereoCameraResectioningFactor : public gtsam:
         : Base(noise, pose), camera_(std::move(camera)), point_(point), measured_(measured) {}
 
     gtsam::Vector evaluateError(const gtsam::Pose3 &pose,
-                                gtsam::OptionalMatrixType H = gtsam::OptionalNone) const override {
+                                gtsam::OptionalMatrixType H = OptionalNone) const override {
         return stereo_world_error(*camera_, pose, point_, measured_, weight_, H);
     }
 
