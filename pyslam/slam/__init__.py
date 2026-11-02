@@ -33,6 +33,8 @@ from .cpp import (
 # True: classes from cpp_core. False: Python classes, with the original
 # computations left in the Python modules.
 USE_CPP = Parameters.USE_CPP_CORE
+# read here: the C++ classes assigned below include cpp_core's own Parameters, which replaces this name
+USE_CPP_PIPELINE = Parameters.USE_CPP_PIPELINE
 
 classes_dict = {}
 
@@ -53,7 +55,7 @@ if USE_CPP:
         # Assign all classes from C++ module to global namespace; without USE_CPP_PIPELINE, the pipeline
         # classes (Slam, Tracking, ...) stay the Python ones, loaded on demand by __getattr__ below
         for name, cls in cpp_module.classes.items():
-            if not Parameters.USE_CPP_PIPELINE and name in _PIPELINE_CLASSES:
+            if not USE_CPP_PIPELINE and name in _PIPELINE_CLASSES:
                 continue
             globals()[name] = cls
             classes_dict[name] = cls
@@ -84,7 +86,7 @@ _PYTHON_FRONTENDS = {
 
 
 def __getattr__(name):
-    if (not USE_CPP or not Parameters.USE_CPP_PIPELINE) and name in _PYTHON_FRONTENDS:
+    if (not USE_CPP or not USE_CPP_PIPELINE) and name in _PYTHON_FRONTENDS:
         from importlib import import_module
 
         cls = getattr(import_module(f".{_PYTHON_FRONTENDS[name]}", __name__), name)
