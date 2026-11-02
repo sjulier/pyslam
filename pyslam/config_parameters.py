@@ -28,9 +28,9 @@ kScriptFolder = os.path.dirname(kScriptPath)
 kRootFolder = os.path.join(kScriptFolder, "..")
 
 
-def _use_cpp_core_from_env(default: bool) -> bool:
-    """Read PYSLAM_USE_CPP before any code imports pyslam.slam.cpp (native cpp_core)."""
-    v = os.environ.get("PYSLAM_USE_CPP")
+def _use_cpp_core_from_env(default: bool, name: str = "PYSLAM_USE_CPP") -> bool:
+    """Read PYSLAM_USE_CPP (or another flag) before any code imports pyslam.slam.cpp (native cpp_core)."""
+    v = os.environ.get(name)
     if v is None:
         return default
     s = v.strip().lower()
@@ -47,10 +47,16 @@ class Parameters:
     # ================================================================
     # C++ core
     # ================================================================
-    # True: use the C++ core; False: use the Python core.
+    # True: cpp_core classes from cpp/core/slam.
+    # False: the Python classes. Their original computations stay in the Python
+    # modules and do not load cpp_core. Other pybind modules are independent of this flag.
     # Override without editing this file: PYSLAM_USE_CPP=false (e.g. if cpp_core
     # was built against different OpenCV/TBB than your conda env and segfaults on import).
     USE_CPP_CORE = _use_cpp_core_from_env(default=True)
+    # With USE_CPP_CORE, also the C++ pipeline (Slam, Tracking, LocalMapping, Initializer, MotionModel,
+    # SLAMDynamicConfig from cpp_core). False: the Python pipeline drives the C++ core classes, as before
+    # the C++ pipeline existed. Override without editing this file: PYSLAM_USE_CPP_PIPELINE=true.
+    USE_CPP_PIPELINE = USE_CPP_CORE and _use_cpp_core_from_env(default=False, name="PYSLAM_USE_CPP_PIPELINE")
 
     # ================================================================
     # Logs
@@ -336,7 +342,7 @@ class Parameters:
     #                             "VOXEL_SEMANTIC_PROBABILISTIC_GRID", best for semantic mapping (to be used with semantic mapping activated)
     #                             "TSDF", allows mesh extraction as output
     #                             "GAUSSIAN_SPLATTING", requires CUDA
-    #                              see pyslam/dense/volumetric_integrator_types.py and cpp/volumetric/README.md
+    #                              see pyslam/dense/volumetric_integrator_types.py and cpp/modules/volumetric/README.md
     kVolumetricIntegrationType = "VOXEL_GRID"
     kVolumetricIntegrationDebugAndPrintToFile = True
     #

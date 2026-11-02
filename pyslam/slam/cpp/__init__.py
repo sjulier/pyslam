@@ -50,9 +50,10 @@ from pyslam.utilities.logging import Printer
 USE_PYTHON_FALLBACK = False
 USE_CPP_CORE = Parameters.USE_CPP_CORE
 
-# Add the C++ module lib directory to path
+# The extension is built next to the C++ sources in cpp/core/slam/lib.
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-CPP_LIB_DIR = os.path.join(THIS_DIR, "lib")
+REPO_ROOT = os.path.abspath(os.path.join(THIS_DIR, "..", "..", ".."))
+CPP_LIB_DIR = os.path.join(REPO_ROOT, "cpp", "core", "slam", "lib")
 if os.path.exists(CPP_LIB_DIR):
     sys.path.insert(0, CPP_LIB_DIR)
 else:
@@ -117,6 +118,9 @@ core_classes = [
     "CameraPose",
     "Camera",
     "PinholeCamera",
+    "KannalaBrandt4Camera",
+    "PinholeRadtan8Camera",
+    "DoubleSphereCamera",
     "CameraUtils",
     "Sim3Pose",
     "optimizer_g2o",
@@ -141,6 +145,13 @@ core_classes = [
     "ProjectionMatcher",
     "EpipolarMatcher",
     "SemanticMappingSharedResources",
+    "MotionModel",
+    "MotionModelDamping",
+    "Initializer",
+    "SLAMDynamicConfig",
+    "Tracking",
+    "LocalMapping",
+    "Slam",
 ]
 
 
@@ -159,6 +170,9 @@ def _import_cpp_core():
             "CameraPose": cpp_core.CameraPose,
             "Camera": cpp_core.Camera,
             "PinholeCamera": cpp_core.PinholeCamera,
+            "KannalaBrandt4Camera": cpp_core.KannalaBrandt4Camera,
+            "PinholeRadtan8Camera": cpp_core.PinholeRadtan8Camera,
+            "DoubleSphereCamera": cpp_core.DoubleSphereCamera,
             "CameraUtils": cpp_core.CameraUtils,
             "Sim3Pose": cpp_core.Sim3Pose,
             "optimizer_g2o": cpp_core.OptimizerG2o,
@@ -183,6 +197,13 @@ def _import_cpp_core():
             "ProjectionMatcher": cpp_core.ProjectionMatcher,
             "EpipolarMatcher": cpp_core.EpipolarMatcher,
             "SemanticMappingSharedResources": cpp_core.SemanticMappingSharedResources,
+            "MotionModel": cpp_core.MotionModel,
+            "MotionModelDamping": cpp_core.MotionModelDamping,
+            "Initializer": cpp_core.Initializer,
+            "SLAMDynamicConfig": cpp_core.SLAMDynamicConfig,
+            "Tracking": cpp_core.Tracking,
+            "LocalMapping": cpp_core.LocalMapping,
+            "Slam": cpp_core.Slam,
         }
 
         out_classes = {}
@@ -207,7 +228,15 @@ def _import_python_core():
         from pyslam.slam.keyframe import KeyFrame
         from pyslam.slam.map import Map, MapStateData
         from pyslam.slam.camera_pose import CameraPose
-        from pyslam.slam.camera import Camera, PinholeCamera, CameraType, CameraUtils
+        from pyslam.slam.camera import (
+            Camera,
+            PinholeCamera,
+            KannalaBrandt4Camera,
+            PinholeRadtan8Camera,
+            DoubleSphereCamera,
+            CameraType,
+            CameraUtils,
+        )
         from pyslam.slam.sim3_pose import Sim3Pose
         from pyslam.io.dataset_types import SensorType
         import pyslam.slam.optimizer_g2o as optimizer_g2o
@@ -229,6 +258,9 @@ def _import_python_core():
             "CameraPose": CameraPose,
             "Camera": Camera,
             "PinholeCamera": PinholeCamera,
+            "KannalaBrandt4Camera": KannalaBrandt4Camera,
+            "PinholeRadtan8Camera": PinholeRadtan8Camera,
+            "DoubleSphereCamera": DoubleSphereCamera,
             "CameraType": CameraType,
             "CameraUtils": CameraUtils,
             "SensorType": SensorType,
@@ -253,6 +285,14 @@ def _import_python_core():
             "ProjectionMatcher": ProjectionMatcher,
             "EpipolarMatcher": EpipolarMatcher,
             "SemanticMappingSharedResources": None,
+            # Imported after the package namespace exists. See pyslam/slam/__init__.py.
+            "MotionModel": None,
+            "MotionModelDamping": None,
+            "Initializer": None,
+            "SLAMDynamicConfig": None,
+            "Tracking": None,
+            "LocalMapping": None,
+            "Slam": None,
         }
         out_classes = {}
         # we check the coverage here to ensure we have all the classes
@@ -272,7 +312,8 @@ def _import_python_core():
 _CPP_IMPORT_ERROR = None
 _PYTHON_IMPORT_ERROR = None
 
-# Try to import the C++ core module
+# Load cpp_core only when USE_CPP_CORE is True. The Python core keeps its
+# original computations and does not import this module.
 if USE_CPP_CORE:
     cpp_classes, CPP_AVAILABLE = _import_cpp_core()
 else:

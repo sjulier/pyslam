@@ -55,8 +55,8 @@ if __name__ != "__mp_main__":
     from pyslam.semantics.semantic_mapping_configs import SemanticMappingConfigs
     from pyslam.semantics.semantic_eval import evaluate_semantic_mapping
 
-    from pyslam.slam.slam import Slam, SlamState
-    from pyslam.slam import PinholeCamera, USE_CPP
+    from pyslam.slam.slam_commons import SlamState
+    from pyslam.slam import Slam, camera_from_config, USE_CPP
     from pyslam.slam.playback_throttle import PlaybackThrottle, is_throttle_enabled
 
     from pyslam.viz.slam_plot_drawer import SlamPlotDrawerThread
@@ -77,6 +77,7 @@ if __name__ != "__mp_main__":
     from pyslam.utilities.colors import GlColors
     from pyslam.utilities.serialization import SerializableEnumEncoder
     from pyslam.utilities.timer import TimerFps
+    from pyslam.utilities.playback_timing import PlaybackTiming
     from pyslam.viz.cvimage_thread import CvImageViewer
     from pyslam.viz.qimage_thread import QimageViewer
 
@@ -115,6 +116,8 @@ kMinPercentTrackedToCompare = 90
 
 
 def draw_associated_cameras(viewer3D, assoc_est_poses, assoc_gt_poses, T_gt_est):
+    from pyslam.utilities.colors import GlColors
+
     T_est_gt = np.linalg.inv(T_gt_est)
     scale = np.mean([np.linalg.norm(T_est_gt[i, :3]) for i in range(3)])
     R_est_gt = T_est_gt[:3, :3] / scale  # we need a pure rotation to avoid camera scale changes
@@ -278,7 +281,12 @@ if __name__ == "__main__":
         help="Print the full camera and configuration dumps (JSON), and the step-by-step messages "
         "of tracking for every frame (otherwise in logs/tracking.log)",
     )
+    parser.add_argument("--max-frames", type=int, default=0,
+                        help="Stop after this many processed frames (0: whole sequence)")
+    parser.add_argument("--timing-report", help="Write per-stage playback timings to this JSON file")
     args = parser.parse_args()
+    if args.max_frames < 0:
+        parser.error("max-frames must be nonnegative")
     if args.verbose:
         Parameters.kTrackingDebugAndPrintToFile = False
 
@@ -351,7 +359,7 @@ if __name__ == "__main__":
         has_groundtruth and need_sim3_alignment(groundtruth)
     )
 
-    camera = PinholeCamera(config)
+    camera = camera_from_config(config)
     if args.verbose:
         Printer.green(f"Camera: {json.dumps(camera.to_json(), indent=4, cls=SerializableEnumEncoder)}")
     else:
@@ -538,6 +546,10 @@ if __name__ == "__main__":
 
     timer_main = TimerFps("Main", is_verbose=False)
     timer_main.start()
+    playback_timing = (PlaybackTiming(args.timing_report, dict(
+        headless=args.headless, cpp_core=USE_CPP, dataset=config.dataset_settings,
+        local_mapping_threaded=Parameters.kLocalMappingOnSeparateThread,
+        loop_closing=Parameters.kUseLoopClosing)) if args.timing_report else None)
 
     do_step = False  # proceed step by step on GUI
     do_reset = False  # reset on GUI
@@ -589,6 +601,8 @@ if __name__ == "__main__":
             if not is_paused or do_step:
 
                 if dataset.is_ok:
+                    if playback_timing:
+                        playback_timing.begin(img_id)
                     FrameLog.print("..................................")
                     img = dataset.getImageColor(img_id)
                     depth = dataset.getDepth(img_id)
@@ -597,6 +611,8 @@ if __name__ == "__main__":
                         if dataset.sensor_type == SensorType.STEREO
                         else None
                     )
+                    if playback_timing:
+                        playback_timing.mark("image_loading")
 
                 if img is not None:
                     timestamp = dataset.getTimestamp()  # get current timestamp
@@ -649,6 +665,8 @@ if __name__ == "__main__":
                         # 3D display (map display)
                         if viewer3D:
                             viewer3D.draw_slam_map(slam)
+                        if playback_timing:
+                            playback_timing.mark("map_viewer_submit")
 
                         if not args.headless:
                             is_draw_features_with_radius = viewer3D.is_draw_features_with_radius()
@@ -666,6 +684,8 @@ if __name__ == "__main__":
                             # 2D display (image display)
                             # cv2.imshow("Camera", img_draw)
                             cv_image_viewer.draw(img_draw, "Camera")
+                        if playback_timing:
+                            playback_timing.mark("image_viewer_submit")
 
                         # draw 2d plots
                         if plot_drawer:
@@ -702,6 +722,8 @@ if __name__ == "__main__":
                             f"{slam.map.num_keyframes()} keyframes"
                         )
                 else:
+                    if playback_timing:
+                        playback_timing.discard()
                     time.sleep(0.1)  # img is None
                     # Printer.yellow("sleeping for 0.1 seconds - img is None")
                     if args.headless:
@@ -825,6 +847,14 @@ if __name__ == "__main__":
                     time.sleep(delta_time_sleep)
                 playback_throttle.observe_frame(frame_duration, time.time() - time_start)
                     # Printer.yellow(f"sleeping for {delta_time_sleep} seconds - frame duration > processing duration")
+            if playback_timing:
+                playback_timing.mark("pacing")
+                playback_timing.finish()
+                if img is not None and num_frames % 100 == 0:
+                    playback_timing.write()
+
+            if args.max_frames and num_frames >= args.max_frames:
+                break
 
             # press 'q' or ESC for quitting (the viewers' get_key() return the pressed key as a character)
             # also in loop closing's debug windows (similarity matrix, consistency checks)
@@ -833,6 +863,8 @@ if __name__ == "__main__":
                 break
 
     except KeyboardInterrupt:
+        if playback_timing:
+            playback_timing.write()
         Printer.yellow("\nCTRL+C detected. Shutting down ...\n")
         force_kill_all_and_exit(verbose=False)
         sys.exit(0)
@@ -841,6 +873,10 @@ if __name__ == "__main__":
         Printer.red("pySLAM: stopped by an error in the main loop:")
         traceback.print_exc()
         force_kill_all_and_exit(code=1, verbose=False)
+
+    finally:
+        if playback_timing:
+            playback_timing.write()
 
     # exit from the main loop
     if not args.headless:

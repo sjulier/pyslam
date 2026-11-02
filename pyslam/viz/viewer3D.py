@@ -48,7 +48,6 @@ from pyslam.utilities.geom_trajectory import (
     TrajectoryAlignerProcessIncremental,
 )
 from pyslam.utilities.logging import Printer
-from pyslam.utilities.multi_processing import MultiprocessingManager
 from pyslam.utilities.data_management import empty_queue, get_last_item_from_queue
 from pyslam.utilities.colors import GlColors
 from pyslam.utilities.waiting import wait_for_ready
@@ -421,6 +420,17 @@ class Viewer3D(object):
     def __init__(self, scale=0.1, title="Map Viewer"):
         self.scale = scale
         self.title = title  # of the window
+        # Spawn does not inherit runtime overrides from the parent process.
+        self.viewer_parameters = {
+            name: getattr(Parameters, name)
+            for name in (
+                "kDenseMappingDtypeVertices",
+                "kDenseMappingDtypeColors",
+                "kDenseMappingDtypeTriangles",
+                "kMinWeightForDrawingCovisibilityEdge",
+                "kMaxSparseMapPointsToVisualize",
+            )
+        }
 
         self.map_state: Viewer3DMapInput | None = None
         self.vo_state: Viewer3DVoInput | None = None
@@ -438,40 +448,43 @@ class Viewer3D(object):
         # TODO(dvdmc): to customize the semantic visualization from the UI, we need to create mp variables accesible from the refresh to the viewer thread
         # We would need a query word and a heatmap scale.
 
-        # NOTE: We use the MultiprocessingManager to manage queues and avoid pickling problems with multiprocessing.
-        self.mp_manager = MultiprocessingManager()
-        self.qmap = self.mp_manager.Queue()  # used to pass sparse map data to the viewer thread
-        self.qvo = self.mp_manager.Queue()  # used to pass VO data to the viewer thread
-        self.qdense = self.mp_manager.Queue()  # used to pass dense map data to the viewer thread
+        # OpenGL drivers must initialize in a fresh process, even when SLAM uses fork.
+        # In WSLg, Intel's LLVM driver conflicts with TensorFlow's global LLVM symbols.
+        # Queues and shared flags must use the same context as the viewer process.
+        viewer_context = mp.get_context("spawn")
+        self.mp_manager = None
+        self.qmap = viewer_context.Queue()  # used to pass sparse map data to the viewer thread
+        self.qvo = viewer_context.Queue()  # used to pass VO data to the viewer thread
+        self.qdense = viewer_context.Queue()  # used to pass dense map data to the viewer thread
         self.qcams = (
-            self.mp_manager.Queue()
+            viewer_context.Queue()
         )  # used to pass cameras and their poses to the viewer thread
         # the detected objects in the map (main_slam.py --detections): read by the viewer process from
         # this attribute, which is pickled with the others
         self.qobjects = self.mp_manager.Queue()
         self.objects_state: Viewer3DObjectsInput | None = None
 
-        self._is_running = mp.Value("i", 0)
-        self._is_looping = mp.Value("i", 0)
-        self._is_paused = mp.Value("i", 0)
-        self._is_closed = mp.Value("i", 0)
+        self._is_running = viewer_context.Value("i", 0)
+        self._is_looping = viewer_context.Value("i", 0)
+        self._is_paused = viewer_context.Value("i", 0)
+        self._is_closed = viewer_context.Value("i", 0)
 
-        self._is_map_save = mp.Value("i", 0)
-        self._is_bundle_adjust = mp.Value("i", 0)
-        self._do_step = mp.Value("i", 0)
-        self._do_reset = mp.Value("i", 0)
-        self._is_draw_features_with_radius = mp.Value("i", 0)
-        self._is_draw_objects = mp.Value("i", 0)
+        self._is_map_save = viewer_context.Value("i", 0)
+        self._is_bundle_adjust = viewer_context.Value("i", 0)
+        self._do_step = viewer_context.Value("i", 0)
+        self._do_reset = viewer_context.Value("i", 0)
+        self._is_draw_features_with_radius = viewer_context.Value("i", 0)
+        self._is_draw_objects = viewer_context.Value("i", 0)
 
-        self._is_gt_set = mp.Value("i", 0)
+        self._is_gt_set = viewer_context.Value("i", 0)
         self.alignment_gt_data_queue = (
-            self.mp_manager.Queue()
+            viewer_context.Queue()
         )  # used by slam_plot_drawer.py to draw GT alignment data
         self.aligner_input_queue = (
-            self.mp_manager.Queue()
+            viewer_context.Queue()
         )  # used to pass data to the trajectory aligner
-        self.aligner_output_queue = self.mp_manager.Queue()  # used to get aligner output
-        self.is_aligner_running = mp.Value("i", 0)
+        self.aligner_output_queue = viewer_context.Queue()  # used to get aligner output
+        self.is_aligner_running = viewer_context.Value("i", 0)
         self.trajectory_aligner = None
 
         # Create threaded drawer for asynchronous drawing operations
@@ -479,7 +492,7 @@ class Viewer3D(object):
         if Parameters.kViewerDrawSlamMapOnSeparateThread:
             self.slam_drawer_thread = SlamDrawerThread(self)
 
-        self.vp = mp.Process(
+        self.vp = viewer_context.Process(
             target=self.viewer_run,
             args=(
                 self.qmap,
@@ -511,6 +524,7 @@ class Viewer3D(object):
     def __getstate__(self):
         """Exclude non-picklable objects from pickling (for multiprocessing)"""
         state = self.__dict__.copy()
+        state.pop("vp", None)
         # Exclude slam_drawer_thread (contains locks, threads, queues - not picklable)
         # This is only used in the main process, not in the child process
         if self.slam_drawer_thread is not None:
@@ -520,6 +534,13 @@ class Viewer3D(object):
     def __setstate__(self, state):
         """Restore state after unpickling"""
         self.__dict__.update(state)
+        self.slam_drawer_thread = None
+        for name, value in self.viewer_parameters.items():
+            setattr(Parameters, name, value)
+        globals()["kMinWeightForDrawingCovisibilityEdge"] = (
+            Parameters.kMinWeightForDrawingCovisibilityEdge
+        )
+        globals()["kMaxSparseMapPointsToVisualize"] = Parameters.kMaxSparseMapPointsToVisualize
         # slam_drawer_thread will be None after unpickling, but that's OK
         # since it's only needed in the main process, not the child process
 
@@ -557,14 +578,15 @@ class Viewer3D(object):
             self._is_running.value = 0
         if self._is_looping.value == 1:
             self._is_looping.value = 0
-        if self.vp.is_alive():
-            self.vp.join()
+        self._stop_viewer_process()
         # if self.is_aligner_running.value == 1:
         #     self.is_aligner_running.value = 0
         # if self.trajectory_aligner and self.trajectory_aligner.is_alive():
         #     self.trajectory_aligner.join()
         if self.trajectory_aligner:
             self.trajectory_aligner.quit()
+
+        self._close_queues()
 
         # Shutdown the manager AFTER threads/processes have exited
         if hasattr(self, "mp_manager") and self.mp_manager is not None:
@@ -576,8 +598,50 @@ class Viewer3D(object):
         # pangolin.Quit()
         print("Viewer3D: done")
 
-    def wait_for_ready(self, timeout=None):
-        wait_for_ready(self.is_ready, "Viewer3D", timeout)
+    def _stop_viewer_process(self, timeout=5):
+        self.vp.join(timeout=timeout)
+        if self.vp.is_alive():
+            self.vp.terminate()
+            self.vp.join(timeout=5)
+        if self.vp.is_alive():
+            self.vp.kill()
+            self.vp.join(timeout=5)
+
+    def _close_queues(self):
+        # Consumers have stopped; pending visualization updates may be discarded.
+        # Otherwise Queue feeder threads can hang at interpreter shutdown.
+        for queue_name in (
+            "qmap",
+            "qvo",
+            "qdense",
+            "qcams",
+            "alignment_gt_data_queue",
+            "aligner_input_queue",
+            "aligner_output_queue",
+        ):
+            queue = getattr(self, queue_name)
+            queue.cancel_join_thread()
+            queue.close()
+
+    def wait_for_ready(self, timeout=120):
+        def check_ready():
+            if self.vp.exitcode is not None:
+                raise RuntimeError(
+                    f"Viewer3D exited before becoming ready (exit code {self.vp.exitcode})"
+                )
+            return self.is_ready()
+
+        try:
+            wait_for_ready(check_ready, "Viewer3D", timeout)
+        except (RuntimeError, TimeoutError):
+            self._stop_viewer_process(timeout=0)
+            if self.slam_drawer_thread is not None:
+                self.slam_drawer_thread.quit()
+            # Ground-truth alignment can start before viewer readiness.
+            if self.trajectory_aligner is not None:
+                self.trajectory_aligner.quit()
+            self._close_queues()
+            raise
         Printer.green("Viewer3D: ready")
 
     def is_ready(self):
@@ -644,6 +708,24 @@ class Viewer3D(object):
         aligner_output_queue,
         is_aligner_running,
     ):
+        if os.environ.get("PYSLAM_VIEWER_TRACE") == "1":
+            import faulthandler
+            import linecache
+            import sys
+
+            faulthandler.enable()
+            faulthandler.dump_traceback_later(20, repeat=True)
+
+            def trace_startup(frame, event, arg):
+                if event == "line" and frame.f_code.co_name in ("viewer_run", "viewer_init"):
+                    print(
+                        f"Viewer3D[{os.getpid()}] {frame.f_lineno}: "
+                        f"{linecache.getline(__file__, frame.f_lineno).strip()}",
+                        flush=True,
+                    )
+                return trace_startup
+
+            sys.settrace(trace_startup)
         # Import heavy graphics libraries here (in the child process) to avoid slow startup
         # when using multiprocessing with 'spawn' method. This way they're only loaded
         # when the viewer process actually starts, not when the module is imported.
@@ -660,6 +742,8 @@ class Viewer3D(object):
         globals()["gl"] = gl
 
         self.viewer_init(kViewportWidth, kViewportHeight)
+        if os.environ.get("PYSLAM_VIEWER_TRACE") == "1":
+            print(f"Viewer3D OpenGL renderer: {gl.glGetString(gl.GL_RENDERER)!r}", flush=True)
         is_running.value = 1
 
         # Init other local vars for the the process/thread
@@ -677,6 +761,9 @@ class Viewer3D(object):
         self.thread_alignment_gt_data_queue = alignment_gt_data_queue  # used by slam_plot_drawer.py
 
         is_looping.value = 1
+        if os.environ.get("PYSLAM_VIEWER_TRACE") == "1":
+            sys.settrace(None)
+            faulthandler.cancel_dump_traceback_later()
         while not pangolin.ShouldQuit() and (is_running.value == 1):
             ts = time.time()
             try:
@@ -990,6 +1077,14 @@ class Viewer3D(object):
         self.sparsePointSize = self.sparsePointSizeSlider.Get()
         self.densePointSize = self.densePointSizeSlider.Get()
 
+        # Follow() stores T_cw for this refresh, and Activate() applies it before drawing.
+        # The blue camera is drawn from this same pose. Setting Twc only after the draw
+        # left the view one refresh behind, so the frustum jumped ahead of the followed
+        # pose and snapped back on the next refresh.
+        follow_pose = self._pose_for_follow()
+        if follow_pose is not None:
+            self.updateTwc(follow_pose)
+
         if self.do_follow and self.is_following:
             self.scam.Follow(self.Twc, True)
         elif self.do_follow and not self.is_following:
@@ -1028,7 +1123,6 @@ class Viewer3D(object):
                 gl.glLineWidth(2)
                 glutils.DrawCamera(cur_pose, self.scale)
                 gl.glLineWidth(1)
-                self.updateTwc(cur_pose)
 
             if self.draw_predicted and cur_frame_data.predicted_pose is not None:
                 # draw predicted pose in red
@@ -1254,7 +1348,6 @@ class Viewer3D(object):
                 gl.glColor3f(0.0, 0.0, 1.0)
                 current_pose = self.vo_state.poses[-1:]
                 glutils.DrawCameras(current_pose, self.scale)
-                self.updateTwc(current_pose[0])
 
             if self.vo_state.traj3d_est.shape[0] != 0:
                 # draw blue estimated trajectory
@@ -1609,8 +1702,20 @@ class Viewer3D(object):
 
         self.qvo.put(vo_state)
 
+    def _pose_for_follow(self):
+        # Same pose drawn as the current (blue) camera. A VO pose replaces the map pose,
+        # matching the previous update order.
+        pose = None
+        if self.map_state is not None:
+            cur_frame_data = self.map_state.cur_frame_data
+            if cur_frame_data is not None and cur_frame_data.cur_pose is not None:
+                pose = cur_frame_data.cur_pose
+        if self.vo_state is not None and len(self.vo_state.poses) > 0:
+            pose = self.vo_state.poses[-1]
+        return pose
+
     def updateTwc(self, pose):
-        self.Twc.m = pose
+        self.Twc.m = np.array(pose, copy=True)
 
     @staticmethod
     def drawPlane(num_divs=200, div_size=10, scale=1.0):

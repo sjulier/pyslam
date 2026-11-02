@@ -27,7 +27,7 @@ MODULE_GLOBS = [
     "thirdparty/pyibow/lib/*.so",
     "thirdparty/orbslam2_features/lib/*.so",
     "cpp/lib/*.so",
-    "pyslam/slam/cpp/lib/*.cpython*.so",
+    "cpp/core/slam/lib/*.cpython*.so",
 ]
 
 if os.name == "nt":  # python extension modules are .pyd on Windows, without "cpython" in the name

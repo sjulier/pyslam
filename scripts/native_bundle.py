@@ -13,8 +13,8 @@ The modules come in two parts, each with its own bundle:
   prereq  the libraries pySLAM builds on, which rarely change: GTSAM (+ gtsam_factors), g2o, Pangolin,
           DBoW2/3, iBoW. Almost all of the build time. Also carries what is needed to build the pyslam
           part against them (GTSAM's headers and CMake files, g2o's static libraries).
-  pyslam  pySLAM's own C++ code: the ORB-SLAM2 features, the C++ utilities (cpp/) and the C++ core
-          (pyslam/slam/cpp). A few minutes to build.
+  pyslam  pySLAM's own C++ code: the ORB-SLAM2 features, the C++ modules (cpp/modules, built into
+          cpp/lib) and the C++ core (cpp/core/slam). A few minutes to build.
 A change to pySLAM's C++ code changes only the pyslam part's key: `pixi run build` then installs the
 prereq bundle and builds the pyslam part from source. A change to the prereq part (or to pixi.lock)
 changes both keys, since the pyslam part is built against it.
@@ -123,24 +123,23 @@ PARTS = {
         "globs": [
             "thirdparty/orbslam2_features/lib/*.so",
             "cpp/lib/*.so",
-            "pyslam/slam/cpp/lib/*.so",
+            "cpp/core/slam/lib/*.so",
             "thirdparty/orbslam2_features/lib/*.pyd",
             "cpp/lib/*.pyd",
-            "pyslam/slam/cpp/lib/*.pyd",
+            "cpp/core/slam/lib/*.pyd",
         ],
         "sources": [
             "build_cpp_core.sh",
-            "cpp",
-            "pyslam/slam/cpp",
+            "cpp",  # also the C++ core (cpp/core/slam) since upstream's 2.11 layout
             "thirdparty/orbslam2_features",
         ],
         "required": [
             "thirdparty/orbslam2_features/lib/*.so",
             "cpp/lib/*.so",
-            "pyslam/slam/cpp/lib/*.so",
+            "cpp/core/slam/lib/*.so",
         ],
         "folders": [],
-        "build_roots": ["thirdparty/orbslam2_features", "cpp", "pyslam/slam/cpp"],
+        "build_roots": ["thirdparty/orbslam2_features", "cpp", "cpp/core/slam"],
     },
 }
 PART_NAMES = ["prereq", "pyslam"]

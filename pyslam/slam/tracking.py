@@ -763,13 +763,15 @@ class Tracking:
                 self.f_cur.isometry3d() * self.f_cur.kf_ref.isometry3d().inverse()
             )  # pose of current frame w.r.t. current reference keyframe kf_ref
             self.tracking_history.relative_frame_poses.append(isometry3d_Tcr)
-            self.tracking_history.kf_references.append(self.kf_ref)
+            # the reference keyframe of the relative pose above (f_cur.kf_ref, as upstream records it)
+            kf_ref = self.f_cur.kf_ref
+            self.tracking_history.kf_references.append(kf_ref)
             # monocular only: with stereo and RGB-D the map's scale is observed and does not change, and
             # rescaling would only add bundle adjustment's noise (the frames then follow their reference
             # keyframes as in ORB-SLAM2/3)
             self.tracking_history.anchors.append(
                 RelativePoseAnchors(
-                    self.kf_ref, self.tracking_history.anchors[-1] if self.tracking_history.anchors else None
+                    kf_ref, self.tracking_history.anchors[-1] if self.tracking_history.anchors else None
                 )
                 if self.sensor_type == SensorType.MONOCULAR
                 else None
@@ -1367,8 +1369,10 @@ class Tracking:
         # HACK: Since local mapping may be not fast enough in python (and tracking is not in real-time) => give local mapping more time to process stuff
         self.wait_for_local_mapping()  # N.B.: this must be outside the `with self.map.update_lock:` block
 
-        with self.map.update_lock:
-
+        # The map lock is released around loop_closing.relocalize(). That call enters
+        # Python LoopClosing, and holding the lock across it deadlocks the C++ twin.
+        self.map.update_lock.acquire()
+        try:
             # DEBUG:
             # if img_id == 50:
             # # if self.map.num_keyframes() > 50: # for ibow
@@ -1445,7 +1449,12 @@ class Tracking:
                 # SLAM is NOT OK
                 if self.state != SlamState.INIT_RELOCALIZE:
                     self.state = SlamState.RELOCALIZE
-                if self.relocalize(f_cur, img):
+                self.map.update_lock.release()
+                try:
+                    relocalized = self.relocalize(f_cur, img)
+                finally:
+                    self.map.update_lock.acquire()
+                if relocalized:
                     # Always set last_reloc_frame_id after successful relocalization
                     self.last_reloc_frame_id = f_cur.id
                     if self.state != SlamState.INIT_RELOCALIZE:
@@ -1537,6 +1546,8 @@ class Tracking:
                                 kf.update_connections()
                             # if self.kf_ref is not None:
                             #     self.map.local_map.update(self.kf_ref)
+        finally:
+            self.map.update_lock.release()
 
         # end block {with self.map.update_lock:}
 
