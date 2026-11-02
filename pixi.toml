@@ -256,6 +256,7 @@ pycolmap = "*"
 [feature.semantics.dependencies]
 transformers = ">=4.41.2,<5"  # RF-DETR (pinned commit) uses backbone utilities removed in transformers 5
 ultralytics = "*"
+lap = "*"                  # the trackers of ultralytics (main_object_tracking.py); else it pip-installs it at run time
 open-clip-torch = "*"
 openai-clip = "*"          # Detic
 peft = "*"                 # RF-DETR
@@ -410,6 +411,8 @@ models-semantics = "bash scripts/install_extra.sh semantics"
 # set, and --images PATH its images)
 object-detection = "python main_object_detection.py"
 models-detection = "python scripts/install_detection.py"
+# Detection and tracking (ByteTrack, BoT-SORT) over a sequence; scores against known tracks
+object-tracking = "python main_object_tracking.py"
 
 [feature.recon3d.tasks]
 # 3R models and Gaussian splatting (group iv): clone, patch, build the CUDA extensions, download the

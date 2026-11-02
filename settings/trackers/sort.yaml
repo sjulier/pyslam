@@ -1,0 +1,9 @@
+# The settings of main_object_tracking.py --tracker SORT: SORT (Bewley et al., ICIP 2016, arXiv 1602.00763),
+# pyslam/semantics/sort_tracker.py, with the values of the authors' code (github.com/abewley/sort). To edit; each
+# run prints the values it uses.
+
+tracker_type: sort # (str) Tracker backend: sort (added to Ultralytics' trackers by main_object_tracking.py)
+det_thresh: 0.25 # (float) Boxes with a lower score are not given to SORT (the boxes of ByteTrack's first stage)
+iou_threshold: 0.3 # (float) A predicted box and a box overlapping less than this are not matched
+min_hits: 3 # (int) A track is reported once matched this many frames in a row (or in the first min_hits frames)
+max_age: 1 # (int) A track is deleted when the frames since its last match exceed this (1: at the second miss)
