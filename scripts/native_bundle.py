@@ -195,8 +195,10 @@ def environment_name():
 
 
 def ladder_of(environment):
-    """'cpu' for the CPU environments (*-cpu, and default-win on Windows), 'gpu' for the others."""
-    return "cpu" if environment.endswith(("-cpu", "-win")) else "gpu"
+    """'cpu' for the CPU environments (*-cpu, and every environment on native Windows), 'gpu' for the others."""
+    if platform_name() == "win-64":
+        return "cpu"  # PyTorch on the CPU there; the bundles have had this name since default-win
+    return "cpu" if environment.endswith("-cpu") else "gpu"
 
 
 def ladder():
@@ -207,7 +209,7 @@ def ladder():
 def build_environment():
     """The environment whose libraries the modules are linked to (the first level of the ladder)."""
     if platform_name() == "win-64":
-        return "default-win"
+        return "default"  # default-win, the earlier name there, has the same packages
     return "default-cpu" if ladder() == "cpu" else "default"
 
 

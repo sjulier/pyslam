@@ -292,11 +292,11 @@ git clone --depth 1 https://github.com/sjulier/pyslam.git
 cd pyslam
 ```
 
-**3. Build and check.** Every `pixi run` command on Windows takes `-e default-win`:
+**3. Build and check.** The commands are the same as on Linux and macOS:
 ```powershell
-pixi run -e default-win build    # the environment, the prebuilt C++ modules and the ORB vocabulary
-pixi run -e default-win check    # the C++ modules load and the optimiser tests pass
-pixi run -e default-win doctor   # the machine, the environment, every native module and the data
+pixi run build    # the environment, the prebuilt C++ modules and the ORB vocabulary
+pixi run check    # the C++ modules load and the optimiser tests pass
+pixi run doctor   # the machine, the environment, every native module and the data
 ```
 - The first `build` downloads the environment, mostly **without any output**, which is normal.
 - `build` then prints `[native bundle] installed the prebuilt prereq modules` and `... pyslam modules`, and ends with `OK: ... module(s) share the pybind11 internals ABI ...`. Nothing is compiled on your machine.
@@ -305,22 +305,31 @@ pixi run -e default-win doctor   # the machine, the environment, every native mo
 
 **4. Run SLAM** on the KITTI 06 video that comes with the repo:
 ```powershell
-pixi run -e default-win slam --headless   # without windows; prints the trajectory error (ATE) at the end
-pixi run -e default-win slam              # with the camera image, the 3D map, plots and loop closing's windows; q quits
+pixi run slam --headless   # without windows; prints the trajectory error (ATE) at the end
+pixi run slam              # with the camera image, the 3D map, plots and loop closing's windows; q quits
 ```
 The headless run ends with an ATE `rmse` between about 11 and 19 m (it varies from run to run). The details of every frame are in `logs/tracking.log`; `--verbose` prints them.
 
 **5. Optional: the learned models** (SuperPoint, SuperPoint with the LightGlue matcher, and CosPlace place recognition; about 0.3 GB):
 ```powershell
-pixi run -e default-win models
+pixi run models
 ```
-It prints one line per component, `OK` with `cpu`, and ends with `Installed: features-core vpr-core`. They run on the CPU, slower than the camera: on one laptop, `pixi run -e default-win slam --headless --features SUPERPOINT` took 6.5 minutes against 3 with ORB features, and tracked every frame (ATE 17.8 m).
+It prints one line per component, `OK` with `cpu`, and ends with `Installed: features-core vpr-core`. They run on the CPU, slower than the camera: on one laptop, `pixi run slam --headless --features SUPERPOINT` took 6.5 minutes against 3 with ORB features, and tracked every frame (ATE 17.8 m).
 
 If a command stops (for example a download breaks), run the same command again.
 
 **Please report** whether the steps worked, with: the Windows version, the processor and memory (Settings > System > About), whether Visual Studio is installed, and, if a step failed, the command and the last 30 lines of its output.
 
-Not on Windows yet: the other learned features and place recognition models (`models-all-features`, `models-all-vpr`), a GPU build of PyTorch, the TensorFlow-based features (DELF, ContextDesc, LF-Net, GeoDesc), and the levels above the default one (depth prediction, semantics, 3D reconstruction). For those, use [WSL2](./docs/TEACHING_SETUP.md).
+Not on Windows yet: the other learned features and place recognition models (`models-all-features`, `models-all-vpr`), a GPU build of PyTorch, the TensorFlow-based features (DELF, ContextDesc, LF-Net, GeoDesc), and the levels above the default one (depth prediction, 3D reconstruction), apart from part of the semantics level. For those, use [WSL2](./docs/TEACHING_SETUP.md).
+
+**Optional: part of the semantics level**, with `-e semantics` as everywhere: Ultralytics' detectors and trackers (YOLO, YOLOE, SAM; ByteTrack, BoT-SORT, SORT) and the segmentation methods SegFormer and CLIP, on the CPU:
+```powershell
+pixi run -e semantics models-detection     # the detectors' weights (0.35 GB)
+pixi run -e semantics object-detection --method YOLO --test desk
+pixi run -e semantics object-tracking --tracker BYTETRACK --video data/videos/kitti06/video_color.mp4 --settings settings/KITTI04-12.yaml
+pixi run -e semantics semantic-segmentation --method SEGFORMER --test kitti
+```
+It shares the default level's packages and prebuilt C++ modules, so `slam` runs there too. The other semantics methods (RF-DETR, Detic, EOV-Seg, ODISE) and `models-semantics` need WSL2. `-e default-win`, the name of the default level on Windows in earlier instructions, still works.
 
 ### Docker
 

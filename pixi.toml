@@ -16,10 +16,13 @@
 #   tf           TensorFlow-based features, run as a worker process
 #
 # `pixi run` without -e uses default. On Linux without an NVIDIA GPU use the CPU
-# ladder: default-cpu, depth-cpu, semantics-cpu, full-cpu. macOS uses the names above (MPS).
+# ladder: default-cpu, depth-cpu, semantics-cpu, full-cpu. macOS uses the names above (MPS), and so does
+# native Windows (win-64, experimental, CPU torch), so that a command is typed the same everywhere.
 #
-# Windows: through WSL2 (linux-64), or natively (win-64, experimental): the default level only, with
-# CPU torch, in its own environment: `pixi run -e default-win <task>`.
+# Windows: through WSL2 (linux-64), or natively (win-64): default, depth and semantics, with what
+# conda-forge has for Windows. depth has no depth models there, and semantics only Ultralytics' detectors
+# and trackers, SegFormer and CLIP; full adds nothing there (its models need an NVIDIA GPU). default-win, the name of the native default
+# level before, is kept for the commands of earlier instructions: it has the same packages as default there.
 #
 # Rules:
 # - conda-forge for everything available there; PyPI only for packages that are
@@ -200,8 +203,13 @@ kornia_moons = ">=0.2.9"
 roma = "*"
 fast-pytorch-kmeans = "*"
 
+# The GPU ladder's accelerator: CUDA on Linux, MPS on macOS (nothing to add), the CPU on native Windows
 [feature.cuda]
-platforms = ["linux-64-cuda", "osx-arm64-14"]
+platforms = ["linux-64-cuda", "osx-arm64-14", "win-64"]
+
+# native Windows: CPU-only torch, as in default-win (the same packages, so the same prebuilt native modules)
+[feature.cuda.target.win-64.dependencies]
+pytorch = { version = "*", build = "*cpu*" }
 
 [feature.cuda.target.linux-64.dependencies]
 pytorch = { version = "*", build = "*cuda*" }
@@ -218,9 +226,7 @@ platforms = ["linux-64"]
 [feature.cpu.target.linux-64.dependencies]
 pytorch = { version = "*", build = "*cpu*" }
 
-# Windows (native): CPU-only torch. Its own feature and environment (default-win), not win-64 in the cpu
-# feature: the environments of a solve group are solved together, and the levels above the default one
-# need packages that conda-forge does not have for Windows.
+# Windows (native): CPU-only torch, for default-win (the earlier name of the native default level)
 [feature.cpu-win]
 platforms = ["win-64"]
 
@@ -231,7 +237,9 @@ pytorch = { version = "*", build = "*cpu*" }
 # (i.a) depth and stereo inference (Depth Anything v2/v3, Depth Pro,
 # RAFT-Stereo, CREStereo)
 # ---------------------------------------------------------------------------
-[feature.depth.dependencies]
+# native Windows: none of the depth models (their packages are Linux and macOS only); the feature is there
+# so that the semantics level, which includes it, exists on Windows
+[feature.depth.target.unix.dependencies]
 pillow-heif = "*"
 gradio = "5.*"  # gradio 6 needs huggingface-hub >= 1, transformers 4.x needs < 1
 opt_einsum = "*"       # RAFT-Stereo
@@ -253,7 +261,7 @@ pycolmap = "*"
 # ---------------------------------------------------------------------------
 # (ii) semantic segmentation and object detection
 # ---------------------------------------------------------------------------
-[feature.semantics.dependencies]
+[feature.semantics.target.unix.dependencies]
 transformers = ">=4.41.2,<5"  # RF-DETR (pinned commit) uses backbone utilities removed in transformers 5
 ultralytics = "*"
 lap = "*"                  # the trackers of ultralytics (main_object_tracking.py); else it pip-installs it at run time
@@ -276,14 +284,30 @@ fasttext = "*"
 fpsample = "*"
 supervision = "*"
 
-[feature.semantics.pypi-dependencies]
+[feature.semantics.target.unix.pypi-dependencies]
 # not on conda-forge
 panopticapi = { git = "https://github.com/cocodataset/panopticapi.git" }
+
+# native Windows: the part of the semantics level which conda-forge has for win-64: Ultralytics' detectors
+# and trackers (object-detection, object-tracking), and SegFormer and CLIP (semantic-segmentation).
+# detectron2, fasttext and the rest are missing there. These packages leave the Windows default level's
+# packages (and so the key of its prebuilt native modules) unchanged.
+[feature.semantics.target.win-64.dependencies]
+ultralytics = "==8.4.171"  # as the other platforms' lock: the trackers' code (SORT's registration, the timing wrapper) uses its internals
+lap = "*"          # the trackers of ultralytics; else it pip-installs it at run time
+pycocotools = "*"  # object-detection --evaluate (AP)
+# any version: transformers 4 would hold huggingface_hub below 1, and so change the default level's packages;
+# SegFormer is in transformers 5 too (RF-DETR, which needs 4, is not on Windows)
+transformers = "*"
+open-clip-torch = "*"  # CLIP
+openai-clip = "*"      # YOLOE's text encoder imports clip; else ultralytics pip-installs it from git at run time
 
 # ---------------------------------------------------------------------------
 # (iv) 3D representations (Gaussian splatting, 3R models, TSDF/voxel)
 # ---------------------------------------------------------------------------
-[feature.recon3d.dependencies]
+# native Windows: none of these (Gaussian splatting and the 3R models need an NVIDIA GPU); a platform list
+# here would make pixi solve the Linux environments again, so the packages are Linux and macOS only instead
+[feature.recon3d.target.unix.dependencies]
 pyglfw = "*"  # Python binding of GLFW (the conda package `glfw` is the C library): MonoGS GUI
 rootutils = "*"  # Fast3R
 torchinfo = "*"
@@ -425,7 +449,8 @@ scene-from-views = "python main_scene_from_views.py"
 # solve group, so they have identical Python, OpenCV, Boost, torch, ... and the native
 # modules built in the source tree serve every level.
 #
-# GPU ladder: CUDA 12.9 on Linux with NVIDIA, MPS on macOS
+# GPU ladder: CUDA 12.9 on Linux with NVIDIA, MPS on macOS, the CPU on native Windows (where depth adds no
+# depth models, semantics only part of the level, and full nothing)
 default   = { features = ["build", "slam", "torch", "cuda", "dev"], solve-group = "gpu" }
 depth     = { features = ["build", "slam", "torch", "cuda", "depth", "dev"], solve-group = "gpu" }
 semantics = { features = ["build", "slam", "torch", "cuda", "depth", "semantics", "dev"], solve-group = "gpu" }
@@ -440,5 +465,6 @@ full-cpu      = { features = ["build", "slam", "torch", "cpu", "depth", "semanti
 # the CPU ladder
 tf     = { features = ["tf", "tf-gpu"] }
 tf-cpu = { features = ["tf", "tf-nogpu"] }
-# Windows (native), experimental: the default level with CPU torch
+# Windows (native): the earlier name of the default level there (`pixi run -e default-win ...`), kept so
+# that earlier instructions still work; the same packages as default on Windows
 default-win = { features = ["build", "slam", "torch", "cpu-win", "dev"], solve-group = "win" }
