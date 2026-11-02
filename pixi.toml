@@ -300,6 +300,7 @@ pycocotools = "*"  # object-detection --evaluate (AP)
 # SegFormer is in transformers 5 too (RF-DETR, which needs 4, is not on Windows)
 transformers = "*"
 open-clip-torch = "*"  # CLIP
+openai-clip = "*"      # YOLOE's text encoder imports clip; else ultralytics pip-installs it from git at run time
 
 # ---------------------------------------------------------------------------
 # (iv) 3D representations (Gaussian splatting, 3R models, TSDF/voxel)
