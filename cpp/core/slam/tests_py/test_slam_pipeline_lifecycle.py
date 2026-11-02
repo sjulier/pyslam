@@ -36,6 +36,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 os.environ["PYSLAM_USE_CPP"] = "1"
 
+# these tests are about cpp_core's Slam, Tracking and LocalMapping: the C++ pipeline, which is off by
+# default (Parameters.USE_CPP_PIPELINE)
+os.environ.setdefault("PYSLAM_USE_CPP_PIPELINE", "1")
 import pyslam.config  # Library paths before importing the native core.
 from pyslam.config_parameters import Parameters
 from pyslam.io.dataset_types import SensorType

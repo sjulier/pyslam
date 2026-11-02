@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(ROOT, "thirdparty", "orbslam2_features", "lib"))
 
 from orbslam2_features import ORBextractorDeterministic  # noqa: E402
 
-IMAGE = os.path.join(ROOT, "test", "data", "kitti06-435.png")
+IMAGE = os.path.join(ROOT, "examples", "data", "kitti06-435.png")
 
 
 @pytest.fixture(scope="module")

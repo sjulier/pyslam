@@ -60,63 +60,6 @@ using BlockSolverSim3 = BlockSolver_7_3;
 
 namespace pyslam {
 
-namespace {
-
-// g2o is built here without implicit ownership (G2O_NO_IMPLICIT_OWNERSHIP_OF_OBJECTS, needed by g2opy's
-// Python bindings, where Python owns these objects): a SparseOptimizer deletes neither its vertices,
-// edges and their robust kernels nor its optimization algorithm (with the block and linear solvers).
-// Without this, every optimization below leaked its whole graph: GBs over a run (each pose optimization
-// per frame, each local BA per keyframe). Declare one right after the optimizer, so that it runs first
-// when the function returns, by any path.
-class G2oGraphReleaser {
-  public:
-    explicit G2oGraphReleaser(g2o::SparseOptimizer &optimizer) : optimizer_(optimizer) {}
-    G2oGraphReleaser(const G2oGraphReleaser &) = delete;
-    G2oGraphReleaser &operator=(const G2oGraphReleaser &) = delete;
-    ~G2oGraphReleaser() {
-        std::vector<g2o::HyperGraph::Edge *> edges(optimizer_.edges().begin(),
-                                                   optimizer_.edges().end());
-        std::vector<g2o::HyperGraph::Vertex *> vertices;
-        vertices.reserve(optimizer_.vertices().size());
-        for (auto &id_vertex : optimizer_.vertices()) {
-            vertices.push_back(id_vertex.second);
-        }
-        g2o::OptimizationAlgorithm *algorithm = optimizer_.solver();
-        // the optimizer must not refer to them any more when it is destroyed
-        optimizer_.clear();
-        optimizer_.setAlgorithm(nullptr);
-        for (auto *edge : edges) {
-            delete_edge(edge);
-        }
-        for (auto *vertex : vertices) {
-            delete vertex;
-        }
-        delete algorithm;
-    }
-
-    // remove an edge's robust kernel and delete it (setRobustKernel() does not delete the old one here)
-    static void remove_robust_kernel(g2o::OptimizableGraph::Edge *edge) {
-        g2o::RobustKernel *kernel = edge->robustKernel();
-        edge->setRobustKernel(nullptr);
-        delete kernel;
-    }
-
-    // an edge (and its robust kernel) removed from the optimizer with removeEdge()
-    static void delete_edge(g2o::HyperGraph::Edge *edge) {
-        if (auto *optimizable_edge = dynamic_cast<g2o::OptimizableGraph::Edge *>(edge)) {
-            g2o::RobustKernel *kernel = optimizable_edge->robustKernel();
-            optimizable_edge->setRobustKernel(nullptr);
-            delete kernel;
-        }
-        delete edge;
-    }
-
-  private:
-    g2o::SparseOptimizer &optimizer_;
-};
-
-} // namespace
-
 // TODO: Add support for semantics in optimization
 
 BundleAdjustmentResult OptimizerG2o::bundle_adjustment(
@@ -151,7 +94,6 @@ BundleAdjustmentResult OptimizerG2o::bundle_adjustment(
     auto blockSolver = std::make_unique<g2o::BlockSolverSE3>(std::move(linearSolver));
     auto algorithm = optimizer.make<g2o::OptimizationAlgorithmLevenberg>(std::move(blockSolver));
     optimizer.setAlgorithm(algorithm);
-    G2oGraphReleaser graph_releaser(optimizer); // frees the graph on return
 
     if (abort_flag) {
         optimizer.setForceStopFlag(abort_flag);
@@ -308,7 +250,7 @@ BundleAdjustmentResult OptimizerG2o::bundle_adjustment(
                 edge->setLevel(1);
                 num_bad_edges++;
             }
-            G2oGraphReleaser::remove_robust_kernel(edge);
+            edge->setRobustKernel(nullptr); // the optimizer keeps the kernel until it is destroyed
         }
 
         for (auto &edge_pair : graph_edges_stereo) {
@@ -318,7 +260,7 @@ BundleAdjustmentResult OptimizerG2o::bundle_adjustment(
                 edge->setLevel(1);
                 num_bad_edges++;
             }
-            G2oGraphReleaser::remove_robust_kernel(edge);
+            edge->setRobustKernel(nullptr); // the optimizer keeps the kernel until it is destroyed
         }
     }
 
@@ -436,7 +378,6 @@ PoseOptimizationResult OptimizerG2o::pose_optimization(FramePtr &frame, bool ver
     auto blockSolver = std::make_unique<g2o::BlockSolverSE3>(std::move(linearSolver));
     auto algorithm = optimizer.make<g2o::OptimizationAlgorithmLevenberg>(std::move(blockSolver));
     optimizer.setAlgorithm(algorithm);
-    G2oGraphReleaser graph_releaser(optimizer); // frees the graph on return
 
     // Create SE3 vertex for frame pose
     auto *vertex_se3 = optimizer.make<g2o::VertexSE3Expmap>();
@@ -560,7 +501,7 @@ PoseOptimizationResult OptimizerG2o::pose_optimization(FramePtr &frame, bool ver
             }
 
             if (it == 2) {
-                G2oGraphReleaser::remove_robust_kernel(edge);
+                edge->setRobustKernel(nullptr); // the optimizer keeps the kernel until it is destroyed
             }
         }
 
@@ -584,7 +525,7 @@ PoseOptimizationResult OptimizerG2o::pose_optimization(FramePtr &frame, bool ver
             }
 
             if (it == 2) {
-                G2oGraphReleaser::remove_robust_kernel(edge);
+                edge->setRobustKernel(nullptr); // the optimizer keeps the kernel until it is destroyed
             }
         }
 
@@ -641,7 +582,6 @@ std::pair<double, double> OptimizerG2o::local_bundle_adjustment(
     auto blockSolver = std::make_unique<g2o::BlockSolverSE3>(std::move(linearSolver));
     auto algorithm = optimizer.make<g2o::OptimizationAlgorithmLevenberg>(std::move(blockSolver));
     optimizer.setAlgorithm(algorithm);
-    G2oGraphReleaser graph_releaser(optimizer); // frees the graph on return
 
     if (abort_flag) {
         optimizer.setForceStopFlag(abort_flag);
@@ -805,7 +745,7 @@ std::pair<double, double> OptimizerG2o::local_bundle_adjustment(
             if (chi2_check_failure || !edge->isDepthPositive()) {
                 edge->setLevel(1);
             }
-            G2oGraphReleaser::remove_robust_kernel(edge);
+            edge->setRobustKernel(nullptr); // the optimizer keeps the kernel until it is destroyed
         }
 
         for (auto &edge_pair : graph_edges_stereo) {
@@ -818,7 +758,7 @@ std::pair<double, double> OptimizerG2o::local_bundle_adjustment(
             if (chi2_check_failure || !edge->isDepthPositive()) {
                 edge->setLevel(1);
             }
-            G2oGraphReleaser::remove_robust_kernel(edge);
+            edge->setRobustKernel(nullptr); // the optimizer keeps the kernel until it is destroyed
         }
 
         // Optimize again without outliers
@@ -946,7 +886,6 @@ Sim3OptimizationResult OptimizerG2o::optimize_sim3(
     auto blockSolver = std::make_unique<g2o::BlockSolverX>(std::move(linearSolver));
     auto algorithm = optimizer.make<g2o::OptimizationAlgorithmLevenberg>(std::move(blockSolver));
     optimizer.setAlgorithm(algorithm);
-    G2oGraphReleaser graph_releaser(optimizer); // frees the graph on return
 
     g2o::Sim3 sim3(R12, t12, s12);
 
@@ -1079,8 +1018,6 @@ Sim3OptimizationResult OptimizerG2o::optimize_sim3(
             actual_map_points1[index] = nullptr;
             optimizer.removeEdge(edge_12);
             optimizer.removeEdge(edge_21);
-            G2oGraphReleaser::delete_edge(edge_12); // no longer in the optimizer: delete it here
-            G2oGraphReleaser::delete_edge(edge_21);
             edges_12[i] = nullptr;
             edges_21[i] = nullptr;
             num_bad++;
@@ -1145,7 +1082,6 @@ double OptimizerG2o::optimize_essential_graph(
     auto algorithm = optimizer.make<g2o::OptimizationAlgorithmLevenberg>(std::move(blockSolver));
     algorithm->setUserLambdaInit(1e-16);
     optimizer.setAlgorithm(algorithm);
-    G2oGraphReleaser graph_releaser(optimizer); // frees the graph on return
 
     const auto all_keyframes = map_object->get_keyframes_vector();
     const auto all_map_points = map_object->get_points_vector();

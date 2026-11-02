@@ -54,14 +54,18 @@ def main():
             failed.append(pattern)
     for path in modules:
         name = os.path.basename(path).split(".")[0]
+        if name.startswith("lib"):  # a shared library the modules link to (libcamera_model_core), not a module
+            continue
         folder = os.path.dirname(path)
         if name == "gtsam":  # a package: import it by its name, from the folder above
             folder = os.path.dirname(folder)
         # gtsam first: gtsam_factors and cpp_core use its types
         # (the gtsam package is in the tree; on PYTHONPATH under pixi, added here for other environments)
         gtsam_dir = os.path.join(ROOT, "thirdparty", "gtsam_local", "install", "python")
-        code = (f"import sys; sys.path.insert(0, {gtsam_dir!r}); sys.path.insert(0, {folder!r}); "
-                f"import gtsam; import {name}")
+        # g2o too: cpp_core and camera_models_g2o import it while they initialise
+        g2o_dir = os.path.join(ROOT, "thirdparty", "g2opy", "lib")
+        code = (f"import sys; sys.path.insert(0, {gtsam_dir!r}); sys.path.insert(0, {g2o_dir!r}); "
+                f"sys.path.insert(0, {folder!r}); import gtsam; import g2o; import {name}")
         r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=ROOT)
         ok = r.returncode == 0
         if verbose or not ok:

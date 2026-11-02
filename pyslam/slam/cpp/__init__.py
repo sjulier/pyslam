@@ -158,6 +158,11 @@ core_classes = [
 def _import_cpp_core():
     """Import the C++ core module and return all classes in a dictionary"""
     try:
+        # cpp_core imports the g2o module while it initialises (camera_g2o_module.cpp): its folder must be
+        # on the path even when pyslam.config, which adds it, has not been imported yet (tests, tools)
+        g2o_dir = os.path.join(REPO_ROOT, "thirdparty", "g2opy", "lib")
+        if os.path.isdir(g2o_dir) and g2o_dir not in sys.path:
+            sys.path.append(g2o_dir)
         import cpp_core
 
         cpp_classes = {
