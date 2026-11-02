@@ -368,6 +368,8 @@ chflags -R nohidden .pixi
 ```
 On one Mac every entry of `.pixi` (and `.git`) had the flag; the cause is unknown (Finder or a sync tool are suspects).
 
+The same flag on the environment's `.pth` files makes Python ignore them (Python 3.11.9 and later skip hidden `.pth` files), and with them pySLAM's editable install: `import pyslam` then fails with `ModuleNotFoundError: No module named 'pyslam'` from any folder but the pySLAM folder itself, for example when running the tests in `pyslam/slam/cpp/tests_py`. `pixi run doctor` reports it ("pyslam package"); the fix is the same `chflags` command. The flag came back on that Mac two weeks after it was cleared, so run the doctor again when either error appears.
+
 --- 
 
 ### SURF error
