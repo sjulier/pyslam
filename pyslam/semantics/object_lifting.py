@@ -34,7 +34,9 @@
 # otherwise the point starts a new object. The objects are printed and drawn; no file is written.
 #
 # The functions lift_mask(), map_points_in_camera(), merge_into_objects() and class_colour_rgb() are
-# meant to be shared with the tracks of Lab 05 (a detection is a track of one box).
+# shared with main_slam.py --tracks (pyslam/semantics/track_lifting.py): there a static track is one
+# item of the merge, with its number of lifted boxes as its order and its weight (a detection is a
+# track of one box).
 
 import csv
 import json

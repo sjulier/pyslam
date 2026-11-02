@@ -29,7 +29,9 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <mutex>
 #include <opencv2/core.hpp>
+#include <vector>
 
 #ifndef PYSLAM_CV_MAT_IMPORT_ALWAYS_COPY
 // Import policy for Python ndarray -> cv::Mat.
@@ -136,6 +138,58 @@ struct cv_mat_buffer_view {
     size_t row_bytes = 0;
 };
 
+// The NumPy owners of released Mats that a thread without the GIL could not DECREF itself.
+// That thread must not wait for the GIL: it may hold a C++ lock that the thread holding the GIL
+// is waiting for. For example, local BA (GIL released) drops a culled keyframe, and with it its
+// descriptors, under the local map's lock, while tracking (GIL held) waits for that lock in
+// local_map.is_empty(): a deadlock with every thread idle. Instead the owners are queued here,
+// and the interpreter DECREFs them in its main thread, holding the GIL.
+class deferred_py_decrefs {
+  public:
+    static deferred_py_decrefs &instance() {
+        static auto *d = new deferred_py_decrefs(); // never destroyed: threads may still push at exit
+        return *d;
+    }
+
+    // Needs neither the GIL nor a Python thread state.
+    void push(PyObject *owner) {
+        bool schedule = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            owners_.push_back(owner);
+            if (!scheduled_) {
+                scheduled_ = true;
+                schedule = true;
+            }
+        }
+        // Py_AddPendingCall needs neither the GIL nor a thread state either. It fails only when
+        // the interpreter's queue is full: then the next push tries again.
+        if (schedule && Py_AddPendingCall(&deferred_py_decrefs::drain_pending, nullptr) != 0) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            scheduled_ = false;
+        }
+    }
+
+  private:
+    // Runs in the main thread with the GIL held.
+    static int drain_pending(void *) {
+        auto &self = instance();
+        std::vector<PyObject *> owners;
+        {
+            std::lock_guard<std::mutex> lock(self.mutex_);
+            owners.swap(self.owners_);
+            self.scheduled_ = false;
+        }
+        for (PyObject *owner : owners)
+            Py_DECREF(owner);
+        return 0;
+    }
+
+    std::mutex mutex_;
+    std::vector<PyObject *> owners_;
+    bool scheduled_ = false;
+};
+
 class py_owned_mat_allocator final : public cv::MatAllocator {
   public:
     // This allocator never creates fresh buffers. It only exists so cv::Mat can release a
@@ -156,11 +210,16 @@ class py_owned_mat_allocator final : public cv::MatAllocator {
         // userdata stores the borrowed NumPy owner with an extra INCREF. Dropping that reference
         // here is what keeps the aliased buffer valid after the pybind11 type_caster temporary
         // has already gone out of scope.
+        // Never wait for the GIL here (see deferred_py_decrefs): a thread that does not hold it
+        // leaves the DECREF to the interpreter.
         auto *owner = reinterpret_cast<PyObject *>(u->userdata);
         if (owner) {
             if (Py_IsInitialized()) {
-                py::gil_scoped_acquire acquire;
-                Py_DECREF(owner);
+                if (PyGILState_Check()) {
+                    Py_DECREF(owner);
+                } else {
+                    deferred_py_decrefs::instance().push(owner);
+                }
             }
             u->userdata = nullptr;
         }
