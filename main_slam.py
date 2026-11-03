@@ -503,6 +503,11 @@ if __name__ == "__main__":
         headless=args.headless,
     )
     slam.set_viewer_scale(dataset.scale_viewer_3d)
+    # what the playback throttle reads: the Python pipeline's tracking records it; the C++ pipeline
+    # (Parameters.USE_CPP_PIPELINE) has none, and the playback then keeps --speed
+    kf_demand = getattr(slam.tracking, "kf_demand", None)
+    if kf_demand is None:
+        Printer.orange("Playback throttle: not available with the C++ pipeline (the playback keeps --speed)")
     time.sleep(1)  # to show initial messages
 
     # load system state if requested
@@ -834,7 +839,7 @@ if __name__ == "__main__":
             # The speed is --speed (0 = no wait), reduced by the throttle when local mapping cannot
             # keep up with the frames.
             if img is not None and frame_duration > 0:
-                if playback_throttle.update(slam.tracking.kf_demand):
+                if playback_throttle.update(kf_demand):
                     Printer.yellow(
                         f"Playback speed: {playback_throttle.speed_str()} "
                         f"(tracking was weak in {100 * playback_throttle.last_fraction:.0f}% of the recent frames)"
@@ -995,12 +1000,9 @@ if __name__ == "__main__":
             f.write(f"playback_max_speed: {playback_throttle.speed_str(playback_throttle.max_speed)}\n")
             f.write(f"playback_lowest_speed: {playback_throttle.speed_str(playback_throttle.lowest_speed)}\n")
             f.write(f"playback_num_slowdowns: {playback_throttle.num_decreases}\n")
-            f.write(
-                f"percent_weak_tracking_frames: {slam.tracking.kf_demand.total_weak_fraction()*100:.2f}\n"
-            )
-            f.write(
-                f"percent_suppressed_keyframe_requests: {slam.tracking.kf_demand.total_suppressed_fraction()*100:.2f}\n"
-            )
+            if kf_demand is not None:
+                f.write(f"percent_weak_tracking_frames: {kf_demand.total_weak_fraction()*100:.2f}\n")
+                f.write(f"percent_suppressed_keyframe_requests: {kf_demand.total_suppressed_fraction()*100:.2f}\n")
 
         # The trajectory error is over the tracked frames only: say how many there were, so that a run
         # which lost track early (a short, easily aligned trajectory: a small error) is not read as a
@@ -1032,10 +1034,13 @@ if __name__ == "__main__":
     Printer.green(
         f"Playback: max speed {playback_throttle.speed_str(playback_throttle.max_speed)}, "
         f"lowest speed {playback_throttle.speed_str(playback_throttle.lowest_speed)}, "
-        f"{playback_throttle.num_decreases} slow-downs; "
-        f"tracking was weak in {slam.tracking.kf_demand.total_weak_fraction()*100:.0f}% of the frames; "
-        f"{slam.tracking.kf_demand.total_suppressed_fraction()*100:.0f}% of the keyframe requests "
-        f"found local mapping busy",
+        f"{playback_throttle.num_decreases} slow-downs"
+        + (
+            f"; tracking was weak in {kf_demand.total_weak_fraction()*100:.0f}% of the frames; "
+            f"{kf_demand.total_suppressed_fraction()*100:.0f}% of the keyframe requests found local mapping busy"
+            if kf_demand is not None
+            else ""
+        ),
         flush=True,
     )
 
