@@ -28,7 +28,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # Built pySLAM modules (relative to the repo root). Third-party torch extensions (detectron2, ...)
 # are built with torch's own pybind11 and do not share types with these, so they are not listed.
 MODULE_GLOBS = [
-    "pyslam/slam/cpp/lib/cpp_core*.so",
+    "cpp/core/slam/lib/cpp_core*.so",
     "cpp/lib/*.so",
     "thirdparty/g2opy/lib/*.so",
     "thirdparty/orbslam2_features/lib/*.so",
