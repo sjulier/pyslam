@@ -58,10 +58,6 @@ from collections import deque
 from enum import Enum
 
 import torch
-from pyslam.depth_estimation.depth_estimator_factory import (
-    depth_estimator_factory,
-    DepthEstimatorType,
-)
 
 from pyslam.utilities.system import lazy_module
 
@@ -721,6 +717,12 @@ class VolumetricIntegratorBase:
         self.img_id_to_depth = {}
 
         self.parameters_dict = parameters_dict
+
+        # imported here, not at the top: importing main_slam must not load the depth networks' modules
+        from pyslam.depth_estimation.depth_estimator_factory import (
+            depth_estimator_factory,
+            DepthEstimatorType,
+        )
 
         depth_estimator_type_str = parameters_dict["kVolumetricIntegrationDepthEstimatorType"]
         depth_estimator_type = DepthEstimatorType.from_string(depth_estimator_type_str)

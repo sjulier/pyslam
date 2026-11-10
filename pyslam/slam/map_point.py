@@ -270,6 +270,12 @@ class MapPointBase(object):
 
         return success
 
+    def discard_frame_view(self, frame: "Frame"):
+        """Forget the view of a frame that is being dropped (Map.add_frame evicting it), without
+        changing the frame itself."""
+        with self._lock_features:
+            self._frame_views.pop(frame, None)
+
     def remove_frame_view(self, frame: "Frame", idx=None):
         assert not frame.is_keyframe
         frame_remove_point_match = False

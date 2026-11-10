@@ -324,9 +324,11 @@ class Map(object):
         if evicted_frame is not None and not evicted_frame.is_keyframe:
             evicted_points = evicted_frame.get_points()
             if evicted_points is not None:
-                evicted_frame.remove_frame_views(
-                    [i for i, p in enumerate(evicted_points) if p is not None]
-                )
+                # once per point, not per slot: a frame can hold the same point in two slots
+                # (MapPoint.remove_frame_view(frame, idx) asserts that it does not), and the evicted
+                # frame itself need not change
+                for p in {id(p): p for p in evicted_points if p is not None}.values():
+                    p.discard_frame_view(evicted_frame)
         return ret
 
     def remove_frame(self, frame: Frame):
