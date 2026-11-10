@@ -235,7 +235,7 @@ class Parameters:
     # ================================================================
     # Optimization engine
     # ================================================================
-    kOptimizationAllUseGtsam = False  # Use GTSAM for all optimization tasks (it seems to have problems under mac, TODO: fix it)
+    kOptimizationAllUseGtsam = False  # Use GTSAM for all optimization tasks
     kOptimizationFrontEndUseGtsam = (
         False or kOptimizationAllUseGtsam
     )  # Use GTSAM in pose optimization in the frontend
