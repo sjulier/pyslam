@@ -125,7 +125,7 @@ fi
 cmake .. \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     -Dpybind11_DIR="$PROJECT_ROOT/thirdparty/pybind11/share/cmake/pybind11" \
-    -DWITH_MARCH_NATIVE="$WITH_MARCH_NATIVE" $PYTHON_CMAKE_OPTS $PIXI_PYTHON_CMAKE_OPTS $EXTERNAL_OPTIONS
+    -DWITH_MARCH_NATIVE="$WITH_MARCH_NATIVE" $PYTHON_CMAKE_OPTS $PIXI_PYTHON_CMAKE_OPTS $EXTERNAL_OPTIONS || exit 1
 
 # Build the module
 echo "Building the module..."
@@ -133,7 +133,7 @@ echo "Building the module..."
 . "$PROJECT_ROOT/bash_utils.sh"
 NUM_JOBS=$(get_build_jobs)
 echo "Building with $NUM_JOBS parallel jobs (set PYSLAM_BUILD_JOBS to change)"
-make -j$NUM_JOBS
+make -j$NUM_JOBS || exit 1
 
 # The module is already built to the correct location by CMake
 echo "Module built successfully!"

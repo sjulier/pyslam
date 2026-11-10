@@ -57,7 +57,7 @@ echo "EXTERNAL_OPTIONS: $EXTERNAL_OPTIONS"
 
 make_dir build
 cd build
-cmake .. $EXTERNAL_OPTIONS $MAC_OPTIONS
-make -j "$NUM_JOBS"
+cmake .. $EXTERNAL_OPTIONS $MAC_OPTIONS || exit 1
+make -j "$NUM_JOBS" || exit 1  # else a failed build leaves the old module in lib/
 
 cd ..

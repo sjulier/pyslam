@@ -30,7 +30,10 @@ import threading
 
 
 def memory_bytes():
-    """Read resident process memory and host headroom on Linux."""
+    """Read resident process memory and host headroom: from /proc on Linux, psutil elsewhere."""
+    if not Path('/proc/self/status').exists():  # macOS
+        import psutil
+        return psutil.Process().memory_info().rss, psutil.virtual_memory().available
     status = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines()
                   if ':' in line)
     meminfo = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
