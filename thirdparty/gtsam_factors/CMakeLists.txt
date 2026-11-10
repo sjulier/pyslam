@@ -146,6 +146,7 @@ pybind11_add_module(
   optimizers.h 
   resectioning.h
   weighted_projection_factors.h
+  values_cross_module.h
 )
 target_link_libraries(gtsam_factors PRIVATE
   gtsam

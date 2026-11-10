@@ -21,6 +21,8 @@
 // #define GTSAM_SLOW_BUT_CORRECT_BETWEENFACTOR  // before including gtsam
 
 
+#include "values_cross_module.h"  // first: gtsam::Values lookups across modules on macOS
+
 #include <gtsam/inference/Symbol.h>
 
 #include <gtsam/slam/BetweenFactor.h>
