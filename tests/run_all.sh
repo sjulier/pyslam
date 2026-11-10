@@ -30,7 +30,13 @@ run_step "Python tests (C++ core)" python3 -m pytest tests -q
 run_step "Python tests (Python core)" \
     env PYSLAM_USE_CPP=false python3 -m pytest tests/python_core tests/slam -q
 
-run_step "C++ core tests" ./cpp/core/slam/tests_cpp/run_all_tests.sh
+# the C++ test programs exist only after a source build of the C++ core: the prebuilt modules
+# (pixi run build) do not include them
+if [[ -d cpp/core/slam/build/tests_cpp ]]; then
+    run_step "C++ core tests" ./cpp/core/slam/tests_cpp/run_all_tests.sh
+else
+    echo "skip: the C++ core test programs are not built (prebuilt modules; cpp/core/slam/build/tests_cpp)"
+fi
 run_step "C++ core Python tests" ./cpp/core/slam/tests_py/run_all_tests.sh
 
 # Script-style module checks. pytest ignores these (see pyproject.toml):

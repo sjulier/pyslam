@@ -87,10 +87,6 @@ if __name__ != "__mp_main__":
 
     from pyslam.loop_closing.loop_detector_configs import LoopDetectorConfigs, loop_detector_name_for_features
 
-    from pyslam.depth_estimation.depth_estimator_factory import (
-        depth_estimator_factory,
-        DepthEstimatorType,
-    )
     from pyslam.utilities.depth import img_from_depth, filter_shadow_points
 
     from pyslam.config_parameters import Parameters
@@ -513,6 +509,12 @@ if __name__ == "__main__":
     depth_estimator = None
     if Parameters.kUseDepthEstimatorInFrontEnd:
         Parameters.kVolumetricIntegrationUseDepthEstimator = False  # Just use this depth estimator in the front-end (This is not a choice, we are imposing it for avoiding computing the depth twice)
+        # imported here: it loads optional native libraries that a run without it does not need
+        from pyslam.depth_estimation.depth_estimator_factory import (
+            depth_estimator_factory,
+            DepthEstimatorType,
+        )
+
         # Select your depth estimator (see the file depth_estimator_factory.py)
         # DEPTH_ANYTHING_V2, DEPTH_ANYTHING_V3, DEPTH_PRO, DEPTH_RAFT_STEREO, DEPTH_SGBM, etc.
         depth_estimator_type = DepthEstimatorType.DEPTH_PRO

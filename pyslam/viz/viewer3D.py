@@ -468,11 +468,11 @@ class Viewer3D(object):
         )  # used to pass cameras and their poses to the viewer thread
         # the detected objects in the map (main_slam.py --detections): read by the viewer process from
         # this attribute, which is pickled with the others
-        self.qobjects = self.mp_manager.Queue()
+        self.qobjects = viewer_context.Queue()
         self.objects_state: Viewer3DObjectsInput | None = None
         # the paths of tracked objects in the map (main_slam.py --tracks): read by the viewer process
         # from this attribute, which is pickled with the others
-        self.qtracks = self.mp_manager.Queue()
+        self.qtracks = viewer_context.Queue()
         self.tracks_state: Viewer3DTracksInput | None = None
 
         self._is_running = viewer_context.Value("i", 0)

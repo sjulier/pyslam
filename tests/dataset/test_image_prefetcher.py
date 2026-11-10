@@ -462,7 +462,8 @@ class TestDatasetPrefetch(TestCase):
                 image = dataset.getImageColor(frame_id)
                 np.testing.assert_array_equal(image, cv2.imread(os.path.join(folder, name)))
                 got.append((dataset.getTimestamp(), dataset.getNextTimestamp()))
-            self.assertEqual(got, [(0.0, 1.0), (1.0, 2.0), (2.0, 2.1)])
+            # numbered images: frame number x 1/fps (pyslam.io.dataset.timestamp_from_image_filename)
+            np.testing.assert_allclose(got, [(0.0, 0.1), (0.1, 0.2), (0.2, 0.3)])
 
         with tempfile.TemporaryDirectory() as root:
             sequence = os.path.join(root, "seq")
