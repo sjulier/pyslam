@@ -72,6 +72,8 @@ class Slam : public std::enable_shared_from_this<Slam> {
     bool loop_closing_is_closing();
     void loop_closing_wait_if_closing();
     bool loop_closing_is_correcting();
+    // How many times loop closing has corrected the map (loop corrections plus global BA corrections)
+    int loop_closing_num_corrections();
     void loop_closing_add_keyframe(const KeyFramePtr &kf, const cv::Mat &img);
     bool loop_closing_relocalize(const FramePtr &frame, const cv::Mat &img);
     void loop_closing_quit();

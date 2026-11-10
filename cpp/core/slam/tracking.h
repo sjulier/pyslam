@@ -72,6 +72,9 @@ class Tracking {
     bool relocalize(const FramePtr &f_cur_in, const cv::Mat &img);
     void create_vo_points_on_last_frame();
     void wait_for_local_mapping(double timeout, bool check_on_exit = false);
+    // Wait while the global BA of loop closing corrects the map. Call it without the map lock:
+    // the correction takes that lock.
+    void wait_if_gba_correcting(double timeout = 30.0);
     void update_tracking_history();
     void update_history();
     void clean_vo_points();
@@ -134,6 +137,7 @@ class Tracking {
     std::vector<MapPointPtr> local_points;
     std::vector<MapPointPtr> vo_points;
     int last_reloc_frame_id = -1;
+    int last_num_map_corrections = 0; // loop closing's count of map corrections at the last frame
     TrackingHistory tracking_history;
 
     Eigen::Matrix3d cur_R = Eigen::Matrix3d::Identity();
