@@ -31,6 +31,7 @@
 #include "voxel_grid.h"
 #include "voxel_grid_data.h"
 #include "voxel_hashing.h"
+#include "voxel_input_order.h"
 #include "voxel_semantic_data_association.h"
 
 #include <cmath>

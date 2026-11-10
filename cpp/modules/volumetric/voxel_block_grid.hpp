@@ -297,7 +297,7 @@ void VoxelBlockGridT<VoxelDataT>::integrate_raw_preorder_no_block_mutex(
 #ifdef TBB_FOUND
     // Group point indices by block key using thread-local storage
     struct PointInfo {
-        size_t point_idx;
+        size_t index; // input point index
         LocalVoxelKey local_key;
     };
 
@@ -367,6 +367,9 @@ void VoxelBlockGridT<VoxelDataT>::integrate_raw_preorder_no_block_mutex(
         }
     }
 
+    // in input order, whatever the thread scheduling: semantic voting depends on it
+    sort_voxel_groups_by_input_order(block_groups);
+
     // Process each block in parallel (one thread per block)
     tbb::parallel_for_each(block_groups.begin(), block_groups.end(), [&](auto &pair) {
         const BlockKey &block_key = pair.first;
@@ -381,7 +384,7 @@ void VoxelBlockGridT<VoxelDataT>::integrate_raw_preorder_no_block_mutex(
         // Use update_voxel_direct to avoid recomputing keys and re-fetching blocks
         // since we already have the block and local_key precomputed
         for (const auto &info : points) {
-            const size_t i = info.point_idx;
+            const size_t i = info.index;
             const size_t idx = i * 3;
             const Tpos x = pts_ptr[idx + 0], y = pts_ptr[idx + 1], z = pts_ptr[idx + 2];
 

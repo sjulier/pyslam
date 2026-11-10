@@ -197,6 +197,7 @@ void VoxelGridT<VoxelDataT>::integrate_raw_semantic_impl(const Tp *pts_ptr, size
         InstanceType object_id;
         ClassType class_id;
         DepthType depth;
+        size_t index; // input point index
     };
 
     using LocalGroupsMap = std::unordered_map<VoxelKey, std::vector<PointInfo>, VoxelKeyHash>;
@@ -221,6 +222,7 @@ void VoxelGridT<VoxelDataT>::integrate_raw_semantic_impl(const Tp *pts_ptr, size
             const VoxelKey key = get_voxel_key_inv<Tp, Tp>(x, y, z, inv_voxel_size_);
 
             PointInfo info{x, y, z};
+            info.index = i;
             if constexpr (!std::is_same_v<Tc, std::nullptr_t>) {
                 info.color_x = cols_ptr[idx + 0];
                 info.color_y = cols_ptr[idx + 1];
@@ -279,6 +281,9 @@ void VoxelGridT<VoxelDataT>::integrate_raw_semantic_impl(const Tp *pts_ptr, size
             }
         }
     }
+
+    // in input order, whatever the thread scheduling: semantic voting depends on it
+    sort_voxel_groups_by_input_order(voxel_groups);
 
     // Phase 2: Process each voxel group in parallel (one thread per voxel)
     tbb::parallel_for_each(voxel_groups.begin(), voxel_groups.end(), [&](const auto &pair) {
@@ -519,6 +524,7 @@ void VoxelGridT<VoxelDataT>::integrate_raw_scalar_impl_with_prepartitioning(cons
     struct PointInfo {
         Tp x, y, z;
         Tc color_x, color_y, color_z;
+        size_t index; // input point index
     };
     tbb::concurrent_unordered_map<VoxelKey, std::vector<PointInfo>, VoxelKeyHash> voxel_groups;
 
@@ -542,6 +548,7 @@ void VoxelGridT<VoxelDataT>::integrate_raw_scalar_impl_with_prepartitioning(cons
                 info.x = x;
                 info.y = y;
                 info.z = z;
+                info.index = i;
                 if constexpr (HasColors) {
                     info.color_x = cols_ptr[idx + 0];
                     info.color_y = cols_ptr[idx + 1];
@@ -563,6 +570,9 @@ void VoxelGridT<VoxelDataT>::integrate_raw_scalar_impl_with_prepartitioning(cons
                 global_vec.insert(global_vec.end(), points.begin(), points.end());
             }
         });
+
+    // in input order, whatever the thread scheduling: keeps the float sums reproducible
+    sort_voxel_groups_by_input_order(voxel_groups);
 
     // Phase 2: Process each voxel group in parallel (one thread per voxel)
     tbb::parallel_for_each(voxel_groups.begin(), voxel_groups.end(), [&](const auto &pair) {
