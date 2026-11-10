@@ -97,7 +97,7 @@ echo "BUILD_TYPE: $BUILD_TYPE"
 cd "$SCRIPT_DIR"
 make_dir build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $EXTERNAL_OPTIONS $CONDA_OPTIONS $MAC_OPTIONS 
-make -j "$NUM_JOBS"
+cmake .. -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $EXTERNAL_OPTIONS $CONDA_OPTIONS $MAC_OPTIONS || exit 1
+make -j "$NUM_JOBS" || exit 1  # else a module that fails to compile leaves its old build in lib/
 
 cd ..
