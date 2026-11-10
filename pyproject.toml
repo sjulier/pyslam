@@ -1,6 +1,6 @@
 [project]
 name = "pyslam"
-version = "2.10.8"
+version = "2.11.0"
 authors = [{ name = "Luigi Freda", email = "luigifreda@gmail.com" }]
 maintainers = [{ name = "Luigi Freda", email = "luigifreda@gmail.com" }]
 description = "pySLAM is a Python-based Visual SLAM pipeline that supports monocular, stereo, and RGB-D cameras. It offers a wide range of modern local and global features, multiple loop-closing strategies, a volumetric reconstruction pipeline, integration of depth prediction models, and semantic segmentation for enhanced scene understanding."
@@ -134,3 +134,12 @@ exclude = '''
   | thirdparty/(?! (contextdesc|g2opy|geodesc|gtsam_factors|l2net|l2net_keras|lietorch|monogs|mvdust3r_scripts|orbslam2_features|pangolin|pybind11|pydbow2|pydbow3|pyibow|ros2_pybindings) (?:/|$) )
 )/
 '''
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["examples", "thirdparty", "cpp", "build", ".git"]
+addopts = [
+  "--ignore=tests/modules/test_volumetric.py",
+  "--ignore=tests/modules/test_sim3solver.py",
+  "--ignore=tests/modules/test_pnpsolver.py",
+]

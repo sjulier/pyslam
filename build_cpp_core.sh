@@ -35,7 +35,7 @@ print_blue '================================================'
 print_blue "Building pySLAM C++ core"
 print_blue '================================================'
 
-cd "$ROOT_DIR/pyslam/slam/cpp"
+cd "$ROOT_DIR/cpp/core/slam"
 # Remove the previously built module first: if this build fails, a stale cpp_core from older
 # sources must not stay importable and look like a successful build.
 rm -f lib/cpp_core*.so lib/cpp_core*.pyd

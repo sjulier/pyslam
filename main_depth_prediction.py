@@ -80,15 +80,15 @@ kSizes = {"small": "vits", "base": "vitb", "large": "vitl"}  # --size: DA-V2's e
 
 # The images of --test (the same as main_semantic_image_segmentation.py's)
 kTests = {
-    "kitti": "test/data/kitti06-12-color.png",  # frame 12 of the KITTI 06 video
-    "kitti_next": "test/data/kitti06-17-color.png",  # half a second later
+    "kitti": "examples/data/kitti06-12-color.png",  # frame 12 of the KITTI 06 video
+    "kitti_next": "examples/data/kitti06-17-color.png",  # half a second later
     "desk": "data/images/desk_detic.jpeg",
-    "churchill": "test/data/churchill/1.ppm",
-    "box": "test/data/box_in_scene.png",
-    "mars": "test/data/mars1.png",
+    "churchill": "examples/data/churchill/1.ppm",
+    "box": "examples/data/box_in_scene.png",
+    "mars": "examples/data/mars1.png",
 }
 kTestSettings = {"kitti": "settings/KITTI04-12.yaml", "kitti_next": "settings/KITTI04-12.yaml"}
-kTestRight = {"kitti": "test/data/kitti06-12-R-color.png"}  # the right image of the stereo pair
+kTestRight = {"kitti": "examples/data/kitti06-12-R-color.png"}  # the right image of the stereo pair
 kIndoorTests = ("desk", "box")  # DA-V2's indoor model for these, the outdoor model for the others
 
 kAssumedFov = 60.0  # degrees: the horizontal field of view assumed for an image without a settings file

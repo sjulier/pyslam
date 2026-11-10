@@ -82,7 +82,7 @@ MODULES = {
         "-DMSVC_USE_STATIC_CRT=OFF", "-DBUILD_TESTS=OFF", "-DBUILD_TOOLS=OFF", "-DBUILD_EXAMPLES=OFF",
     ]),
     "cpp_utils": ("cpp", []),
-    "cpp_core": ("pyslam/slam/cpp", []),
+    "cpp_core": ("cpp/core/slam", []),
 }
 
 

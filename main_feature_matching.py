@@ -149,8 +149,8 @@ if args.images:  # two image files of the user
 else:
     pair_name = test_type
     img1_file, img2_file, model_fitting_type, draw_horizontal_layout = kTests[test_type]
-    img1 = cv2.imread(kScriptFolder + "/test/data/" + img1_file)  # queryImage
-    img2 = cv2.imread(kScriptFolder + "/test/data/" + img2_file)  # trainImage
+    img1 = cv2.imread(kScriptFolder + "/examples/data/" + img1_file)  # queryImage
+    img2 = cv2.imread(kScriptFolder + "/examples/data/" + img2_file)  # trainImage
 if args.model:
     model_fitting_type = args.model
 if test_type == "graf":

@@ -74,12 +74,12 @@ kModelsFolder = os.path.join(kScriptFolder, "data", "models")
 
 # The images of --test (the same as main_semantic_image_segmentation.py's)
 kTests = {
-    "kitti": "test/data/kitti06-12-color.png",  # frame 12 of the KITTI 06 video
-    "kitti_next": "test/data/kitti06-17-color.png",  # half a second later
+    "kitti": "examples/data/kitti06-12-color.png",  # frame 12 of the KITTI 06 video
+    "kitti_next": "examples/data/kitti06-17-color.png",  # half a second later
     "desk": "data/images/desk_detic.jpeg",
-    "churchill": "test/data/churchill/1.ppm",
-    "box": "test/data/box_in_scene.png",
-    "mars": "test/data/mars1.png",
+    "churchill": "examples/data/churchill/1.ppm",
+    "box": "examples/data/box_in_scene.png",
+    "mars": "examples/data/mars1.png",
 }
 
 # The 80 classes of COCO, in the order of YOLO's class numbers

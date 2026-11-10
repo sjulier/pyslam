@@ -1,6 +1,6 @@
 <p align="center"><img src="./images/pyslam-logo.png" height="160"></p>
 
-# pySLAM v2.10.8
+# pySLAM v2.11.0
 
 Author: **[Luigi Freda](https://www.luigifreda.com)**
 
@@ -12,7 +12,7 @@ Author: **[Luigi Freda](https://www.luigifreda.com)**
 - Integration of **[depth prediction models](#depth-prediction)** within the SLAM pipeline. These include *DepthPro*, *DepthAnythingV2*, *DepthAnythingV3*, *RAFT-Stereo*, *CREStereo*, etc.  
 - A suite of segmentation models for **[semantic understanding](#semantic-mapping-and-image-segmentation)** of the scene, such as *DeepLabv3*, *Segformer*, *CLIP*, *DETIC*, *EOV-SEG*, *ODISE*, *RFDETR*, *YOLO*, etc.
 - Additional tools for VO (Visual Odometry) and SLAM, with built-in support for both **g2o** and **GTSAM**, along with custom Python bindings for features not available in the original libraries.
-- A modular **sparse-SLAM core**, implemented in **both Python and C++** (with custom pybind11 bindings), allowing users to switch between _high-performance/speed_ and _high-flexibility_ modes. The Python and C++ implementations are interoperable: maps saved by one can be loaded by the other. Further details [here](pyslam/slam/cpp/README.md).
+- A modular **sparse-SLAM core**, implemented in **both Python and C++** (with custom pybind11 bindings), allowing users to switch between _high-performance/speed_ and _high-flexibility_ modes. The Python and C++ implementations are interoperable: maps saved by one can be loaded by the other. Further details [here](cpp/core/slam/README.md).
 - A modular pipeline for **feed-forward inference of 3D scenes from multiple images**. Supports models like *DUSt3R*, *Mast3r*, *MV-DUSt3R*, *VGGT*, *Robust VGGT*, *DepthFromAnythingV3*, and *Fast3R*. Further details [here](pyslam/scene_from_views/README.md).
 - Built-in support for over **[10 dataset types](#datasets)**.
   
@@ -52,7 +52,7 @@ See the demo **video** for release v2.10.0
 
 <!-- TOC -->
 
-- [pySLAM v2.10.8](#pyslam-v2108)
+- [pySLAM v2.11.0](#pyslam-v2110)
   - [Table of contents](#table-of-contents)
   - [Overview](#overview)
     - [Main Scripts](#main-scripts)
@@ -113,6 +113,7 @@ See the demo **video** for release v2.10.0
     - [Datasets](#datasets)
       - [KITTI Datasets](#kitti-datasets)
       - [TUM Datasets](#tum-datasets)
+      - [TUM-VI Datasets](#tum-vi-datasets)
       - [ICL-NUIM Datasets](#icl-nuim-datasets)
       - [EuRoC Datasets](#euroc-datasets)
       - [Replica Datasets](#replica-datasets)
@@ -138,15 +139,16 @@ See the demo **video** for release v2.10.0
 ## Overview
  
 ```bash
-├── cpp         # Pybind11 C++ bindings to slam utilities 
-│   ├── hamming     # SIMD-optimized Hamming distance calculator for uint8 binary descriptors with zero-copy Python bindings.
-│   ├── glutils     # OpenGL utilities for drawing points, cameras, etc.
-│   ├── solvers     # PnP and Sim3 solvers for camera pose estimation 
-│   ├── volumetric  # Volumetric mapping with parallel block-based voxel hashing, templates, carving, and semantics support.
-│   ├── trajectory  # Trajectory alignment helpers
-├── data       # Sample input/output data
-├── docs       # Documentation files
-├── pyslam     # Core Python package
+├── cpp
+│   ├── modules          # utility extensions: hamming, glutils, solvers, volumetric, camera_models, ...
+│   ├── casters          # shared OpenCV pybind11 type casters
+│   ├── core
+│   │   ├── slam         # sparse-SLAM C++ core, exposed as the cpp_core module
+│   │   └── semantics    # semantic-mapping sources compiled into cpp_core
+│   └── lib              # built Python extension modules
+├── data                 # Sample input/output data
+├── docs                 # Documentation files
+├── pyslam               # Core Python package
 │   ├── dense
 │   ├── depth_estimation
 │   ├── evaluation
@@ -155,15 +157,15 @@ See the demo **video** for release v2.10.0
 │   ├── loop_closing
 │   ├── scene_from_views # Unified 3D scene reconstruction from multiple views
 │   ├── semantics
-│       ├── cpp  # C++ core for semantics  
 │   ├── slam
-│       ├── cpp  # C++ core for sparse slam  
+│   │   └── cpp          # Python facade that imports cpp_core
 │   ├── utilities
 │   ├── viz
-├── scripts     # Shell utility scripts
-├── settings    # Dataset/configuration files
-├── test        # Tests and usage examples
-├── thirdparty  # External dependencies
+├── scripts              # Shell utility scripts
+├── settings             # Dataset/configuration files
+├── examples             # Usage examples
+├── tests                # Automated tests
+├── thirdparty           # External dependencies
 ```
 
 ### Main Scripts
@@ -186,7 +188,7 @@ See the demo **video** for release v2.10.0
 
 * `main_scene_from_views.py` infers 3D scenes from multiple images using models like DUSt3R, Mast3r, MV-DUSt3R, VGGT, Robust VGGT, DepthFromAnythingV3, and Fast3R (see [here](#feed-forward-inference-of-3d-scenes-from-multiple-image-views)).  
 
-Other *test/example scripts* are provided in the `test` folder.
+Other usage scripts are in the `examples` folder. Automated checks are in `tests`; see [tests/README.md](./tests/README.md).
 
 ### System overview      
 
@@ -367,7 +369,7 @@ Open a new terminal and start experimenting with the scripts. In each new termin
 ```
 If you are using `pixi` then just run `pixi shell` to activate the `pyslam` environment.
 The file [config.yaml](./config.yaml) serves as a single entry point to configure the system and its global configuration parameters contained in [pyslam/config_parameters.py](./pyslam/config_parameters.py). 
-- To **enable the C++ sparse-SLAM core**, set `USE_CPP_CORE = True` in the file `config_parameters.py`.
+- The **C++ sparse-SLAM core** is enabled by default (`USE_CPP_CORE = True` in `pyslam/config_parameters.py`). Set it to `False`, or launch with `PYSLAM_USE_CPP=false`, to use the Python core.
 - Further information on how to configure pySLAM are provided [here](#selecting-a-dataset-and-different-configuration-parameters).
 
  
@@ -441,7 +443,7 @@ If you just want to test the basic feature extraction and matching capabilities 
 
 In any SLAM and VO, you can choose any detector/descriptor among *ORB*, *SIFT*, *SURF*, *BRISK*, *AKAZE*, *SuperPoint*, etc. (see the section *[Supported Local Features](#supported-local-features)* below for further information). 
 
-Some basic examples are available in the subfolder `test/cv`. In particular, as for feature detection/description, you may want to take a look at [test/cv/test_feature_manager.py](./test/cv/test_feature_manager.py) too.
+Some basic examples are available in the subfolder `examples/cv`. In particular, as for feature detection/description, you may want to take a look at [examples/cv/example_feature_manager.py](./examples/cv/example_feature_manager.py) too.
 
 ---
 
@@ -456,7 +458,7 @@ Many [loop closing methods](#loop-closing) are available, combining different [a
 
 While running full SLAM, loop closing is enabled by default and can be disabled by setting `kUseLoopClosing=False` in `pyslam/config_parameters.py`. Different configuration options `LoopDetectorConfigs` can be found in [pyslam/loop_closing/loop_detector_configs.py](./pyslam/loop_closing/loop_detector_configs.py): Code comments provide additional useful details.
 
-One can start experimenting with loop closing methods by using the examples in `test/loopclosing`. The example [test/loopclosing/test_loop_detector.py](./test/loopclosing/test_loop_detector.py) is the recommended entry point.
+One can start experimenting with loop closing methods by using the examples in `examples/loopclosing`. The example [examples/loopclosing/example_loop_detector.py](./examples/loopclosing/example_loop_detector.py) is the recommended entry point.
 
 
 #### Vocabulary management 
@@ -465,11 +467,11 @@ One can start experimenting with loop closing methods by using the examples in `
 
 To create a new vocabulary, follow these steps:
 
-1. **Generate an array of descriptors**: Use the script `test/loopclosing/test_gen_des_array_from_imgs.py` to generate the array of descriptors that will be used to train the new vocabulary. Select your desired descriptor type via the tracker configuration. 
+1. **Generate an array of descriptors**: Use the script `examples/loopclosing/example_gen_des_array_from_imgs.py` to generate the array of descriptors that will be used to train the new vocabulary. Select your desired descriptor type via the tracker configuration. 
 
-2.  **DBOW vocabulary generation**: Train your target DBOW vocabulary by using the script `test/loopclosing/test_gen_dbow_voc_from_des_array.py`.
+2.  **DBOW vocabulary generation**: Train your target DBOW vocabulary by using the script `examples/loopclosing/example_gen_dbow_voc_from_des_array.py`.
 
-3. **VLAD vocabulary generation**: Train your target VLAD "vocabulary" by using the script `test/loopclosing/test_gen_vlad_voc_from_des_array.py`.
+3. **VLAD vocabulary generation**: Train your target VLAD "vocabulary" by using the script `examples/loopclosing/example_gen_vlad_voc_from_des_array.py`.
 
 Once you have trained the vocabulary, you can add it in [pyslam/loop_closing/loop_detector_vocabulary.py](./pyslam/loop_closing/loop_detector_vocabulary.py) and correspondingly create a new loop detector configuration in [pyslam/loop_closing/loop_detector_configs.py](./pyslam/loop_closing/loop_detector_configs.py) that uses it.
 
@@ -514,7 +516,7 @@ The SLAM back-end hosts a volumetric reconstruction pipeline. This is disabled b
 - `TSDF` (Truncated Signed Distance Function): It is able to return in output either a pointcloud or a mesh. 
 - `GAUSSIAN_SPLATTING` (Incremental Gaussian splatting).
  
-See [pyslam/dense/volumetric_integrator_types.py](pyslam/dense/volumetric_integrator_types.py). Note that you need CUDA in order to run `GAUSSIAN_SPLATTING` method. Further information about the volumetric grid models is available [here](./cpp/volumetric/README.md).
+See [pyslam/dense/volumetric_integrator_types.py](pyslam/dense/volumetric_integrator_types.py). Note that you need CUDA in order to run `GAUSSIAN_SPLATTING` method. Further information about the volumetric grid models is available [here](./cpp/modules/volumetric/README.md).
 
 At present, the volumetric reconstruction pipeline works with:
 - RGBD datasets 
@@ -537,8 +539,8 @@ You can check the output pointcloud/mesh by using [CloudCompare](https://www.clo
 
 In the case of a saved Gaussian splatting model, you can visualize it by:
 1. Using the [superslat editor](https://playcanvas.com/supersplat/editor) (drag and drop the saved Gaussian splatting `.ply` pointcloud in the editor interface). 
-2. Getting into the folder `test/gaussian_splatting` and running:      
-    `python test_gsm.py --load <gs_checkpoint_path>`      
+2. Getting into the folder `examples/gaussian_splatting` and running:      
+    `python example_gsm.py --load <gs_checkpoint_path>`      
     The directory ` <gs_checkpoint_path>` is expected to have the following structure:      
     ```bash
     ├── gs_checkpoint_path
@@ -694,9 +696,9 @@ Known **limitations** in volumetric semantic mapping:
 
 The system provides a modular sparse-SLAM core, implemented in both C++ and Python, allowing users to switch between high-performance/speed and high-flexibility modes.
 
-The C++ core reimplements the sparse SLAM originally implemented in Python, exposing core SLAM classes (frames, keyframes, map points, maps, cameras, optimizers, tracking, and local mapping) to Python via pybind11. The C++ implementation follows a streamlined design where all core data resides in C++, with Python serving as an interface layer. C++ classes mirror their Python counterparts, maintaining identical interfaces and data field names (see this [table](./pyslam/slam/cpp/README.md#table-of-corresponding-files)). When feasible, the bindings support zero-copy data exchange (e.g., descriptors) and safe memory ownership across the Python/C++ boundary, leveraging automatic zero-copy sharing of NumPy array memory with C++.
+The C++ core reimplements the sparse SLAM originally implemented in Python, exposing core SLAM classes (frames, keyframes, map points, maps, cameras, optimizers, tracking, and local mapping) to Python via pybind11. The C++ implementation follows a streamlined design where all core data resides in C++, with Python serving as an interface layer. C++ classes mirror their Python counterparts, maintaining identical interfaces and data field names (see this [table](./cpp/core/slam/README.md#table-of-corresponding-files)). When feasible, the bindings support zero-copy data exchange (e.g., descriptors) and safe memory ownership across the Python/C++ boundary, leveraging automatic zero-copy sharing of NumPy array memory with C++.
 
-- To enable the C++ sparse-SLAM core, set `USE_CPP_CORE = True` in `pyslam/config_parameters.py`. 
+- The C++ sparse-SLAM core is enabled by default (`USE_CPP_CORE = True` in `pyslam/config_parameters.py`). Set it to `False`, or launch with `PYSLAM_USE_CPP=false`, to run the Python core instead.
 - To rebuild the C++ core module, run
   ```bash
   . pyenv-activate.sh 
@@ -707,7 +709,7 @@ While this may be self-evident, it is important to keep in mind that when `USE_C
 - The Python implementation of the sparse SLAM core is effectively bypassed, and any modifications to it will have no effect at runtime.
 - All functional changes to the sparse SLAM C++ codebase must be rebuilt using `./build_cpp_core.sh` (as explained above) in order to take effect.
 
-See [here](./pyslam/slam/cpp/README.md) for further details.
+See [here](./cpp/core/slam/README.md) for further details.
 
 ---
 
@@ -929,9 +931,9 @@ The following feature **descriptors** are supported:
 * *[Xfeat](https://arxiv.org/abs/2404.19174)*
 * *[KeyNetAffNetHardNet](https://github.com/axelBarroso/Key.Net)* (KeyNet detector + AffNet + HardNet descriptor).
   
-For more information, refer to [pyslam/local_features/feature_types.py](pyslam/local_features/feature_types.py) file. Some of the local features consist of a *joint detector-descriptor*. You can start playing with the supported local features by taking a look at `test/cv/test_feature_manager.py` and `main_feature_matching.py`.
+For more information, refer to [pyslam/local_features/feature_types.py](pyslam/local_features/feature_types.py) file. Some of the local features consist of a *joint detector-descriptor*. You can start playing with the supported local features by taking a look at `examples/cv/example_feature_manager.py` and `main_feature_matching.py`.
 
-In both the scripts `main_vo.py` and `main_slam.py`, you can create your preferred detector-descritor configuration and feed it to the function `feature_tracker_factory()`. Some ready-to-use configurations are already available in the file [local_features/feature_tracker.configs.py](local_features/feature_tracker_configs.py)
+In both the scripts `main_vo.py` and `main_slam.py`, you can create your preferred detector-descritor configuration and feed it to the function `feature_tracker_factory()`. Some ready-to-use configurations are already available in the file [pyslam/local_features/feature_tracker_configs.py](pyslam/local_features/feature_tracker_configs.py)
 
 The function `feature_tracker_factory()` can be found in the file `pyslam/local_features/feature_tracker.py`. Take a look at the file `pyslam/local_features/feature_manager.py` for further details.
 
@@ -994,7 +996,7 @@ Both monocular and stereo depth prediction models are available. SGBM algorithm 
 
 ### Supported volumetric mapping methods
 
-* A C++ template-based voxel grid implementation leverages parallel spatial hashing, supporting both direct voxel hashing and indirect voxel-block hashing strategies. Parallel execution is managed using TBB, and the design accommodates both simple and semantic voxels. Further information about the volumetric grid models is available [here](./cpp/volumetric/README.md).
+* A C++ template-based voxel grid implementation leverages parallel spatial hashing, supporting both direct voxel hashing and indirect voxel-block hashing strategies. Parallel execution is managed using TBB, and the design accommodates both simple and semantic voxels. Further information about the volumetric grid models is available [here](./cpp/modules/volumetric/README.md).
 * [TSDF](https://arxiv.org/pdf/2110.00511) (Truncated Signed Distance Function) with voxel block grid (parallel spatial hashing)
 * Incremental 3D Gaussian Splatting. See [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) and [MonoGS](https://arxiv.org/abs/2312.06741) for a description of its backend.
 
@@ -1038,13 +1040,14 @@ The following datasets are supported:
 | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
 | [KITTI odometry data set (grayscale, 22 GB)](http://www.cvlibs.net/datasets/kitti/eval_odometry.php)                                         | `type: KITTI_DATASET`        |
 | [TUM dataset](https://vision.in.tum.de/data/datasets/rgbd-dataset/download)                                                                  | `type: TUM_DATASET`          |
+| [TUM-VI dataset](https://cvg.cit.tum.de/data/datasets/visual-inertial-dataset)                                                               | `type: TUM_VI_DATASET`       |
 | [ICL-NUIM dataset](https://www.doc.ic.ac.uk/~ahanda/VaFRIC/iclnuim.html)                                                                     | `type: ICL_NUIM_DATASET`     |
 | [EUROC dataset](https://projects.asl.ethz.ch/datasets/euroc-mav/)                                                                            | `type: EUROC_DATASET`        |
 | [REPLICA dataset](https://github.com/facebookresearch/Replica-Dataset)                                                                       | `type: REPLICA_DATASET`      |
 | [TARTANAIR dataset](https://theairlab.org/tartanair-dataset/)                                                                                | `type: TARTANAIR_DATASET`    |
 | [SEVEN_SCENES dataset](https://www.microsoft.com/en-us/research/project/rgb-d-dataset-7-scenes/)                                             | `type: SEVEN_SCENES_DATASET` |
 | [NEURAL_RGBD dataset](https://github.com/dazinovic/neural-rgbd-surface-reconstruction)                                                       | `type: NEURAL_RGBD_DATASET`  |
-| [ROVER dataset](https://iis-esslingen.github.io/rover/)                                                                                      | `type: NEURAL_RGBD_DATASET`  |
+| [ROVER dataset](https://iis-esslingen.github.io/rover/)                                                                                      | `type: ROVER_DATASET`        |
 | [ScanNet dataset](http://www.scan-net.org/)                                                                                                  | `type: SCANNET_DATASET`      |
 | [CLIO dataset](https://github.com/MIT-SPARK/Clio)                                                                                            | `type: CLIO_DATASET`         |
 | [ROS1  bags](https://wiki.ros.org/Bags)                                                                                                      | `type: ROS1BAG_DATASET`      |
@@ -1056,6 +1059,8 @@ The following datasets are supported:
 
 
 Use the download scripts available in the folder `scripts` to download some of the following datasets.
+
+File-based datasets automatically prefetch decoded images using the optional C++ `data_thread_reader` module. See [Dataset image prefetching](./cpp/modules/data_thread_reader/README.md) for supported readers, build instructions, memory behavior, and the `PYSLAM_DISABLE_IMAGE_PREFETCH=1` switch.
 
 #### KITTI Datasets
 
@@ -1085,6 +1090,23 @@ pySLAM code expects a file `associations.txt` in each TUM dataset folder (specif
     python associate.py PATH_TO_SEQUENCE/rgb.txt PATH_TO_SEQUENCE/depth.txt > associations.txt      # pay attention to the order!
     ```
 3. Select the corresponding calibration settings file (section `TUM_DATASET: settings:` in the file `config.yaml`).
+
+
+#### TUM-VI Datasets
+
+pySLAM reads the 512×512 TUM-VI image sequences. IMU measurements are not used. Each sequence folder (the `name` field under `TUM_VI_DATASET` in `config.yaml`) is expected to contain:
+
+```text
+mav0/cam0/data.csv
+mav0/cam0/data/<timestamp>.png
+mav0/cam1/data.csv
+mav0/cam1/data/<timestamp>.png
+mav0/mocap0/data.csv
+```
+
+1. Download a 512×512 sequence from https://cvg.cit.tum.de/data/datasets/visual-inertial-dataset and uncompress it under `TUM_VI_DATASET: base_path`.
+2. Set `DATASET.type: TUM_VI_DATASET` in `config.yaml`. Set `sensor_type` to `stereo` or `mono`, and `stereo_mode` to `native` (original Kannala–Brandt images) or `rectified` (fisheye images remapped to pinhole stereo). For monocular fisheye tracking use `sensor_type: mono` and `stereo_mode: native`.
+3. Select `settings/TUM_VI.yaml` (`TUM_VI_DATASET: settings:`). With `groundtruth_file: auto`, mocap poses are converted to the tracking camera. See [TUM-VI](./docs/tum-vi.md) for calibration, rectification, and ground-truth conversion.
 
 
 #### ICL-NUIM Datasets 
@@ -1123,7 +1145,7 @@ To download the dataset follow the instructions at https://github.com/dazinovic/
 
 #### Rover dataset 
 
-To download the dataset follow the instructions at https://iis-esslingen.github.io/rover/. Select the section `ROVER_DATASET: settings:` in the file `config.yaml`. A calibration file for the `d435i` camera is already available: `settings/ROVER_d435i.yaml`. Other camera models will be supported in the future.
+To download the dataset follow the instructions at https://iis-esslingen.github.io/rover/. Select the section `ROVER_DATASET: settings:` in the file `config.yaml`. A calibration file for the `d435i` camera is already available: `settings/ROVER_d435i.yaml`. Additional camera models support model-aware sparse tracking and RGB-D; see [Camera models](./cpp/modules/camera_models/README.md#integration-status) for conventions and limits.
 
 #### ScanNet Datasets
 
@@ -1176,7 +1198,13 @@ You can use the `VIDEO_DATASET` and `FOLDER_DATASET` types to read generic video
 --- 
 ### Camera Settings
 
+TUM-VI visual mono and stereo are available with native Kannala–Brandt images or cached fisheye rectification. See [TUM-VI setup and calibration](./docs/tum-vi.md).
+
 The folder `settings` contains the camera settings files which can be used for testing the code. These are the same used in the framework [ORB-SLAM2](https://github.com/raulmur/ORB_SLAM2). You can easily modify one of those files for creating your own new calibration file (for your new datasets).
+
+A file that does not set `Camera.type` keeps the linear pinhole: `Camera.k1` … `Camera.k3` are used to undistort keypoints, and projection stays `K * (x/z, y/z)`. Set `Camera.type` to `kannala_brandt4`, `pinhole_radtan8`, or `double_sphere` to project detected pixels with that model. Rectified stereo retains pinhole geometry; native TUM-VI stereo uses the calibrated fisheye rig. Sim(3) uses undistorted coordinates. See [Camera models](./cpp/modules/camera_models/README.md) for parameters and pixel conventions.
+
+New-model sparse tracking uses native analytic factors and consistent raw-pixel measurements. See the [integration status](./cpp/modules/camera_models/README.md#integration-status), [where the code lives](./cpp/modules/camera_models/README.md#where-the-code-lives), and [TUM-VI stereo modes](./docs/tum-vi.md).
 
 In order to calibrate your camera, you can use the scripts in the folder `calibration`. In particular: 
 1. Use the script `grab_chessboard_images.py` to collect a sequence of images where the chessboard can be detected (set the chessboard size therein, you can use the calibration pattern `calib_pattern.pdf` in the same folder) 
@@ -1318,5 +1346,5 @@ Many improvements and additional features are currently under development:
 - [ ] Integration of direct methods in the tracker
 - [x] XSt3r-based methods integration [WIP]
 - [x] Evaluation scripts 
-- [ ] More camera models
+- [x] Additional camera models and native/rectified TUM-VI stereo (see [camera models](./cpp/modules/camera_models/README.md) and [TUM-VI](./docs/tum-vi.md))
 - [ ] Integrate pypose library
