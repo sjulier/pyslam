@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "values_cross_module.h"  // first: gtsam::Values lookups across modules on macOS
+
 #include <gtsam/base/timing.h>
 #include <gtsam/inference/Ordering.h>
 #include <gtsam/linear/GaussianFactorGraph.h>

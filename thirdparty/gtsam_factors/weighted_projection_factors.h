@@ -20,6 +20,8 @@
 #pragma once
 
 
+#include "values_cross_module.h"  // first: gtsam::Values lookups across modules on macOS
+
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <gtsam/linear/NoiseModel.h>
 

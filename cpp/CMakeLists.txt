@@ -442,7 +442,9 @@ endif()
 set(GTSAM_ROOT "${PYSLAM_ROOT}/thirdparty/gtsam_local")
 set(GTSAM_DIR "${GTSAM_ROOT}/install/lib/cmake/GTSAM")
 find_package(GTSAM QUIET CONFIG)
-set(GTSAM_FACTORS_INCLUDE_DIRS "${PYSLAM_ROOT}/thirdparty/gtsam_factors/include")
+# the headers gtsam_factors' build installs, then its source folder through thirdparty/, for a
+# header a prereq install from before it doesn't have (gtsam_factors/values_cross_module.h)
+set(GTSAM_FACTORS_INCLUDE_DIRS "${PYSLAM_ROOT}/thirdparty/gtsam_factors/include" "${PYSLAM_ROOT}/thirdparty")
 if(GTSAM_FOUND)
     pybind11_add_module(camera_models_gtsam modules/camera_models/camera_models_gtsam_module.cpp)
     target_include_directories(camera_models_gtsam PRIVATE

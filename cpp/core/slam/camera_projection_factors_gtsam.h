@@ -28,7 +28,7 @@
 
 // first: it specialises gtsam's Values lookup, so that the factors of camera_models_gtsam can
 // read the points that Python inserted (macOS)
-#include "gtsam_values_cross_module.h"
+#include <gtsam_factors/values_cross_module.h>
 
 #include "camera_handle.h"
 

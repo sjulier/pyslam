@@ -16,6 +16,9 @@
  */
 
 #pragma once
+// and a guard, for a build that reaches both the installed copy and the source one
+#ifndef PYSLAM_GTSAM_FACTORS_VALUES_CROSS_MODULE_H
+#define PYSLAM_GTSAM_FACTORS_VALUES_CROSS_MODULE_H
 
 // gtsam::Values::at<Point3> in a module other than the one that inserted the value (macOS).
 //
@@ -26,10 +29,12 @@
 // libc++ compares hidden RTTI by address, so it fails, and a factor of this module could not
 // read a point that Python had inserted ("type stored in Values is
 // gtsam::GenericValue<Eigen::Matrix<double, -1, 1, ...>> but requested type was ...").
+// This hit gtsam_factors (the Python-core gtsam optimizer) and camera_models_gtsam.
 //
 // This specialisation of gtsam's own lookup for Point3 (what the factors read) compares the
 // names when the cast fails, as libstdc++ does. Include this header before anything that reads
-// a Point3 from gtsam::Values.
+// a Point3 from gtsam::Values: every gtsam_factors header includes it first, and so does
+// cpp/core/slam/camera_projection_factors_gtsam.h.
 
 #include <gtsam/nonlinear/Values.h>
 
@@ -81,3 +86,5 @@ template <> struct handle<Eigen::Vector3d> {
 } // namespace gtsam
 
 #endif // __APPLE__
+
+#endif // PYSLAM_GTSAM_FACTORS_VALUES_CROSS_MODULE_H
