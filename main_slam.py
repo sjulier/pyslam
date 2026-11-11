@@ -693,6 +693,8 @@ if __name__ == "__main__":
                         # what is left is rarely matched, since the left keypoints on them are gone
                         mask_right = mask if (mask is not None and img_right is not None) else None
                         slam.track(img, img_right, depth, img_id, timestamp, mask=mask, mask_right=mask_right)  # main SLAM function
+                        if playback_timing:
+                            playback_timing.mark("tracking")  # --timing-report: the time of slam.track() alone
 
                         # the detections of this frame, lifted with its pose and depth (--detections)
                         if saved_detections and slam.tracking.state == SlamState.OK and slam.tracking.cur_R is not None:
