@@ -32,7 +32,6 @@
 import importlib
 
 import numpy as np
-import sys
 
 import gtsam
 
@@ -116,9 +115,6 @@ def camera_resectioning_factor(noise_model, pose_key, camera, measured, point, c
     if not projects_raw_keypoints(camera):
         import gtsam_factors
         calib = calibration if calibration is not None else gtsam.Cal3_S2(camera.fx, camera.fy, 0.0, camera.cx, camera.cy)
-        if sys.platform == "darwin":
-            from .optimizer_gtsam import resectioning_mono_factor_py
-            return resectioning_mono_factor_py(noise_model, pose_key, calib, measured, point)
         factor = gtsam_factors.ResectioningFactor(noise_model, pose_key, calib, measured, point)
         return factor, factor
     cpp_camera = cpp_camera_of(camera)
@@ -176,8 +172,5 @@ def stereo_camera_resectioning_factor(noise, pose_key, camera, measured, point, 
     else:
         import gtsam_factors
         K = calibration if calibration is not None else gtsam.Cal3_S2Stereo(camera.fx, camera.fy, 0.0, camera.cx, camera.cy, camera.b)
-        if sys.platform == "darwin":
-            from .optimizer_gtsam import resectioning_stereo_factor_py
-            return resectioning_stereo_factor_py(noise, pose_key, K, measured, point)
         factor = gtsam_factors.ResectioningFactorStereo(noise, pose_key, K, measured, point)
     return factor, factor

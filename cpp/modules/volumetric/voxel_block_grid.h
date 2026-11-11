@@ -39,6 +39,7 @@
 #include "voxel_grid_carving.h"
 #include "voxel_grid_data.h"
 #include "voxel_hashing.h"
+#include "voxel_input_order.h"
 
 #ifdef TBB_FOUND
 #include <tbb/blocked_range.h>

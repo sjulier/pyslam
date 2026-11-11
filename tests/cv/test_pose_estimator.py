@@ -397,8 +397,12 @@ class TestPoseEstimators(unittest.TestCase):
         R_diff = np.linalg.norm(R21 @ self.Rc2c1.T - np.eye(3))
         t_diff = np.linalg.norm(t21 - self.tc2c1)
         print(f"R diff: {R_diff}, t diff: {t_diff}")
-        self.assertLessEqual(R_diff, self.test_tollerance_R_norm)
-        self.assertLessEqual(t_diff, self.test_tollerance_t_norm)
+        # MLPnP's RANSAC draws its samples with the C library's rand(), whose sequence differs
+        # between glibc and macOS: on the same data its error varies with the draw (over 20
+        # seeds on macOS: R 4.6e-4 median, 1.4e-3 max; t 1.5e-3 median, 7.3e-3 max; one run of
+        # this test 2.1e-3 and 1.1e-2), so the tolerances of the other estimators fail at random.
+        self.assertLessEqual(R_diff, 3 * self.test_tollerance_R_norm)
+        self.assertLessEqual(t_diff, 4 * self.test_tollerance_t_norm)
 
     def test_procrustes(self):
         estimator = pose_estimator_factory(PoseEstimatorType.PROCUSTES, self.K1, self.K2)

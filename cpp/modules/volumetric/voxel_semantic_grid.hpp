@@ -72,6 +72,7 @@ void VoxelSemanticGridT<VoxelDataT>::integrate_segment_raw(const Tp *pts_ptr,
     struct PointInfo {
         Tp x, y, z;
         Tc color_x, color_y, color_z;
+        size_t index; // input point index
     };
     tbb::concurrent_unordered_map<VoxelKey, std::vector<PointInfo>, VoxelKeyHash> voxel_groups;
 
@@ -95,6 +96,7 @@ void VoxelSemanticGridT<VoxelDataT>::integrate_segment_raw(const Tp *pts_ptr,
                 info.x = x;
                 info.y = y;
                 info.z = z;
+                info.index = i;
                 info.color_x = cols_ptr[idx + 0];
                 info.color_y = cols_ptr[idx + 1];
                 info.color_z = cols_ptr[idx + 2];
@@ -114,6 +116,9 @@ void VoxelSemanticGridT<VoxelDataT>::integrate_segment_raw(const Tp *pts_ptr,
                 global_vec.insert(global_vec.end(), points.begin(), points.end());
             }
         });
+
+    // in input order, whatever the thread scheduling: semantic voting depends on it
+    sort_voxel_groups_by_input_order(voxel_groups);
 
     // Phase 2: Process each voxel group in parallel (one thread per voxel)
     tbb::parallel_for_each(voxel_groups.begin(), voxel_groups.end(), [&](const auto &pair) {

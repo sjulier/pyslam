@@ -25,7 +25,7 @@
 import unittest
 
 import numpy as np
-from slam_test_support import SensorType, make_slam, track_sequence
+from slam_test_support import SensorType, make_slam, track_sequence, wait_for_local_mapping
 
 NUM_FRAMES = 14
 
@@ -35,6 +35,8 @@ class TestRgbdTracking(unittest.TestCase):
     def setUpClass(cls):
         cls.slam = make_slam(cls)
         cls.records = track_sequence(cls.slam, range(NUM_FRAMES))
+        # local mapping runs on its own thread: let it finish before checking what it did
+        wait_for_local_mapping(cls.slam)
 
     def test_initializes_on_second_frame(self):
         self.assertEqual(self.records[0]["state"], "NOT_INITIALIZED")
@@ -58,7 +60,12 @@ class TestRgbdTracking(unittest.TestCase):
 
     def test_local_mapping_creates_points(self):
         self.assertGreater(self.records[-1]["num_points"], self.records[1]["num_points"])
-        self.assertGreater(self.slam.local_mapping.total_num_triangulated_points, 0)
+        # With RGB-D the depth images already give almost every point: triangulation finds 0 or 1
+        # new ones on this sequence, so check that local mapping triangulated or fused points
+        local_mapping = self.slam.local_mapping
+        self.assertGreater(
+            local_mapping.total_num_triangulated_points + local_mapping.total_num_fused_points, 0
+        )
 
     def test_final_trajectory_covers_tracked_frames(self):
         poses, timestamps, ids = self.slam.get_final_trajectory()

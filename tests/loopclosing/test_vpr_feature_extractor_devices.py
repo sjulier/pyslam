@@ -20,6 +20,7 @@
 """
 
 import importlib
+import importlib.util
 from pathlib import Path
 import sys
 import unittest
@@ -36,6 +37,19 @@ class _Model(torch.nn.Module):
         return images.mean(dim=(1, 2, 3))[:, None].expand(-1, 2048)
 
 
+def _vpr_installed():
+    # thirdparty/vpr is filled by `pixi run models`; before that it is an empty folder, which Python
+    # imports as an empty namespace package
+    try:
+        return importlib.util.find_spec("vpr.feature_extraction") is not None
+    except ModuleNotFoundError:
+        return False
+
+
+_VPR_INSTALLED = _vpr_installed()
+
+
+@unittest.skipUnless(_VPR_INSTALLED, "thirdparty/vpr is not installed (pixi run models)")
 class VprDeviceTests(unittest.TestCase):
     def test_device_arguments_and_feature_equivalence(self):
         for module_name, class_name in (

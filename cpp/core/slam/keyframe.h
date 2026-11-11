@@ -33,6 +33,8 @@
 #ifdef USE_PYTHON
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+
+#include "casters/deferred_py_decrefs.h"
 #endif
 
 namespace pyslam {
@@ -189,6 +191,11 @@ class KeyFrame : public Frame, public KeyFrameGraph {
         // Clear references to prevent circular dependencies during shutdown
         clear_references();
         _is_bad = true;
+#ifdef USE_PYTHON
+        // A C++ thread without the GIL may drop the last reference to a culled keyframe (local
+        // mapping updating the local map): never DECREF g_des, or wait for the GIL, there.
+        pybind11::detail::release_py_object_without_waiting_for_gil(g_des);
+#endif
     }
 
     // Deleted due to mutexes

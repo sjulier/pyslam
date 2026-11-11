@@ -23,7 +23,7 @@ SLAM_TESTS=("test_slam_cpp_module.py" "test_slam_cpp_map.py" "test_slam_cpp_feat
 OPTIMIZATION_TESTS=("test_slam_cpp_optimize_pose.py" "test_slam_cpp_optimize_sim3.py" "test_slam_cpp_optimize_essential_graph.py")
 # Regression tests for past crashes and matching bugs.
 # Camera regressions live under tests/camera and are launched by tests/run_all.sh.
-REGRESSION_TESTS=("test_slam_cpp_search_and_fuse.py" "test_slam_cpp_search_by_sim3.py" "test_slam_cpp_search_keyframe_by_projection.py" "test_slam_cpp_gil_lock_deadlock.py")
+REGRESSION_TESTS=("test_slam_cpp_search_and_fuse.py" "test_slam_cpp_search_by_sim3.py" "test_slam_cpp_search_keyframe_by_projection.py" "test_slam_cpp_gil_lock_deadlock.py" "test_slam_cpp_gil_keyframe_gdes.py")
 
 # Test tracking
 PASSED_TESTS=()

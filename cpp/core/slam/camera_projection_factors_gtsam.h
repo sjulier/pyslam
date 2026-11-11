@@ -26,6 +26,10 @@
 // gtsam stores Twc and uses Pose3::retract; its error is projection - measurement.
 // An invalid projection yields a finite (2 fx) error and zero Jacobians.
 
+// first: it specialises gtsam's Values lookup, so that the factors of camera_models_gtsam can
+// read the points that Python inserted (macOS)
+#include "gtsam_values_cross_module.h"
+
 #include "camera_handle.h"
 
 #include <gtsam/base/Matrix.h>

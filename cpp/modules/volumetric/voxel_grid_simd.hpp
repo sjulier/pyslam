@@ -30,6 +30,7 @@ namespace volumetric {
 template <typename CoordT> struct PointInfo {
     CoordT x, y, z;
     float color_x, color_y, color_z;
+    size_t index; // input point index
 };
 
 // Unified SIMD-optimized version (processes 4 points at a time)
@@ -66,6 +67,7 @@ void VoxelGridT<VoxelDataT>::integrate_raw_simd_impl(const float *pts_ptr, const
             const VoxelKey key = get_voxel_key_inv<float, float>(x, y, z, inv_voxel_size_);
 
             PointInfo<float> info{x, y, z};
+            info.index = i;
             if constexpr (HasColors) {
                 info.color_x = cols_ptr[idx + 0];
                 info.color_y = cols_ptr[idx + 1];
@@ -115,6 +117,9 @@ void VoxelGridT<VoxelDataT>::integrate_raw_simd_impl(const float *pts_ptr, const
             }
         }
     }
+
+    // in input order, whatever the thread scheduling: keeps the float sums reproducible
+    sort_voxel_groups_by_input_order(voxel_groups);
 
     // Phase 2: Process each voxel group in parallel (one thread per voxel)
     // Use SIMD batching within each voxel's points
@@ -440,6 +445,7 @@ void VoxelGridT<VoxelDataT>::integrate_raw_simd_impl_double(const double *pts_pt
             const VoxelKey key = get_voxel_key_inv<double, double>(x, y, z, inv_voxel_size_);
 
             PointInfo<double> info{x, y, z};
+            info.index = i;
             if constexpr (HasColors) {
                 info.color_x = cols_ptr[idx + 0];
                 info.color_y = cols_ptr[idx + 1];
@@ -489,6 +495,9 @@ void VoxelGridT<VoxelDataT>::integrate_raw_simd_impl_double(const double *pts_pt
             }
         }
     }
+
+    // in input order, whatever the thread scheduling: keeps the float sums reproducible
+    sort_voxel_groups_by_input_order(voxel_groups);
 
     // Phase 2: Process each voxel group in parallel (one thread per voxel)
     // Use SIMD batching within each voxel's points

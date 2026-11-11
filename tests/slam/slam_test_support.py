@@ -98,3 +98,15 @@ def track_sequence(slam, frame_ids, sensor_type=SensorType.RGBD, texture=None):
             "true_x": STEP_M * frame_id,
         })
     return records
+
+
+def wait_for_local_mapping(slam, timeout=30.0):
+    """Wait until local mapping (its own thread) has processed every queued keyframe."""
+    import time
+
+    local_mapping = slam.local_mapping
+    deadline = time.time() + timeout
+    while local_mapping.queue_size() > 0 or not local_mapping.is_idle():
+        if time.time() > deadline:
+            raise TimeoutError(f"local mapping still busy after {timeout} s")
+        time.sleep(0.01)
