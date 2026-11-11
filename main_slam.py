@@ -692,6 +692,10 @@ if __name__ == "__main__":
                         # mask covers them only partly; --mask-dilation covers part of the rest, and
                         # what is left is rarely matched, since the left keypoints on them are gone
                         mask_right = mask if (mask is not None and img_right is not None) else None
+                        if playback_timing:
+                            # --timing-report: depth prediction and semantic masks (when they are on),
+                            # so that the "tracking" stage is slam.track() alone
+                            playback_timing.mark("depth_and_masks")
                         slam.track(img, img_right, depth, img_id, timestamp, mask=mask, mask_right=mask_right)  # main SLAM function
                         if playback_timing:
                             playback_timing.mark("tracking")  # --timing-report: the time of slam.track() alone
