@@ -394,7 +394,9 @@ set_property(TARGET gtsam PROPERTY SYSTEM FALSE)
 
 #gtsam factors
 set(GTSAM_FACTORS_ROOT "${PYSLAM_ROOT}/thirdparty/gtsam_factors")
-set(GTSAM_FACTORS_INCLUDE_DIRS "${GTSAM_FACTORS_ROOT}/include")
+# the headers gtsam_factors' build installs, then its source folder through thirdparty/, for a
+# header a prereq install from before it doesn't have (gtsam_factors/values_cross_module.h)
+set(GTSAM_FACTORS_INCLUDE_DIRS "${GTSAM_FACTORS_ROOT}/include" "${PYSLAM_ROOT}/thirdparty")
 message(STATUS "set custom gtsam factors folder: ${GTSAM_FACTORS_ROOT}")
 message(STATUS "gtsam factors include: ${GTSAM_FACTORS_INCLUDE_DIRS}")
 

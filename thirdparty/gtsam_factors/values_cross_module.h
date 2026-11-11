@@ -16,6 +16,9 @@
  */
 
 #pragma once
+// and a guard, for a build that reaches both the installed copy and the source one
+#ifndef PYSLAM_GTSAM_FACTORS_VALUES_CROSS_MODULE_H
+#define PYSLAM_GTSAM_FACTORS_VALUES_CROSS_MODULE_H
 
 // gtsam::Values::at<Point3> in a module other than the one that inserted the value (macOS).
 //
@@ -83,3 +86,5 @@ template <> struct handle<Eigen::Vector3d> {
 } // namespace gtsam
 
 #endif // __APPLE__
+
+#endif // PYSLAM_GTSAM_FACTORS_VALUES_CROSS_MODULE_H
