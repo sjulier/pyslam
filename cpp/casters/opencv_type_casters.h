@@ -26,6 +26,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "deferred_py_decrefs.h"
+
 #include <cstdint>
 #include <cstring>
 #include <exception>
@@ -136,58 +138,6 @@ struct cv_mat_buffer_view {
     int type = 0;
     size_t step = 0;
     size_t row_bytes = 0;
-};
-
-// The NumPy owners of released Mats that a thread without the GIL could not DECREF itself.
-// That thread must not wait for the GIL: it may hold a C++ lock that the thread holding the GIL
-// is waiting for. For example, local BA (GIL released) drops a culled keyframe, and with it its
-// descriptors, under the local map's lock, while tracking (GIL held) waits for that lock in
-// local_map.is_empty(): a deadlock with every thread idle. Instead the owners are queued here,
-// and the interpreter DECREFs them in its main thread, holding the GIL.
-class deferred_py_decrefs {
-  public:
-    static deferred_py_decrefs &instance() {
-        static auto *d = new deferred_py_decrefs(); // never destroyed: threads may still push at exit
-        return *d;
-    }
-
-    // Needs neither the GIL nor a Python thread state.
-    void push(PyObject *owner) {
-        bool schedule = false;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            owners_.push_back(owner);
-            if (!scheduled_) {
-                scheduled_ = true;
-                schedule = true;
-            }
-        }
-        // Py_AddPendingCall needs neither the GIL nor a thread state either. It fails only when
-        // the interpreter's queue is full: then the next push tries again.
-        if (schedule && Py_AddPendingCall(&deferred_py_decrefs::drain_pending, nullptr) != 0) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            scheduled_ = false;
-        }
-    }
-
-  private:
-    // Runs in the main thread with the GIL held.
-    static int drain_pending(void *) {
-        auto &self = instance();
-        std::vector<PyObject *> owners;
-        {
-            std::lock_guard<std::mutex> lock(self.mutex_);
-            owners.swap(self.owners_);
-            self.scheduled_ = false;
-        }
-        for (PyObject *owner : owners)
-            Py_DECREF(owner);
-        return 0;
-    }
-
-    std::mutex mutex_;
-    std::vector<PyObject *> owners_;
-    bool scheduled_ = false;
 };
 
 class py_owned_mat_allocator final : public cv::MatAllocator {
