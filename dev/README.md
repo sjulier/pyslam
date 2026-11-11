@@ -1,27 +1,7 @@
 # dev/: tools for developing pySLAM
 
-Everything in `dev/` is for pySLAM's own development. None of it is for the course, so it is kept
-out of the course branch `comp0227-2026` (below).
-
-## Keeping dev/ out of the course branch
-
-`comp0227-2026` gets main's fixes by merging main into it. When you do, take `dev/` out in the same
-merge:
-
-```bash
-git switch comp0227-2026
-git merge --no-commit main                 # stops before committing (or on a conflict)
-git rm -r -q --ignore-unmatch dev          # never in the course branch
-git commit                                 # e.g. "Merge main <sha> into comp0227-2026 for <tag>: ..."
-```
-
-This works in every case:
-- **The first merge after dev/ appears:** the merge brings `dev/` in, and `git rm` takes it out again.
-- **Later merges, main hasn't touched dev/:** the earlier deletion stands, and `git rm` finds nothing.
-- **Later merges, main changed files in dev/:** git stops with a modify/delete conflict on those
-  files only, and `git rm` resolves it.
-
-Check before pushing: `git ls-tree -d comp0227-2026 dev` prints nothing.
+Everything in `dev/` is for pySLAM's own development, not for the course. It goes into the course
+branch `comp0227-2026` with the rest of main (it is small), but students have no need to run it.
 
 ## benchmark/: Python vs C++ SLAM pipeline
 
