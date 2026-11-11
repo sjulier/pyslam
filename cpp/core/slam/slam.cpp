@@ -326,12 +326,33 @@ void Slam::loop_closing_wait_if_closing() {
 bool Slam::loop_closing_is_correcting() {
 #ifdef USE_PYTHON
     py::gil_scoped_acquire gil;
-    if (!alive(loop_closing)) {
+    // tolerate a loop closing without it, as Tracking.wait_if_GBA_correcting() in Python
+    if (!alive(loop_closing) || !py::hasattr(loop_closing, "is_correcting")) {
         return false;
     }
     return py::cast<bool>(loop_closing.attr("is_correcting")());
 #else
     return false;
+#endif
+}
+
+int Slam::loop_closing_num_corrections() {
+#ifdef USE_PYTHON
+    py::gil_scoped_acquire gil;
+    if (!alive(loop_closing)) {
+        return 0;
+    }
+    // the counters of LoopCorrector and GlobalBundleAdjustment (as Tracking.num_map_corrections() in Python)
+    int num_corrections = 0;
+    for (const char *owner : {"loop_corrector", "GBA"}) {
+        const py::object obj = py::getattr(loop_closing, owner, py::none());
+        if (alive(obj) && py::hasattr(obj, "num_corrections")) {
+            num_corrections += py::cast<int>(obj.attr("num_corrections"));
+        }
+    }
+    return num_corrections;
+#else
+    return 0;
 #endif
 }
 

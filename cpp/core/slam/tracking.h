@@ -21,12 +21,14 @@
 #include "frame.h"
 #include "initializer.h"
 #include "keyframe.h"
+#include "keyframe_demand.h"
 #include "motion_model.h"
 #include "slam_commons.h"
 #include "slam_dynamic_config.h"
 
 #include <Eigen/Geometry>
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <opencv2/core.hpp>
 #include <optional>
@@ -72,6 +74,9 @@ class Tracking {
     bool relocalize(const FramePtr &f_cur_in, const cv::Mat &img);
     void create_vo_points_on_last_frame();
     void wait_for_local_mapping(double timeout, bool check_on_exit = false);
+    // Wait while the global BA of loop closing corrects the map. Call it without the map lock:
+    // the correction takes that lock.
+    void wait_if_gba_correcting(double timeout = 30.0);
     void update_tracking_history();
     void update_history();
     void clean_vo_points();
@@ -134,7 +139,9 @@ class Tracking {
     std::vector<MapPointPtr> local_points;
     std::vector<MapPointPtr> vo_points;
     int last_reloc_frame_id = -1;
+    int last_num_map_corrections = 0; // loop closing's count of map corrections at the last frame
     TrackingHistory tracking_history;
+    std::shared_ptr<KeyframeDemand> kf_demand; // read by main_slam.py's playback throttle
 
     Eigen::Matrix3d cur_R = Eigen::Matrix3d::Identity();
     Eigen::Vector3d cur_t = Eigen::Vector3d::Zero();

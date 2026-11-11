@@ -153,7 +153,24 @@ inline void bind_initializer(py::module &m) {
 }
 
 inline void bind_tracking(py::module &m) {
+    py::class_<pyslam::KeyframeDemand, std::shared_ptr<pyslam::KeyframeDemand>>(m, "KeyframeDemand")
+        .def(py::init<int, double>(), py::arg("window"), py::arg("weak_ratio"))
+        .def("record", &pyslam::KeyframeDemand::record, py::arg("wanted_if_idle"),
+             py::arg("is_local_mapping_idle"), py::arg("num_tracked_points"),
+             py::arg("num_ref_tracked_points"))
+        .def("num_samples", &pyslam::KeyframeDemand::num_samples)
+        .def("reset_window", &pyslam::KeyframeDemand::reset_window)
+        .def("weak_fraction", &pyslam::KeyframeDemand::weak_fraction)
+        .def("total_weak_fraction", &pyslam::KeyframeDemand::total_weak_fraction)
+        .def("total_suppressed_fraction", &pyslam::KeyframeDemand::total_suppressed_fraction)
+        .def_readonly("weak_ratio", &pyslam::KeyframeDemand::weak_ratio)
+        .def_property_readonly("num_frames", &pyslam::KeyframeDemand::num_frames)
+        .def_property_readonly("num_weak", &pyslam::KeyframeDemand::num_weak)
+        .def_property_readonly("num_wanted", &pyslam::KeyframeDemand::num_wanted)
+        .def_property_readonly("num_suppressed", &pyslam::KeyframeDemand::num_suppressed);
+
     py::class_<pyslam::Tracking, std::shared_ptr<pyslam::Tracking>>(m, "Tracking")
+        .def_readonly("kf_demand", &pyslam::Tracking::kf_demand)
         .def(py::init<pyslam::Slam *>(), py::arg("slam"), py::keep_alive<1, 2>())
         .def_readonly("initializer", &pyslam::Tracking::initializer)
         .def_readonly("motion_model", &pyslam::Tracking::motion_model)

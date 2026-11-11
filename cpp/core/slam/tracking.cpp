@@ -35,6 +35,7 @@
 #include <limits>
 #include <opencv2/imgproc.hpp>
 #include <stdexcept>
+#include <thread>
 
 namespace pyslam {
 
@@ -82,6 +83,8 @@ Tracking::Tracking(Slam *slam_in)
         max_frames_between_kfs = slam->camera->fps;
     }
     max_frames_between_kfs_after_reloc = max_frames_between_kfs;
+    kf_demand = std::make_shared<KeyframeDemand>(Parameters::kPlaybackThrottleWindow,
+                                                 Parameters::kPlaybackThrottleWeakTrackingRatio);
 }
 
 CameraPtr Tracking::camera() const { return slam ? slam->camera : nullptr; }
@@ -442,6 +445,15 @@ bool Tracking::need_new_keyframe(const FramePtr &f_cur_in) {
         cond3 = min_dist > max_fov_centers_distance;
     }
     const bool condition_checks = ((cond1a || cond1b || cond1c || cond1d) && cond2) || cond3;
+
+    // Keyframe demand, for the playback throttle: would a keyframe be requested if local mapping
+    // were idle? cond1b only asks for one when local mapping is idle.
+    const bool cond1b_if_idle = kf_last && f_cur_in->id >= (kf_last->id + min_frames_between_kfs);
+    const bool wanted_if_idle = ((cond1a || cond1b_if_idle || cond1c || cond1d) && cond2) || cond3;
+    if (kf_demand) {
+        kf_demand->record(wanted_if_idle, is_local_mapping_idle, num_f_cur_tracked_points,
+                          num_kf_ref_tracked_points);
+    }
     if (!condition_checks) {
         return false;
     }
@@ -517,6 +529,24 @@ void Tracking::wait_for_local_mapping(double timeout, bool) {
     }
     if (slam->local_mapping->queue_size() > 0) {
         slam->local_mapping->wait_idle(timeout);
+    }
+}
+
+void Tracking::wait_if_gba_correcting(double timeout) {
+    // each check takes the GIL only briefly, so Python loop closing runs while this thread sleeps
+    if (!slam->loop_closing_is_correcting()) {
+        return;
+    }
+    const auto start = std::chrono::steady_clock::now();
+    while (slam->loop_closing_is_correcting()) {
+        const double waited =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        if (waited > timeout) {
+            std::cerr << "Tracking: the global BA correction took more than " << timeout
+                      << " s: tracking resumes" << std::endl;
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 }
 
@@ -623,6 +653,16 @@ void Tracking::track(const cv::Mat &img, const cv::Mat &img_right, const cv::Mat
     idxs_ref.clear();
     idxs_cur.clear();
 
+    // A frame without features (blank, very dark or saturated image) cannot be matched: the matchers
+    // would search an empty kd-tree
+    const bool f_cur_has_no_features = f_cur->kps.rows() == 0;
+    if (f_cur_has_no_features &&
+        (state == SlamState::NO_IMAGES_YET || state == SlamState::NOT_INITIALIZED)) {
+        std::cerr << "Frame " << f_cur->id << " has no features: skipped for initialization"
+                  << std::endl;
+        return;
+    }
+
     if (state == SlamState::NO_IMAGES_YET) {
         initializer.init(f_cur, img, img_right, depth);
         state = SlamState::NOT_INITIALIZED;
@@ -690,13 +730,40 @@ void Tracking::track(const cv::Mat &img, const cv::Mat &img_right, const cv::Mat
         slam->local_mapping->wait_idle(std::nullopt);
         slam->loop_closing_wait_if_closing();
     }
+    // Likewise for the correction after a global BA: it has stopped local mapping and needs the map
+    // lock, which tracking takes again right after each frame. Without this wait, when frames come
+    // fast the correction waits many frames for the lock, and then moves the map under tracking.
+    wait_if_gba_correcting();
     wait_for_local_mapping(Parameters::kWaitForLocalMappingTimeout);
+    // read from Python loop closing, so before the map lock (never call Python while holding it)
+    const int num_map_corrections = slam->loop_closing_num_corrections();
 
     {
         std::unique_lock<MapMutex> map_lock(slam->map->update_lock());
         bool pending_relocalize = false;
-        if (state == SlamState::OK) {
+        if (f_cur_has_no_features) {
+            // nothing to match or relocalize with: a tracking failure, handled by the state update
+            std::cerr << "Frame " << f_cur->id
+                      << " has no features (blank, very dark or saturated image?): skipping tracking"
+                      << std::endl;
+            pose_is_ok = false;
+        } else if (state == SlamState::OK) {
             f_ref->check_replaced_map_points();
+            // After a loop correction or a global BA correction the map has moved and, with a monocular
+            // camera, been rescaled: the motion model's velocity belongs to the old map. Bring the
+            // previous frame onto its corrected reference keyframe, and track this frame against the
+            // reference keyframe while the motion model starts again, as after a relocalization.
+            if (num_map_corrections != last_num_map_corrections) {
+                last_num_map_corrections = num_map_corrections;
+                std::cerr << "Tracking: the map was corrected (loop closure or global BA): tracking "
+                             "against the reference keyframe"
+                          << std::endl;
+                if (!tracking_history.relative_frame_poses.empty() && f_ref->kf_ref) {
+                    f_ref->update_pose(tracking_history.relative_frame_poses.back() *
+                                       f_ref->kf_ref->isometry3d());
+                }
+                motion_model.reset();
+            }
             if (use_motion_model() && motion_model.is_ok) {
                 if (!tracking_history.relative_frame_poses.empty() && f_ref->kf_ref) {
                     f_ref->update_pose(tracking_history.relative_frame_poses.back() *

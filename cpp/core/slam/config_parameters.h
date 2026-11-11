@@ -145,6 +145,8 @@ class Parameters {
     static bool kTrackingWaitForLocalMappingToGetIdle;
     static double kWaitForLocalMappingTimeout;
     static double kParallelLBAWaitIdleTimeout;
+    static int kPlaybackThrottleWindow;               // KeyframeDemand, for main_slam.py's throttle
+    static double kPlaybackThrottleWeakTrackingRatio;
     static double kLocalMappingTimeoutPopKeyframe;
     static bool kUseDynamicDesDistanceTh;
     static bool kUseDescriptorSigmaMadv2;
