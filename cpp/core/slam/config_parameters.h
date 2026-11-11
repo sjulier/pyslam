@@ -30,103 +30,99 @@ class Parameters {
   public:
     // ----------------------------------------------------------------------------
     // Constants
+    // Slam init copies every field from the Python Parameters (pyslam/config_parameters.py, or
+    // the module-level constant the Python pipeline uses), so Python holds the values; those here
+    // are the defaults for C++ without Python. Two stay compile-time constants: kMinDepth (the
+    // camera_models module uses it too) and kStereoMatchingShowMatchedPoints (debug windows).
     // ----------------------------------------------------------------------------
 
-    static constexpr float kChi2Mono =
-        5.991; // chi-square 2 DOFs, used for reprojection error  (Hartley Zisserman pg 119)
-    static constexpr float kChi2Stereo =
-        7.815; // chi-square 3 DOFs, used for reprojection error  (Hartley Zisserman pg 119)
+    static float kChi2Mono; // chi-square 2 DOFs, used for reprojection error  (Hartley Zisserman pg 119)
+    static float kChi2Stereo; // chi-square 3 DOFs, used for reprojection error  (Hartley Zisserman pg 119)
 
-    static constexpr double kThHuberMono = 2.447;   // sqrt(kChi2Mono)
-    static constexpr double kThHuberStereo = 2.796; // sqrt(kChi2Stereo)
+    static double kThHuberMono; // sqrt(kChi2Mono), as in optimizer_g2o.py
+    static double kThHuberStereo; // sqrt(kChi2Stereo), as in optimizer_g2o.py
 
-    static constexpr int kSparseImageColorPatchDelta = 1; // centre +- delta
-    static constexpr std::size_t kMinWeightForDrawingCovisibilityEdge = 100;
-    static constexpr std::size_t kMaxSparseMapPointsToVisualize =
-        1000000; // Sparse pointcloud downsampling for very large clouds to reduce queue bandwidth
-                 // and GL load
+    static int kSparseImageColorPatchDelta; // centre +- delta
+    static std::size_t kMinWeightForDrawingCovisibilityEdge;
+    static std::size_t kMaxSparseMapPointsToVisualize; // Sparse pointcloud downsampling for very
+                                                       // large clouds to reduce queue bandwidth and GL load
 
     static constexpr double kMinDepth = 1e-2; // [meters] Minimum depth for a map point
 
     // Threshold constant (equivalent to Parameters.kMinNumOfCovisiblePointsForCreatingConnection =
     // 15)
-    static constexpr int kMinNumOfCovisiblePointsForCreatingConnection = 15;
+    static int kMinNumOfCovisiblePointsForCreatingConnection;
 
-    static constexpr int kLargeBAWindowSize = 20;
-    static constexpr std::size_t kMaxLenFrameDeque = 20;
-    static constexpr int kMaxNumOfKeyframesInLocalMap = 80;
-    static constexpr int kNumBestCovisibilityKeyFrames = 10;
+    static int kLargeBAWindowSize;
+    static std::size_t kMaxLenFrameDeque;
+    static int kMaxNumOfKeyframesInLocalMap;
+    static int kNumBestCovisibilityKeyFrames;
 
-    static constexpr double kMaxOutliersRatioInPoseOptimization = 0.9;
+    static double kMaxOutliersRatioInPoseOptimization;
 
     // Tracking: Point visibility
-    static constexpr float kViewingCosLimitForPoint =
-        0.5; // Must be viewing cos < kViewingCosLimitForPoint (viewing angle must be less than 60
+    static float kViewingCosLimitForPoint; // Must be viewing cos < kViewingCosLimitForPoint (viewing angle must be less than 60
     // deg)
-    static constexpr double kScaleConsistencyFactor = 1.5;
-    static constexpr double kMaxDistanceToleranceFactor = 1.2;
-    static constexpr double kMinDistanceToleranceFactor = 0.8;
+    static double kScaleConsistencyFactor;
+    static double kMaxDistanceToleranceFactor;
+    static double kMinDistanceToleranceFactor;
 
     // Tracking: Constants
-    static constexpr double kRansacThresholdNormalized =
-        0.0004; // 0.0003 // metric threshold used for normalized image coordinates
-    static constexpr double kRansacProb = 0.999;
-    static constexpr int kNumMinInliersEssentialMat = 8;
+    static double kRansacThresholdNormalized; // 0.0003 // metric threshold used for normalized image coordinates
+    static double kRansacProb;
+    static int kNumMinInliersEssentialMat;
     // static constexpr int kNumMinInliersPoseOptimizationTrackFrame = 10;
     // static constexpr int kNumMinInliersPoseOptimizationTrackLocalMap = 20;
     // static constexpr int kNumMinInliersTrackLocalMapForNotWaitingLocalMappingIdle = 50;
     // static constexpr int kNumMinObsForKeyFrameDefault = 3;
-    static constexpr int kNumMinObsForKeyFrameTrackedPoints = 3;
+    static int kNumMinObsForKeyFrameTrackedPoints;
 
-    static constexpr double kRansacReprojThreshold = 5;
-    static constexpr int kRansacMinNumInliers = 15;
+    static double kRansacReprojThreshold;
+    static int kRansacMinNumInliers;
 
     // Stereo Matching: Show matched points
-    static constexpr bool kStereoMatchingShowMatchedPoints = false;
+    static constexpr bool kStereoMatchingShowMatchedPoints = false; // debug windows: true needs OpenCV highgui, which cpp_core does not link
 
     // Tracking: Visual Odometry
-    static constexpr int kMaxNumVisualOdometryPoints = 100;
-    static constexpr int kMaxNumStereoPointsOnNewKeyframe = 100;
+    static int kMaxNumVisualOdometryPoints;
+    static int kMaxNumStereoPointsOnNewKeyframe;
 
     // Search matches by projection
-    static constexpr float kMaxReprojectionDistanceFrame = 7.0f;           // [pixels]    o:7
-    static constexpr float kMaxReprojectionDistanceFrameNonStereo = 15.0f; // [pixels]    o:15
-    static constexpr float kMaxReprojectionDistanceMap = 3.0f;             // [pixels]    o:1
-    static constexpr float kMaxReprojectionDistanceMapRgbd = 3.0f;         // [pixels]    o:3
-    static constexpr float kMaxReprojectionDistanceMapReloc = 5.0f;        // [pixels]    o:5
-    static constexpr float kMaxReprojectionDistanceFuse = 3.0f;            // [pixels]    o:3
-    static constexpr float kMaxReprojectionDistanceSim3 = 7.5f;            // [pixels]    o:7.5
+    static float kMaxReprojectionDistanceFrame; // [pixels]    o:7
+    static float kMaxReprojectionDistanceFrameNonStereo; // [pixels]    o:15
+    static float kMaxReprojectionDistanceMap; // [pixels]    o:1
+    static float kMaxReprojectionDistanceMapRgbd; // [pixels]    o:3
+    static float kMaxReprojectionDistanceMapReloc; // [pixels]    o:5
+    static float kMaxReprojectionDistanceFuse; // [pixels]    o:3
+    static float kMaxReprojectionDistanceSim3; // [pixels]    o:7.5
     //
-    static constexpr float kMatchRatioTestFrameByProjection = 0.9f;
-    static constexpr float kMatchRatioTestMap = 0.8f;
+    static float kMatchRatioTestFrameByProjection;
+    static float kMatchRatioTestMap;
 
     // Search matches for triangulation by using epipolar lines
-    static constexpr float kMinDistanceFromEpipole =
-        10.0f; // [pixels] Used with search by epipolar lines
+    static float kMinDistanceFromEpipole; // [pixels] Used with search by epipolar lines
 
-    static constexpr bool kCheckFeaturesOrientation = true;
+    static bool kCheckFeaturesOrientation;
 
-    static constexpr int kLocalBAWindowSize = 10;
+    static int kLocalBAWindowSize; // as in config_parameters.py
 
     // Point triangulation
-    static constexpr double kCosMaxParallax = 0.9998;
-    static constexpr double kMinRatioBaselineDepth = 0.01;
+    static double kCosMaxParallax;
+    static double kMinRatioBaselineDepth;
 
     // Loop closing
-    static constexpr float kLoopClosingMaxReprojectionDistanceFuse = 4.0f; // [pixels]    o:4
+    static float kLoopClosingMaxReprojectionDistanceFuse; // [pixels]    o:4
 
     // Local mapping
-    static constexpr float kKeyframeCullingRedundantObsRatio = 0.9f;
-    static constexpr double kKeyframeMaxTimeDistanceInSecForCulling = 0.5;
-    static constexpr int kKeyframeCullingMinNumPoints = 0;
+    static float kKeyframeCullingRedundantObsRatio;
+    static double kKeyframeMaxTimeDistanceInSecForCulling;
+    static int kKeyframeCullingMinNumPoints;
 
-    static constexpr int kLocalMappingParallelFusePointsNumWorkers = 2;
+    static int kLocalMappingParallelFusePointsNumWorkers;
 
-    static constexpr int kLocalMappingNumNeighborKeyFramesStereo =
-        10; //  [# frames]   for generating new points and fusing them under stereo or RGBD
+    static int kLocalMappingNumNeighborKeyFramesStereo; //  [# frames]   for generating new points and fusing them under stereo or RGBD
 
-    static constexpr int kLocalMappingNumNeighborKeyFramesMonocular =
-        20; //  [# frames]   for generating new points and fusing them under monocular
+    static int kLocalMappingNumNeighborKeyFramesMonocular; //  [# frames]   for generating new points and fusing them under monocular
 
     // ----------------------------------------------------------------------------
     // Modifiable parameters
@@ -191,6 +187,7 @@ class Parameters {
 
 #ifdef USE_PYTHON
     // Copy the live Python Parameters values so a C++ Slam follows the same config.
+    // It warns if the Python kMinDepth differs from the compile-time one.
     static void sync_runtime_from_python();
 #endif
 };
