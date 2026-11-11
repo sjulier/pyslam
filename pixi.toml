@@ -387,6 +387,9 @@ build-from-source = { cmd = "python scripts/check_pybind11_abi.py && python scri
   "build-prerequisites",
   "build-pyslam",
 ] }
+# Remove the native modules (prebuilt or built from source) and their build folders, e.g. after a failed
+# build, before `pixi run build`. Keeps downloads (GTSAM's source, model code and weights), unlike ./clean.sh
+clean-native = "python scripts/native_bundle.py clean"
 # Learned features and place recognition (group i): submodules, patches, model weights, check
 models = "bash scripts/install_extra.sh features-core vpr-core"  # = models-features + models-vpr
 # The recommended learned features (SuperPoint, SuperPoint + LightGlue) and place recognition (CosPlace)

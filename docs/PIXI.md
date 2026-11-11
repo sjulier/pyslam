@@ -156,7 +156,8 @@ expect the prerequisites to be there (built, or installed by `build`).
 - **The native modules belong to the level they were built in.** They are built once, in the source
   tree, and every level of a ladder uses them. If you delete the environment you built them in
   (`pixi clean`, or removing `.pixi/envs/default`), run `pixi run build` again after removing the
-  build folders (`./clean.sh`). The GPU levels and the CPU levels are two separate ladders: build
+  native modules and their build folders (`pixi run clean-native`; `./clean.sh` also deletes the model
+  code and weights). The GPU levels and the CPU levels are two separate ladders: build
   again when you change between them.
 - **Model code is not installed into the environment.** `scripts/install_extra.sh` clones each model
   at a fixed version into `thirdparty/`, applies pySLAM's patches and downloads the weights. It can be

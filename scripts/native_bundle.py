@@ -27,6 +27,10 @@ usage:
   python scripts/native_bundle.py remove [PART]  remove the files a fetched bundle installed
   python scripts/native_bundle.py stale [PART]   remove the CMake build folders configured in the other
                                                  ladder (gpu/cpu), before building from source
+  python scripts/native_bundle.py clean [PART]   remove the native modules, fetched or built from source, and
+                                                 their CMake build folders (`pixi run clean-native`), e.g.
+                                                 after a failed build; keeps the downloads (the GTSAM clone,
+                                                 model code and weights), unlike ./clean.sh
   python scripts/native_bundle.py check          say whether the installed bundles are the ones for this
                                                  checkout (exit code 1: `pixi run build` was not run after
                                                  an update; modules built from source are not checked)
@@ -679,7 +683,8 @@ def fetch(part):
     replace = False
     if built_modules(part):
         if part == "prereq":
-            return no_bundle(part, "modules built from source are already there (run ./clean.sh to replace them)")
+            return no_bundle(part, "modules built from source are already there "
+                                   "(run `pixi run clean-native` to replace them)")
         replace = True
 
     name = bundle_name(part, key)
@@ -732,36 +737,68 @@ def fetch(part):
     return 0
 
 
+def cmake_build_folders(part):
+    """The CMake build folders of a part (those with a CMakeCache.txt), down to 3 levels below its roots."""
+    seen = set()  # the roots nest (cpp, cpp/core/slam)
+    for top in PARTS[part]["build_roots"]:
+        for folder, dirs, files in os.walk(os.path.join(ROOT, top)):
+            depth = os.path.relpath(folder, os.path.join(ROOT, top)).count(os.sep)
+            if depth >= 3 or os.path.basename(folder) == "_deps":
+                dirs[:] = []
+            if "CMakeCache.txt" in files:
+                dirs[:] = []
+                if folder not in seen:
+                    seen.add(folder)
+                    yield folder
+
+
 def stale(part):
     """
     Remove the CMake build folders of a part that were configured in the other ladder: their caches
     name the other environment's compiler and libraries, and a build there would mix the two.
     """
     current = ladder()
-    for top in PARTS[part]["build_roots"]:
-        for folder, dirs, files in os.walk(os.path.join(ROOT, top)):
-            depth = os.path.relpath(folder, os.path.join(ROOT, top)).count(os.sep)
-            if depth >= 3 or os.path.basename(folder) == "_deps":
-                dirs[:] = []
-            if "CMakeCache.txt" not in files:
-                continue
-            dirs[:] = []
-            try:
-                with open(os.path.join(folder, "CMakeCache.txt"), errors="replace") as f:
-                    envs = set(re.findall(r"/\.pixi/envs/([^/\s]+)/", f.read()))
-            except OSError:
-                continue
-            others = sorted(e for e in envs if ladder_of(e) != current)
-            if others:
-                log(f"removing {os.path.relpath(folder, ROOT)}: configured in the {others[0]} environment")
-                shutil.rmtree(folder, ignore_errors=True)
+    for folder in cmake_build_folders(part):
+        try:
+            with open(os.path.join(folder, "CMakeCache.txt"), errors="replace") as f:
+                envs = set(re.findall(r"/\.pixi/envs/([^/\s]+)/", f.read()))
+        except OSError:
+            continue
+        others = sorted(e for e in envs if ladder_of(e) != current)
+        if others:
+            log(f"removing {os.path.relpath(folder, ROOT)}: configured in the {others[0]} environment")
+            shutil.rmtree(folder, ignore_errors=True)
+
+
+def clean(part):
+    """
+    Remove a part's native modules, fetched or built from source, and its CMake build folders, so that
+    `pixi run build` starts afresh: it installs the bundle, or builds from scratch. Only build output
+    goes: the sources stay, and so do the downloads (the GTSAM clone, model code and weights, datasets)
+    that ./clean.sh also deletes.
+    """
+    fetched = read_manifest(part) is not None
+    remove(part, quiet=True)
+    present = [f for f in PARTS[part]["folders"] if os.path.isdir(os.path.join(ROOT, f))]
+    files = [f for f in bundle_files(part) if not f.startswith(tuple(PARTS[part]["folders"]))]
+    remove_files(files, PARTS[part]["folders"])
+    folders = list(cmake_build_folders(part))
+    for folder in folders:
+        shutil.rmtree(folder, ignore_errors=True)
+    if part == "prereq" and os.path.exists(os.path.join(ROOT, MARCH_FILE)):
+        os.remove(os.path.join(ROOT, MARCH_FILE))
+    removed = ([f"{len(files)} built files"] if files else []) + present + [os.path.relpath(f, ROOT) for f in folders]
+    if removed:
+        log(f"{part}: removed " + ", ".join(removed))
+    elif not fetched:
+        log(f"{part}: nothing to remove (no native modules or build folders)")
 
 
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     parts = sys.argv[2:] or PART_NAMES
     unknown = [p for p in parts if p not in PARTS]
-    if unknown or command not in ("key", "pack", "fetch", "remove", "stale", "check"):
+    if unknown or command not in ("key", "pack", "fetch", "remove", "stale", "clean", "check"):
         print(__doc__)
         sys.exit(1)
     if command == "key":
@@ -779,6 +816,9 @@ def main():
     elif command == "stale":
         for part in parts:
             stale(part)
+    elif command == "clean":
+        for part in reversed(parts):
+            clean(part)
     elif command == "check":
         outdated = outdated_parts()
         for part, installed, key in outdated:
