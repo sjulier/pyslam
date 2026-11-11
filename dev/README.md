@@ -56,7 +56,7 @@ pixi run python dev/benchmark/summarize.py runs/tum
     stack (macOS `sample` for native stacks; SIGUSR1 for main_slam's Python stacks) before
     killing the run.
 - `summarize.py` prints, for each cell, the mean ± sd over its runs, then every run's % tracked
-  and ATE, and the "Playback:" line of throttled runs.
+  and ATE, and every run's "Playback:" line.
 - The tracking time is `slam.track()` alone: main_slam's timing report has a "tracking" stage. It
   skips the first 30 frames.
 

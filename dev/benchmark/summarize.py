@@ -63,7 +63,7 @@ def main():
             "no result" if r["tracked"] is None else f"{r['tracked'] * 100:.1f} ({r['ate']:.2f})" for r in rows))
     playback = [(cell, r["playback"]) for cell, rows in sorted(cells.items()) for r in rows if r["playback"]]
     if playback:
-        print("\nplayback (--throttle):")
+        print("\nplayback (the slow-downs are those of --throttle; without it there are none):")
         for cell, line in playback:
             print(f"  {cell:28} {line}")
 
