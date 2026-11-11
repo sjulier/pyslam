@@ -576,6 +576,10 @@ py::tuple Slam::get_final_trajectory() {
     }
     const Eigen::Matrix4d Two = first->Twc();
     const auto &history = tracking->tracking_history;
+    // read now, not at Slam init: main_slam.py turns it off for a second trajectory "as tracked"
+    const bool rescale = py::cast<bool>(py::module_::import("pyslam.config_parameters")
+                                            .attr("Parameters")
+                                            .attr("kTrajectoryRescaleRelativePoses"));
     const size_t n = history.slam_states.size();
     for (size_t i = 0; i < n; ++i) {
         if (history.slam_states[i] != SlamState::OK || i >= history.kf_references.size() ||
@@ -592,7 +596,8 @@ py::tuple Slam::get_final_trajectory() {
             continue;
         }
         const Eigen::Matrix4d Trw = Tcr * keyframe->Tcw() * Two;
-        const Eigen::Matrix4d Tcw = history.relative_frame_poses[i].matrix() * Trw;
+        // the relative pose in the map's current scale (monocular, see relative_pose_scale.h)
+        const Eigen::Matrix4d Tcw = history.relative_pose(i, rescale).matrix() * Trw;
         poses.append(Tcw.inverse());
         timestamps.append(i < history.timestamps.size() ? history.timestamps[i] : 0.0);
         ids.append(i < history.ids.size() ? history.ids[i] : -1);

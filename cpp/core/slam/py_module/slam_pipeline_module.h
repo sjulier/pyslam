@@ -153,6 +153,10 @@ inline void bind_initializer(py::module &m) {
 }
 
 inline void bind_tracking(py::module &m) {
+    // relative_pose_scale.h: the scale formula, for the tests (Python: relative_pose_scale.py)
+    m.def("relative_pose_anchor_scale_change", &pyslam::RelativePoseAnchors::scale_change, py::arg("then"),
+          py::arg("now"));
+
     py::class_<pyslam::KeyframeDemand, std::shared_ptr<pyslam::KeyframeDemand>>(m, "KeyframeDemand")
         .def(py::init<int, double>(), py::arg("window"), py::arg("weak_ratio"))
         .def("record", &pyslam::KeyframeDemand::record, py::arg("wanted_if_idle"),

@@ -555,11 +555,20 @@ void Tracking::update_tracking_history() {
         const Eigen::Isometry3d Tcr = f_cur->isometry3d() * f_cur->kf_ref->isometry3d().inverse();
         tracking_history.relative_frame_poses.push_back(Tcr);
         tracking_history.kf_references.push_back(f_cur->kf_ref);
+        // monocular only: with stereo and RGB-D the scale is observed, and rescaling would only add
+        // bundle adjustment's noise (the frames then follow their reference keyframes as in ORB-SLAM2/3)
+        tracking_history.anchors.push_back(
+            slam->sensor_type == SensorType::MONOCULAR
+                ? std::make_shared<const RelativePoseAnchors>(
+                      f_cur->kf_ref,
+                      tracking_history.anchors.empty() ? nullptr : tracking_history.anchors.back())
+                : nullptr);
         tracking_history.timestamps.push_back(f_cur->timestamp);
         tracking_history.ids.push_back(f_cur->id);
     } else if (!tracking_history.relative_frame_poses.empty()) {
         tracking_history.relative_frame_poses.push_back(tracking_history.relative_frame_poses.back());
         tracking_history.kf_references.push_back(tracking_history.kf_references.back());
+        tracking_history.anchors.push_back(tracking_history.anchors.back());
         tracking_history.timestamps.push_back(tracking_history.timestamps.back());
         tracking_history.ids.push_back(tracking_history.ids.back());
     }
