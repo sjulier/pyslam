@@ -100,6 +100,36 @@ class PipelineLifecycleTests(unittest.TestCase):
         for name in ("num_frames", "num_weak", "num_wanted", "num_suppressed"):
             self.assertEqual(getattr(cpp_demand, name), getattr(py_demand, name), name)
 
+    def test_relative_pose_anchor_scale_matches_python(self):
+        # #93: the C++ final trajectory rescales the relative poses with the same formula
+        import numpy as np
+        import cpp_core
+        from pyslam.slam.relative_pose_scale import RelativePoseAnchors
+
+        class _KeyFrame:  # what RelativePoseAnchors.scale() reads
+            def __init__(self, position):
+                self.position = position
+
+            def is_bad(self):
+                return False
+
+            def Ow(self):
+                return self.position
+
+        rng = np.random.default_rng(0)
+        for n in (0, 1, 2, 3, 5, 10):
+            for scale in (0.5, 1.0, 2.2):
+                then = rng.normal(size=(n, 3))
+                now = then * scale + rng.normal(size=3) + 1e-3 * rng.normal(size=(n, 3))
+                anchors = RelativePoseAnchors.__new__(RelativePoseAnchors)
+                anchors.keyframes = [_KeyFrame(p) for p in now]
+                anchors.positions = then
+                expected = anchors.scale() if n else 1.0
+                got = cpp_core.relative_pose_anchor_scale_change(list(then), list(now))
+                self.assertAlmostEqual(got, expected, places=9, msg=f"n={n} scale={scale}")
+        same = [np.zeros(3)] * 4  # no spread: no scale
+        self.assertEqual(cpp_core.relative_pose_anchor_scale_change(same, same), 1.0)
+
     def test_tracking_records_keyframe_demand(self):
         from pyslam.slam.playback_throttle import PlaybackThrottle
 

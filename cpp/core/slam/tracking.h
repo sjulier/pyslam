@@ -23,6 +23,7 @@
 #include "keyframe.h"
 #include "keyframe_demand.h"
 #include "motion_model.h"
+#include "relative_pose_scale.h"
 #include "slam_commons.h"
 #include "slam_dynamic_config.h"
 
@@ -44,6 +45,9 @@ struct TrackingHistory {
     std::vector<double> timestamps;
     std::vector<int> ids;
     std::vector<SlamState> slam_states;
+    // monocular: the keyframes around each reference keyframe and their positions when the frame was
+    // tracked (relative_pose_scale.h); nullptr with stereo and RGB-D
+    std::vector<RelativePoseAnchorsPtr> anchors;
 
     void reset() {
         relative_frame_poses.clear();
@@ -51,6 +55,17 @@ struct TrackingHistory {
         timestamps.clear();
         ids.clear();
         slam_states.clear();
+        anchors.clear();
+    }
+
+    // entry i's pose w.r.t. its reference keyframe, with its translation in the map's current scale
+    // when rescale is true (Parameters.kTrajectoryRescaleRelativePoses)
+    Eigen::Isometry3d relative_pose(size_t i, bool rescale) const {
+        Eigen::Isometry3d Tcr = relative_frame_poses[i];
+        if (rescale && i < anchors.size() && anchors[i]) {
+            Tcr.translation() *= anchors[i]->scale();
+        }
+        return Tcr;
     }
 };
 
