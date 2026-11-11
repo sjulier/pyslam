@@ -171,6 +171,8 @@ OLD_MANIFEST = "thirdparty/.native_bundle.json"
 # Absolute paths of the build machine in the text files of a bundle (CMake files, config.h) are packed
 # as this placeholder and replaced by the checkout's path when the bundle is unpacked
 ROOT_PLACEHOLDER = "@PYSLAM_NATIVE_BUNDLE_ROOT@"
+# a system library in a macOS SDK, e.g. /Applications/Xcode.app/.../SDKs/MacOSX26.5.sdk/usr/lib/libm.tbd
+MACOS_SDK_LIBRARY = re.compile(rb"/[^;\"'\s]*/SDKs/MacOSX[0-9.]*\.sdk/usr/lib/lib([A-Za-z0-9_+-]+)\.tbd")
 
 # The -march value of the native modules in the checkout: the build scripts use it when PYSLAM_MARCH
 # is not set, so that a module rebuilt after a bundle was installed matches the bundle's
@@ -454,7 +456,8 @@ def roots():
 
 
 def placehold_root(staged):
-    """Replace the checkout's path in a text file by ROOT_PLACEHOLDER. True if there was one."""
+    """Replace the checkout's path in a text file by ROOT_PLACEHOLDER, and macOS SDK libraries by
+    their names. True if the file changed."""
     with open(staged, "rb") as f:
         data = f.read()
     if b"\0" in data[:8192]:
@@ -462,6 +465,11 @@ def placehold_root(staged):
     new = data
     for root in roots():
         new = new.replace(root.encode(), ROOT_PLACEHOLDER.encode())
+    # macOS: CMake records system libraries by their path in the SDK of the build machine (GTSAM's
+    # exports name .../SDKs/MacOSX26.5.sdk/usr/lib/libm.tbd), which another machine may not have
+    # (another SDK version, or the Command Line Tools instead of Xcode). Name them instead (m), so
+    # that the linker finds them in the SDK of the machine the pyslam part is built on.
+    new = MACOS_SDK_LIBRARY.sub(rb"\1", new)
     if new == data:
         return False
     with open(staged, "wb") as f:
