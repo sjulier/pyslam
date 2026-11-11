@@ -21,12 +21,14 @@
 #include "frame.h"
 #include "initializer.h"
 #include "keyframe.h"
+#include "keyframe_demand.h"
 #include "motion_model.h"
 #include "slam_commons.h"
 #include "slam_dynamic_config.h"
 
 #include <Eigen/Geometry>
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <opencv2/core.hpp>
 #include <optional>
@@ -139,6 +141,7 @@ class Tracking {
     int last_reloc_frame_id = -1;
     int last_num_map_corrections = 0; // loop closing's count of map corrections at the last frame
     TrackingHistory tracking_history;
+    std::shared_ptr<KeyframeDemand> kf_demand; // read by main_slam.py's playback throttle
 
     Eigen::Matrix3d cur_R = Eigen::Matrix3d::Identity();
     Eigen::Vector3d cur_t = Eigen::Vector3d::Zero();

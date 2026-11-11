@@ -36,6 +36,8 @@ bool Parameters::kLocalMappingOnSeparateThread = true;
 bool Parameters::kTrackingWaitForLocalMappingToGetIdle = false;
 double Parameters::kWaitForLocalMappingTimeout = 0.05;
 double Parameters::kParallelLBAWaitIdleTimeout = 0.03;
+int Parameters::kPlaybackThrottleWindow = 30;
+double Parameters::kPlaybackThrottleWeakTrackingRatio = 0.5;
 double Parameters::kLocalMappingTimeoutPopKeyframe = 0.5;
 bool Parameters::kUseDynamicDesDistanceTh = true;
 bool Parameters::kUseDescriptorSigmaMadv2 = false;
@@ -96,6 +98,8 @@ void Parameters::sync_runtime_from_python() {
               kTrackingWaitForLocalMappingToGetIdle);
     read_attr(params, "kWaitForLocalMappingTimeout", kWaitForLocalMappingTimeout);
     read_attr(params, "kParallelLBAWaitIdleTimeout", kParallelLBAWaitIdleTimeout);
+    read_attr(params, "kPlaybackThrottleWindow", kPlaybackThrottleWindow);
+    read_attr(params, "kPlaybackThrottleWeakTrackingRatio", kPlaybackThrottleWeakTrackingRatio);
     read_attr(params, "kLocalMappingTimeoutPopKeyframe", kLocalMappingTimeoutPopKeyframe);
     read_attr(params, "kUseDynamicDesDistanceTh", kUseDynamicDesDistanceTh);
     read_attr(params, "kUseDescriptorSigmaMadv2", kUseDescriptorSigmaMadv2);

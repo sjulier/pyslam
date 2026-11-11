@@ -77,6 +77,44 @@ class PipelineLifecycleTests(unittest.TestCase):
         slam.local_mapping.quit()
         slam.local_mapping.request_reset()
 
+    def test_keyframe_demand_matches_python(self):
+        # main_slam.py's playback throttle reads tracking.kf_demand in both pipelines
+        import random
+        import cpp_core
+        from pyslam.slam.playback_throttle import KeyframeDemand
+
+        cpp_demand = cpp_core.KeyframeDemand(window=7, weak_ratio=0.5)
+        py_demand = KeyframeDemand(window=7, weak_ratio=0.5)
+        rng = random.Random(0)
+        for step in range(200):
+            args = (rng.random() < 0.5, rng.random() < 0.5, rng.randint(0, 100), rng.randint(0, 100))
+            cpp_demand.record(*args)
+            py_demand.record(*args)
+            if step % 37 == 36:
+                cpp_demand.reset_window()
+                py_demand.reset_window()
+            self.assertEqual(cpp_demand.num_samples(), py_demand.num_samples())
+            self.assertAlmostEqual(cpp_demand.weak_fraction(), py_demand.weak_fraction())
+        self.assertAlmostEqual(cpp_demand.total_weak_fraction(), py_demand.total_weak_fraction())
+        self.assertAlmostEqual(cpp_demand.total_suppressed_fraction(), py_demand.total_suppressed_fraction())
+        for name in ("num_frames", "num_weak", "num_wanted", "num_suppressed"):
+            self.assertEqual(getattr(cpp_demand, name), getattr(py_demand, name), name)
+
+    def test_tracking_records_keyframe_demand(self):
+        from pyslam.slam.playback_throttle import PlaybackThrottle
+
+        slam = self.make_slam(True)
+        demand = slam.tracking.kf_demand
+        self.assertIsNotNone(demand)
+        self.assertEqual(demand.weak_ratio, Parameters.kPlaybackThrottleWeakTrackingRatio)
+        texture = self.initialize(slam)
+        for i in range(2, 12):
+            image, depth = _frame(texture, i)
+            slam.track(image, None, depth, i, float(i))
+        self.assertGreater(demand.num_frames, 0)
+        throttle = PlaybackThrottle(max_speed=1.0, enabled=True, warmup_frames=0, update_period=1, min_samples=1)
+        throttle.update(demand)  # the throttle's interface works on the C++ object
+
     def test_reset_while_stopped(self):
         slam = self.make_slam(True)
         self.initialize(slam)

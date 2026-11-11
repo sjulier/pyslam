@@ -539,11 +539,11 @@ if __name__ == "__main__":
         headless=args.headless,
     )
     slam.set_viewer_scale(dataset.scale_viewer_3d)
-    # what the playback throttle reads: the Python pipeline's tracking records it; the C++ pipeline
-    # (Parameters.USE_CPP_PIPELINE) has none, and the playback then keeps --speed
+    # what the playback throttle reads: tracking records it, in both the Python and the C++ pipeline
+    # (an older C++ core has none, and the playback then keeps --speed)
     kf_demand = getattr(slam.tracking, "kf_demand", None)
     if kf_demand is None:
-        Printer.orange("Playback throttle: not available with the C++ pipeline (the playback keeps --speed)")
+        Printer.orange("Playback throttle: not available with this C++ core (the playback keeps --speed)")
     time.sleep(1)  # to show initial messages
 
     # load system state if requested

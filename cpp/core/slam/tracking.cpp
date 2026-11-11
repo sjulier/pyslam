@@ -83,6 +83,8 @@ Tracking::Tracking(Slam *slam_in)
         max_frames_between_kfs = slam->camera->fps;
     }
     max_frames_between_kfs_after_reloc = max_frames_between_kfs;
+    kf_demand = std::make_shared<KeyframeDemand>(Parameters::kPlaybackThrottleWindow,
+                                                 Parameters::kPlaybackThrottleWeakTrackingRatio);
 }
 
 CameraPtr Tracking::camera() const { return slam ? slam->camera : nullptr; }
@@ -443,6 +445,15 @@ bool Tracking::need_new_keyframe(const FramePtr &f_cur_in) {
         cond3 = min_dist > max_fov_centers_distance;
     }
     const bool condition_checks = ((cond1a || cond1b || cond1c || cond1d) && cond2) || cond3;
+
+    // Keyframe demand, for the playback throttle: would a keyframe be requested if local mapping
+    // were idle? cond1b only asks for one when local mapping is idle.
+    const bool cond1b_if_idle = kf_last && f_cur_in->id >= (kf_last->id + min_frames_between_kfs);
+    const bool wanted_if_idle = ((cond1a || cond1b_if_idle || cond1c || cond1d) && cond2) || cond3;
+    if (kf_demand) {
+        kf_demand->record(wanted_if_idle, is_local_mapping_idle, num_f_cur_tracked_points,
+                          num_kf_ref_tracked_points);
+    }
     if (!condition_checks) {
         return false;
     }
