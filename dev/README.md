@@ -31,14 +31,19 @@ pixi run python dev/benchmark/summarize.py runs/tum
   unless `--throttle` is given after `--`. The cells are interleaved round by round.
 - `run_monitored.py` runs one command and records:
   - its wall time and exit code;
-  - peak RSS, and on macOS peak phys_footprint, summed over the process tree once a second;
+  - peak RSS, and peak phys_footprint (macOS) or PSS (Linux), summed over the process tree once a second;
   - stalls: if the log is silent for `--stall` seconds (default 120), it records every thread's
     stack (macOS `sample` for native stacks; SIGUSR1 for main_slam's Python stacks) before
     killing the run.
 - `summarize.py` prints, for each cell, the mean ± sd over its runs, then every run's % tracked
   and ATE, and every run's "Playback:" line.
 - The tracking time is `slam.track()` alone: main_slam's timing report has a "tracking" stage. It
-  skips the first 30 frames.
+  skips the first 30 frames. Depth prediction and semantic masks (`--semantic-mask`; a depth estimator), when
+  they are on, are in the stage before it, "depth_and_masks".
+- **On Linux, compare memory by PSS, not RSS.** RSS summed over the process tree counts the pages
+  that main_slam shares with its child processes (the viewers, the process pools) once per process.
+  PSS splits each shared page between them. Reading it costs more (`/proc/PID/smaps_rollup`), which
+  is fine once a second.
 
 ### Measuring on a Mac: lessons from Nov 2026
 - **Turn Low Power Mode off** (`pmset -g | grep lowpower`): it slows the CPU, and the SLAM

@@ -10,6 +10,10 @@ Writes OUT_PREFIX.log (the command's stdout and stderr) and OUT_PREFIX.run.json:
   peak_rss_gb      the peak, sampled once a second, of the summed RSS of the process and its children
   peak_footprint_gb  the same for macOS's phys_footprint (Activity Monitor's "Memory"); None elsewhere.
                    On macOS compare this, not RSS: RSS swings by +-0.3 GB with memory pressure.
+  peak_pss_gb      the same for Linux's PSS (each shared page split between the processes that map it),
+                   which a sum over the processes counts once; None elsewhere. The summed RSS counts
+                   memory shared between the process and its children (the viewers, loop closing) once
+                   per process.
   timed_out, stalled_at_s
 A stall is a log that has not grown for --stall seconds. Then, before killing the process tree:
   - macOS: `sample` records the native stacks of every thread of every Python process (OUT_PREFIX.sample.PID.txt)
@@ -31,6 +35,7 @@ kTick = 1.0  # seconds between samples
 kSleepGap = 15.0  # a longer gap between two ticks means the machine slept
 
 _libproc = ctypes.CDLL("/usr/lib/libproc.dylib") if sys.platform == "darwin" else None
+kLinux = sys.platform.startswith("linux")
 
 
 def phys_footprint(pid):
@@ -40,6 +45,14 @@ def phys_footprint(pid):
         return 0
     # after the uuid (2 words): user, system, pkg_idle_wkups, interrupt_wkups, pageins, wired, resident, phys_footprint
     return buf[2 + 7]
+
+
+def pss(proc):
+    """Linux PSS of a process, in bytes (from /proc/PID/smaps_rollup); 0 if unreadable."""
+    try:
+        return proc.memory_full_info().pss
+    except (psutil.Error, AttributeError):
+        return 0
 
 
 def process_tree(proc):
@@ -89,7 +102,7 @@ def main():
     cmd = sys.argv[split + 1:]
 
     t0 = time.time()
-    peak_rss = peak_fp = 0
+    peak_rss = peak_fp = peak_pss = 0
     timed_out, stalled = False, None
     slept = 0.0
     with open(args.out + ".log", "w") as log:
@@ -109,6 +122,8 @@ def main():
                 pass
             if _libproc is not None:
                 peak_fp = max(peak_fp, sum(phys_footprint(q.pid) for q in tree))
+            if kLinux:
+                peak_pss = max(peak_pss, sum(pss(q) for q in tree))
             size = os.path.getsize(args.out + ".log")
             if size != last_size:
                 last_size, last_growth = size, time.time()
@@ -125,6 +140,7 @@ def main():
         p.wait()
     result = dict(cmd=cmd, wall_s=time.time() - t0, slept_s=slept, returncode=p.returncode,
                   peak_rss_gb=peak_rss / 2**30, peak_footprint_gb=peak_fp / 2**30 if _libproc else None,
+                  peak_pss_gb=peak_pss / 2**30 if kLinux else None,
                   timed_out=timed_out, stalled_at_s=stalled)
     with open(args.out + ".run.json", "w") as f:
         json.dump(result, f, indent=1)
