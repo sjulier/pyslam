@@ -43,7 +43,7 @@ std::vector<cv::Vec3f> extract_mean_colors(const cv::Mat &img, const PointsType 
 
     const int type = img.type();
 
-    const int N = img_coords.size();
+    const int N = static_cast<int>(num_points_of(img_coords));
 
     if (C != num_channels) {
         MSG_ERROR("extract_mean_colors() - image channels do not match the number of channels");
@@ -213,10 +213,10 @@ class ImageColorExtractor {
     template <typename PointsType, bool is_color>
     std::vector<cv::Vec3f> extract_mean_colors(const PointsType &img_coords) const {
         if (!is_valid_) {
-            return std::vector<cv::Vec3f>(img_coords.size(), default_color_);
+            return std::vector<cv::Vec3f>(num_points_of(img_coords), default_color_);
         }
 
-        const int N = img_coords.size();
+        const int N = static_cast<int>(num_points_of(img_coords));
         std::vector<cv::Vec3f> result(N);
 
         if (is_color) {
@@ -236,7 +236,10 @@ class ImageColorExtractor {
     template <typename PointsType>
     std::vector<cv::Vec3f> extract_mean_colors(const PointsType &img_coords,
                                                const bool is_color) const {
-        return extract_mean_colors<PointsType, is_color>(img_coords);
+        if (is_color) {
+            return extract_mean_colors<PointsType, true>(img_coords);
+        }
+        return extract_mean_colors<PointsType, false>(img_coords);
     }
 };
 

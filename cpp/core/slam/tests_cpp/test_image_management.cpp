@@ -43,7 +43,12 @@ void print_test_header(const std::string &test_name) {
     std::cout << std::string(50, '=') << std::endl;
 }
 
+static int num_failed = 0;
+
 void print_test_result(bool passed, const std::string &test_name) {
+    if (!passed) {
+        ++num_failed;
+    }
     std::cout << "[" << (passed ? "PASS" : "FAIL") << "] " << test_name << std::endl;
 }
 
@@ -163,7 +168,7 @@ void test_multiple_points_extraction() {
     // Create test image with different colored regions
     Mat test_img = Mat::zeros(10, 10, CV_8UC3);
 
-    // Region 1: Red
+    // Region 1: Blue (OpenCV images are BGR: channel 0 is blue)
     Rect region1(0, 0, 5, 5);
     test_img(region1).setTo(Vec3b(255, 0, 0));
 
@@ -171,7 +176,7 @@ void test_multiple_points_extraction() {
     Rect region2(5, 0, 5, 5);
     test_img(region2).setTo(Vec3b(0, 255, 0));
 
-    // Region 3: Blue
+    // Region 3: Red
     Rect region3(0, 5, 5, 5);
     test_img(region3).setTo(Vec3b(0, 0, 255));
 
@@ -183,9 +188,9 @@ void test_multiple_points_extraction() {
 
     // Test points in different regions
     pyslam::MatNx2d test_points(4, 2);
-    test_points << 2, 2, // Red region
+    test_points << 2, 2, // Blue region
         7, 2,            // Green region
-        2, 7,            // Blue region
+        2, 7,            // Red region
         7, 7;            // White region
 
     auto colors = extractor.extract_mean_colors<pyslam::MatNx2d, true>(test_points);
@@ -195,18 +200,33 @@ void test_multiple_points_extraction() {
 
     // Check if colors are approximately correct (allowing for averaging)
     bool test2_passed =
-        (colors[0][2] < colors[0][0] && colors[0][2] < colors[0][1]); // Red dominant
+        (colors[0][1] < colors[0][0] && colors[0][2] < colors[0][0]); // Blue dominant
     bool test3_passed =
         (colors[1][0] < colors[1][1] && colors[1][2] < colors[1][1]); // Green dominant
     bool test4_passed =
-        (colors[2][0] < colors[2][2] && colors[2][1] < colors[2][2]); // Blue dominant
+        (colors[2][0] < colors[2][2] && colors[2][1] < colors[2][2]); // Red dominant
     bool test5_passed =
         (colors[3][0] > 200 && colors[3][1] > 200 && colors[3][2] > 200); // White-ish
 
-    print_test_result(test2_passed, "Red region color extraction");
+    print_test_result(test2_passed, "Blue region color extraction");
     print_test_result(test3_passed, "Green region color extraction");
-    print_test_result(test4_passed, "Blue region color extraction");
+    print_test_result(test4_passed, "Red region color extraction");
     print_test_result(test5_passed, "White region color extraction");
+
+    // The free function and the overload taking a run-time is_color agree with the class
+    auto colors_fn = extract_mean_colors<3>(test_img, test_points, 1);
+    auto colors_rt = extractor.extract_mean_colors(test_points, true);
+    bool test6_passed = (colors_fn.size() == 4 && colors_rt.size() == 4);
+    for (size_t i = 0; test6_passed && i < 4; ++i) {
+        test6_passed = (colors_fn[i] == colors[i] && colors_rt[i] == colors[i]);
+    }
+    print_test_result(test6_passed, "extract_mean_colors overloads agree with the class");
+
+    // A std::vector of points gives the same colors as the matrix
+    std::vector<cv::Point2f> point_vector = {{2, 2}, {7, 2}, {2, 7}, {7, 7}};
+    auto colors_vec = extractor.extract_mean_colors<std::vector<cv::Point2f>, true>(point_vector);
+    bool test7_passed = (colors_vec == colors);
+    print_test_result(test7_passed, "std::vector points give the same colors as MatNx2d");
 }
 
 // Test 5: Edge cases and error handling
@@ -313,7 +333,11 @@ int main() {
         test_get_xy_function();
 
         std::cout << "\n" << std::string(50, '=') << std::endl;
-        std::cout << "ALL TESTS COMPLETED" << std::endl;
+        if (num_failed > 0) {
+            std::cout << num_failed << " TEST(S) FAILED" << std::endl;
+        } else {
+            std::cout << "ALL TESTS PASSED" << std::endl;
+        }
         std::cout << std::string(50, '=') << std::endl;
 
     } catch (const std::exception &e) {
@@ -321,5 +345,5 @@ int main() {
         return 1;
     }
 
-    return 0;
+    return num_failed > 0 ? 1 : 0;
 }
