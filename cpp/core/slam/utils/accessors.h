@@ -60,6 +60,16 @@ inline std::pair<ReturnScalar, ReturnScalar> get_xy(const Elem &p) {
     }
 }
 
+// number of 2D points in a container accepted by get_xy_at(): the rows of an Eigen matrix
+// (its size() is rows x cols), the elements of a std::vector
+template <typename Container> inline size_t num_points_of(const Container &container) {
+    if constexpr (std::is_base_of_v<Eigen::MatrixBase<Container>, Container>) {
+        return static_cast<size_t>(container.rows());
+    } else {
+        return container.size();
+    }
+}
+
 // generic extractor for 2D point types at an index
 template <typename Container, typename ReturnScalar>
 inline std::pair<ReturnScalar, ReturnScalar> get_xy_at(const Container &container, size_t index) {
