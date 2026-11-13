@@ -19,6 +19,13 @@
 
 // gtsam factors of the cpp_core cameras. This translation unit does not include g2o.
 
+#ifdef _MSC_VER
+// gtsam.dll exports gtsam::Ordering, and with it the members of its base class KeyVector
+// (std::vector<Key, tbb_allocator>). A translation unit that uses KeyVector without seeing that
+// declaration defines those members itself, and MSVC's linker then finds them twice (LNK2005).
+#include <gtsam/inference/Ordering.h>
+#endif
+
 #include "py_module/camera_optimizer_bindings.h"
 
 #include "camera_factors_gtsam.h"
