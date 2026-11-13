@@ -259,7 +259,7 @@ windows instead, where `q` quits.
   folders and also the model code and weights that `pixi run models` and the other model tasks downloaded.
 - **If you change pySLAM's C++ code, rebuild with `pixi run build`**, never with a module's own
   `build.sh` outside pixi (the scripts stop with an error there). After a change to pySLAM's own C++
-  code (`pyslam/slam/cpp`, `cpp/`, `thirdparty/orbslam2_features`), `build` keeps the prebuilt
+  code (`cpp/`, `thirdparty/orbslam2_features`), `build` keeps the prebuilt
   libraries it is built on (GTSAM, g2o, ...) and compiles only that code (about 10 minutes on a laptop). A change
   to those libraries themselves means compiling everything, from 30 minutes to over an hour. If a
   build fails or is interrupted, run `pixi run clean-native` and then `pixi run build`. `clean-native`
