@@ -405,7 +405,7 @@ models-tf = "bash scripts/install_extra.sh tf"
 check-abi = "python scripts/check_pybind11_abi.py"
 check-native = "python scripts/check_native_modules.py"  # every native module loads (works in every level)
 check-gtsam = "python -m pytest -q tests/python_core/gtsam/test_gtsam_factors_jacobians.py tests/python_core/gtsam/test_optimize_pose.py tests/python_core/gtsam/test_optimize_sim3.py"
-check-g2o = "python -m pytest -q test/g2o/test_optimize_pose.py test/g2o/test_optimize_sim3.py"
+check-g2o = "python -m pytest -q tests/python_core/g2o/test_optimize_pose.py tests/python_core/g2o/test_optimize_sim3.py"
 check = { depends-on = ["check-abi", "check-gtsam", "check-g2o"] }
 # One line per check: machine, memory, environment, GPU, every native module, vocabulary. Include its
 # output when asking for help; `pixi run doctor --run` also runs SLAM on KITTI 06 without windows.
