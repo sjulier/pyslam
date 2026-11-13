@@ -65,6 +65,12 @@ else:
     else:
         print(f"CPP_LIB_DIR not found: {CPP_LIB_DIR}")
 
+# The Python core imports pySLAM's C++ utility modules (pyslam_utils, ...) from cpp/lib. pyslam.config puts
+# that folder on the path, but tests and tools may import this package before it (or without it).
+CPP_UTILS_DIR = os.path.join(REPO_ROOT, "cpp", "lib")
+if os.path.isdir(CPP_UTILS_DIR) and CPP_UTILS_DIR not in sys.path:
+    sys.path.append(CPP_UTILS_DIR)
+
 
 _CPP_UTILS_MODULES = (
     "pyslam_utils", "sim3solver", "pnpsolver", "color_utils", "glutils", "hamming",
