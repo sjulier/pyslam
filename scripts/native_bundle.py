@@ -130,6 +130,7 @@ PARTS = {
             "cpp/core/slam/lib/*.so",
             "thirdparty/orbslam2_features/lib/*.pyd",
             "cpp/lib/*.pyd",
+            "cpp/lib/*.dll",  # camera_model_core.dll, which the camera_models modules load
             "cpp/core/slam/lib/*.pyd",
         ],
         "sources": [

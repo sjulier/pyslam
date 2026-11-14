@@ -402,6 +402,14 @@ target_include_directories(camera_model_core PUBLIC
 target_link_libraries(camera_model_core PUBLIC ${OpenCV_LIBS})
 set_target_properties(camera_model_core PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
+if(WIN32)
+    # MSVC writes an import library only for a DLL that exports symbols, and the DLL is a runtime
+    # artifact there: export everything, and put the DLL next to the modules that load it, where
+    # Python's loader looks for a module's dependencies
+    set_target_properties(camera_model_core PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+        RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
+endif()
 
 function(camera_models_module_rpath target)
     set_target_properties(${target} PROPERTIES
@@ -420,7 +428,12 @@ camera_models_module_rpath(camera_models)
 
 set(G2O_ROOT "${PYSLAM_ROOT}/thirdparty/g2opy")
 set(G2O_INCLUDE_DIRS "${G2O_ROOT};${G2O_ROOT}/build")
-file(GLOB CAMERA_MODELS_G2O_LIBRARIES "${G2O_ROOT}/lib/*.a")
+if(WIN32)
+    # g2o's static libraries; g2o.lib is the import library of the g2o Python module
+    file(GLOB CAMERA_MODELS_G2O_LIBRARIES "${G2O_ROOT}/lib/g2o_*.lib")
+else()
+    file(GLOB CAMERA_MODELS_G2O_LIBRARIES "${G2O_ROOT}/lib/*.a")
+endif()
 list(FILTER CAMERA_MODELS_G2O_LIBRARIES EXCLUDE REGEX "g2o.cython.*")
 if(CAMERA_MODELS_G2O_LIBRARIES)
     pybind11_add_module(camera_models_g2o modules/camera_models/camera_models_g2o_module.cpp)
@@ -440,7 +453,11 @@ else()
 endif()
 
 set(GTSAM_ROOT "${PYSLAM_ROOT}/thirdparty/gtsam_local")
-set(GTSAM_DIR "${GTSAM_ROOT}/install/lib/cmake/GTSAM")
+if(WIN32)
+    set(GTSAM_DIR "${GTSAM_ROOT}/install/CMake")  # where GTSAM installs its CMake files on Windows
+else()
+    set(GTSAM_DIR "${GTSAM_ROOT}/install/lib/cmake/GTSAM")
+endif()
 find_package(GTSAM QUIET CONFIG)
 # the headers gtsam_factors' build installs, then its source folder through thirdparty/, for a
 # header a prereq install from before it doesn't have (gtsam_factors/values_cross_module.h)
@@ -459,7 +476,7 @@ if(GTSAM_FOUND)
     set_target_properties(camera_models_gtsam PROPERTIES
         BUILD_RPATH "\$ORIGIN;${GTSAM_ROOT}/install/lib"
         INSTALL_RPATH "\$ORIGIN;${GTSAM_ROOT}/install/lib")
-    if(NOT APPLE)
+    if(UNIX AND NOT APPLE)
         # libgtsam has no RPATH of its own: only DT_RPATH (not DT_RUNPATH) lets the loader
         # resolve its libmetis-gtsam dependency without importing the gtsam package first.
         target_link_options(camera_models_gtsam PRIVATE "-Wl,--disable-new-dtags")

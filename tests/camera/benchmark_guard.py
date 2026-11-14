@@ -19,7 +19,11 @@
 * Serialize camera benchmarks and stop replays before exhausting host memory.
 """
 
-import fcntl
+try:
+    import fcntl
+except ImportError:  # Windows: msvcrt's byte-range lock instead of flock
+    fcntl = None
+    import msvcrt
 import math
 import os
 from pathlib import Path
@@ -48,7 +52,7 @@ class BenchmarkGuard:
         self.max_rss = max_rss_gib * 1024**3
         self.min_available = min_available_gib * 1024**3
         self.lock_path = Path(lock_path) if lock_path else Path(tempfile.gettempdir()) / (
-            f'pyslam-camera-benchmark-{os.getuid()}.lock')
+            f'pyslam-camera-benchmark-{os.getuid() if hasattr(os, "getuid") else os.environ.get("USERNAME", "user")}.lock')
         self.interval = interval
         self.peak_rss = 0
         self._stop = threading.Event()
@@ -81,8 +85,12 @@ class BenchmarkGuard:
     def __enter__(self):
         self._file = self.lock_path.open('a+')
         try:
-            fcntl.flock(self._file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+            if fcntl:
+                fcntl.flock(self._file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            else:
+                self._file.seek(0)
+                msvcrt.locking(self._file.fileno(), msvcrt.LK_NBLCK, 1)
+        except (BlockingIOError, PermissionError):
             self._file.close()
             self._file = None
             raise RuntimeError('Another camera benchmark/replay is running; run tests sequentially') from None
@@ -100,6 +108,10 @@ class BenchmarkGuard:
         if self._thread:
             self._thread.join(timeout=1.)
         if self._file:
-            fcntl.flock(self._file, fcntl.LOCK_UN)
+            if fcntl:
+                fcntl.flock(self._file, fcntl.LOCK_UN)
+            else:
+                self._file.seek(0)
+                msvcrt.locking(self._file.fileno(), msvcrt.LK_UNLCK, 1)
             self._file.close()
             self._file = None
