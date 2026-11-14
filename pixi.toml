@@ -172,6 +172,7 @@ imgviz = "==1.2.6"
 scikit-learn = "*"  # Patch-NetVLAD (place recognition, default level)
 trimesh = "*"
 plyfile = "*"
+wgpu-py = ">=0.33,<0.34"  # the Replica renderer (sjulier/Replica-Dataset) that drives pySLAM in the same process
 
 # ---------------------------------------------------------------------------
 # torch: deep learning stack shared by the learned components
