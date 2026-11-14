@@ -312,7 +312,11 @@ class LocalMapping:
     def charge_sim_step(self, duration):
         if self.sim_now is None:
             return
-        duration *= Parameters.kLocalMappingSimulatedBusyTimeScale
+        fixed = Parameters.kLocalMappingSimulatedBusyTimeFixed
+        if fixed is not None:
+            duration = float(fixed)  # independent of this machine's speed
+        else:
+            duration *= Parameters.kLocalMappingSimulatedBusyTimeScale
         last_finish = self.sim_step_intervals[-1][1] if self.sim_step_intervals else self.sim_now
         start = max(last_finish, self.sim_now)
         self.sim_step_intervals.append((start, start + duration))

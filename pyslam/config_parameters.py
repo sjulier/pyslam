@@ -76,6 +76,10 @@ class Parameters:
     # cadence matches a mapper running concurrently in real time.
     kLocalMappingSimulateBusyTimeInSingleThread = True
     kLocalMappingSimulatedBusyTimeScale = 1.0  # scales the measured step time (e.g. >1 emulates a slower machine)
+    # None: charge each inline step its measured duration (so the keyframe cadence depends on how fast
+    # this machine is). A number [s]: charge every step that fixed time instead, so the same input gives
+    # the same keyframe choices on every machine (e.g. a lockstep simulator); the scale above is not applied.
+    kLocalMappingSimulatedBusyTimeFixed = None
     kTrackingWaitForLocalMappingToGetIdle = False  # True: wait for local mapping to get idle before starting tracking, False: tracking and then local mapping in a single thread in a standard way
     # Playback throttle: when playing a dataset, slow down if local mapping cannot keep up.
     # Signal: the fraction of the recent frames in which tracking was weak, i.e. the frame matched
