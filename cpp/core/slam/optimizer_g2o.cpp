@@ -100,10 +100,10 @@ BundleAdjustmentResult OptimizerG2o::bundle_adjustment(
     }
 
     // Maps to store graph elements
-    std::unordered_map<KeyFramePtr, g2o::VertexSE3Expmap *> graph_keyframes;
-    std::unordered_map<MapPointPtr, g2o::VertexSBAPointXYZ *> graph_points;
-    std::unordered_map<EdgeCameraProjectXYZ *, bool> graph_edges_mono;
-    std::unordered_map<EdgeStereoCameraProjectXYZ *, bool> graph_edges_stereo;
+    IdHashMap<KeyFrame, g2o::VertexSE3Expmap *> graph_keyframes;
+    IdHashMap<MapPoint, g2o::VertexSBAPointXYZ *> graph_points;
+    std::vector<std::pair<EdgeCameraProjectXYZ *, bool>> graph_edges_mono; // in insertion order
+    std::vector<std::pair<EdgeStereoCameraProjectXYZ *, bool>> graph_edges_stereo;
 
     int num_edges = 0;
     int num_bad_edges = 0;
@@ -192,7 +192,7 @@ BundleAdjustmentResult OptimizerG2o::bundle_adjustment(
                 edge->bf = camera->bf;
 
                 optimizer.addEdge(edge);
-                graph_edges_stereo[edge] = true;
+                graph_edges_stereo.emplace_back(edge, true);
             } else {
                 auto *edge = optimizer.make<EdgeCameraProjectXYZ>(camera.get());
                 edge->setVertex(0, vertex_point);
@@ -207,7 +207,7 @@ BundleAdjustmentResult OptimizerG2o::bundle_adjustment(
                 }
 
                 optimizer.addEdge(edge);
-                graph_edges_mono[edge] = true;
+                graph_edges_mono.emplace_back(edge, true);
             }
             num_edges++;
         }
@@ -601,12 +601,12 @@ std::pair<double, double> OptimizerG2o::local_bundle_adjustment(
     }
 
     // Maps to store graph elements
-    std::unordered_map<KeyFramePtr, g2o::VertexSE3Expmap *> graph_keyframes;
-    std::unordered_map<MapPointPtr, g2o::VertexSBAPointXYZ *> graph_points;
-    std::unordered_map<EdgeCameraProjectXYZ *, std::tuple<MapPointPtr, KeyFramePtr, int, bool>>
-        graph_edges_mono;
-    std::unordered_map<EdgeStereoCameraProjectXYZ *,
-                       std::tuple<MapPointPtr, KeyFramePtr, int, bool>>
+    IdHashMap<KeyFrame, g2o::VertexSE3Expmap *> graph_keyframes;
+    IdHashMap<MapPoint, g2o::VertexSBAPointXYZ *> graph_points;
+    std::vector<std::pair<EdgeCameraProjectXYZ *, std::tuple<MapPointPtr, KeyFramePtr, int, bool>>>
+        graph_edges_mono; // in insertion order
+    std::vector<std::pair<EdgeStereoCameraProjectXYZ *,
+                       std::tuple<MapPointPtr, KeyFramePtr, int, bool>>>
         graph_edges_stereo;
 
     // Add keyframe vertices
@@ -694,7 +694,7 @@ std::pair<double, double> OptimizerG2o::local_bundle_adjustment(
                 edge->setVertex(1, v_se3_kf);
                 optimizer.addEdge(edge);
 
-                graph_edges_stereo[edge] = {p, kf, p_idx, is_stereo_obs};
+                graph_edges_stereo.emplace_back(edge, std::make_tuple(p, kf, p_idx, is_stereo_obs));
             } else {
                 auto *edge = optimizer.make<EdgeCameraProjectXYZ>(camera.get());
                 edge->setMeasurement(kpu);
@@ -708,7 +708,7 @@ std::pair<double, double> OptimizerG2o::local_bundle_adjustment(
                 edge->setVertex(1, v_se3_kf);
                 optimizer.addEdge(edge);
 
-                graph_edges_mono[edge] = {p, kf, p_idx, is_stereo_obs};
+                graph_edges_mono.emplace_back(edge, std::make_tuple(p, kf, p_idx, is_stereo_obs));
             }
             num_edges++;
         }
@@ -1067,9 +1067,9 @@ Sim3OptimizationResult OptimizerG2o::optimize_sim3(
 
 double OptimizerG2o::optimize_essential_graph(
     MapPtr map_object, KeyFramePtr loop_keyframe, KeyFramePtr current_keyframe,
-    const std::unordered_map<KeyFramePtr, Sim3Pose> &non_corrected_sim3_map,
-    const std::unordered_map<KeyFramePtr, Sim3Pose> &corrected_sim3_map,
-    const std::unordered_map<KeyFramePtr, std::vector<KeyFramePtr>> &loop_connections,
+    const IdHashMap<KeyFrame, Sim3Pose> &non_corrected_sim3_map,
+    const IdHashMap<KeyFrame, Sim3Pose> &corrected_sim3_map,
+    const IdHashMap<KeyFrame, std::vector<KeyFramePtr>> &loop_connections,
     bool fix_scale, bool verbose) {
 
     // Setup optimizer

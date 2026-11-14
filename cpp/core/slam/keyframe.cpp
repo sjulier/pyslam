@@ -90,7 +90,7 @@ void KeyFrameGraph::set_parent(KeyFramePtr parent) {
     set_parent_no_lock(parent);
 }
 
-std::set<KeyFramePtr> KeyFrameGraph::get_children() const {
+IdSet<KeyFrame> KeyFrameGraph::get_children() const {
     std::lock_guard<std::mutex> lock(_lock_connections);
     return children;
 }
@@ -114,7 +114,7 @@ void KeyFrameGraph::add_loop_edge(KeyFramePtr kf) {
     }
 }
 
-std::set<KeyFramePtr> KeyFrameGraph::get_loop_edges() const {
+IdSet<KeyFrame> KeyFrameGraph::get_loop_edges() const {
     std::lock_guard<std::mutex> lock(_lock_connections);
     return loop_edges;
 }
@@ -139,10 +139,11 @@ void KeyFrameGraph::update_best_covisibles_no_lock_() {
         covisibles_vec.push_back(pair);
     }
 
-    // Sort the vector
-    std::sort(covisibles_vec.begin(), covisibles_vec.end(),
-              [](const std::pair<KeyFrameGraphPtr, int> &a,
-                 const std::pair<KeyFrameGraphPtr, int> &b) { return a.second > b.second; });
+    // Sort by weight, descending; equal weights by id so the order does not depend on the map's
+    // iteration order
+    std::sort(covisibles_vec.begin(), covisibles_vec.end(), [](const auto &a, const auto &b) {
+        return a.second != b.second ? a.second > b.second : IdLess{}(a.first, b.first);
+    });
 
     // Update ordered_keyframes_weights
     ordered_keyframes_weights = std::move(covisibles_vec);
@@ -314,8 +315,8 @@ void KeyFrame::update_connections() {
         return;
     }
 
-    // Build a counter for viewing keyframes with stable (first-seen) order
-    std::unordered_map<KeyFramePtr, int> viewing_keyframes;
+    // Count the points this keyframe shares with each other keyframe
+    IdHashMap<KeyFrame, int> viewing_keyframes;
     for (const auto &p : points) {
         const auto point_keyframes = p->keyframes();
         for (const auto &kf : point_keyframes) {
@@ -337,9 +338,11 @@ void KeyFrame::update_connections() {
         covisible_keyframes.push_back(pair);
     }
 
-    // Sort the vector by weight in descending order
+    // Sort by weight, descending; equal weights by id (deterministic tie-break)
     std::sort(covisible_keyframes.begin(), covisible_keyframes.end(),
-              [](const auto &a, const auto &b) { return a.second > b.second; }); // descending order
+              [](const auto &a, const auto &b) {
+                  return a.second != b.second ? a.second > b.second : IdLess{}(a.first, b.first);
+              });
 
     auto kf_max = covisible_keyframes[0].first;
     auto w_max = covisible_keyframes[0].second;
@@ -463,7 +466,7 @@ void KeyFrame::set_bad() {
     }
 
     // 3) Update spanning tree
-    std::set<KeyFramePtr> parent_candidates = {parent_kf};
+    IdSet<KeyFrame> parent_candidates = {parent_kf};
 
     // Reassign children via covisibility to any parent candidate; one child per iteration
     int iters = 0;

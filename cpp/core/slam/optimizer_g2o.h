@@ -21,6 +21,7 @@
 
 #include "optimizer_common.h"
 #include "sim3_pose.h"
+#include "id_containers.h"
 #include "smart_pointers.h"
 
 #include <Eigen/Dense>
@@ -104,9 +105,9 @@ class OptimizerG2o {
     // Return the mean squared error
     static double optimize_essential_graph(
         MapPtr map_object, KeyFramePtr loop_keyframe, KeyFramePtr current_keyframe,
-        const std::unordered_map<KeyFramePtr, Sim3Pose> &non_corrected_sim3_map,
-        const std::unordered_map<KeyFramePtr, Sim3Pose> &corrected_sim3_map,
-        const std::unordered_map<KeyFramePtr, std::vector<KeyFramePtr>> &loop_connections,
+        const IdHashMap<KeyFrame, Sim3Pose> &non_corrected_sim3_map,
+        const IdHashMap<KeyFrame, Sim3Pose> &corrected_sim3_map,
+        const IdHashMap<KeyFrame, std::vector<KeyFramePtr>> &loop_connections,
         bool fix_scale, bool verbose = false);
 };
 

@@ -527,7 +527,7 @@ std::pair<int, std::vector<int>> ProjectionMatcher::search_local_frames_by_proje
 
     // Collect frames
     auto frames = map->get_last_keyframes(local_window_size);
-    std::unordered_set<MapPointPtr> unique_pts;
+    IdHashSet<MapPoint> unique_pts;
     for (const auto &frame : frames) {
         auto pts = frame->get_points();
         for (auto &p : pts)

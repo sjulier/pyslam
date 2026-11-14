@@ -130,8 +130,8 @@ BundleAdjustmentResult OptimizerGTSAM::bundle_adjustment(
     const double th_huber_stereo = std::sqrt(Parameters::kChi2Stereo);
 
     // Maps to store graph elements
-    std::unordered_map<KeyFramePtr, Key> keyframe_keys;
-    std::unordered_map<MapPointPtr, Key> point_keys;
+    IdHashMap<KeyFrame, Key> keyframe_keys;
+    IdHashMap<MapPoint, Key> point_keys;
     std::vector<std::tuple<std::shared_ptr<CameraProjectionFactor>,
                            std::shared_ptr<gtsam_factors::SwitchableRobustNoiseModel>,
                            MapPointPtr, KeyFramePtr, int>>
@@ -722,8 +722,8 @@ std::pair<double, double> OptimizerGTSAM::local_bundle_adjustment(
         }
     }
 
-    std::unordered_map<KeyFramePtr, Key> keyframe_keys;
-    std::unordered_map<MapPointPtr, Key> point_keys;
+    IdHashMap<KeyFrame, Key> keyframe_keys;
+    IdHashMap<MapPoint, Key> point_keys;
     // Use vector instead of unordered_map for graph_factors since pair doesn't have hash
     std::vector<std::tuple<std::shared_ptr<CameraProjectionFactor>,
                            std::shared_ptr<gtsam_factors::SwitchableRobustNoiseModel>,
@@ -1303,9 +1303,9 @@ Sim3OptimizationResult OptimizerGTSAM::optimize_sim3(
 // Essential graph optimization
 double OptimizerGTSAM::optimize_essential_graph(
     MapPtr map_object, KeyFramePtr loop_keyframe, KeyFramePtr current_keyframe,
-    const std::unordered_map<KeyFramePtr, Sim3Pose> &non_corrected_sim3_map,
-    const std::unordered_map<KeyFramePtr, Sim3Pose> &corrected_sim3_map,
-    const std::unordered_map<KeyFramePtr, std::vector<KeyFramePtr>> &loop_connections,
+    const IdHashMap<KeyFrame, Sim3Pose> &non_corrected_sim3_map,
+    const IdHashMap<KeyFrame, Sim3Pose> &corrected_sim3_map,
+    const IdHashMap<KeyFrame, std::vector<KeyFramePtr>> &loop_connections,
     bool fix_scale, bool verbose) {
 
     NonlinearFactorGraph graph;

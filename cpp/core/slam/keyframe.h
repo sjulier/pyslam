@@ -21,6 +21,7 @@
 
 #include "camera_pose.h"
 #include "frame.h"
+#include "id_containers.h"
 #include "utils/inheritable_shared_from_this.h"
 
 #include <atomic>
@@ -53,11 +54,11 @@ class KeyFrameGraph : public inheritable_enable_shared_from_this<KeyFrameGraph> 
     // Data members
     bool init_parent = false; // is parent initialized?
     KeyFramePtr parent;
-    std::set<KeyFramePtr> children;
-    std::set<KeyFramePtr> loop_edges;
+    IdSet<KeyFrame> children;
+    IdSet<KeyFrame> loop_edges;
     bool not_to_erase = false; // if there is a loop edge then you cannot erase this
                                // keyframe
-    std::unordered_map<KeyFramePtr, int> connected_keyframes_weights;   // Counter equivalent
+    IdHashMap<KeyFrame, int> connected_keyframes_weights;   // Counter equivalent
     std::vector<std::pair<KeyFramePtr, int>> ordered_keyframes_weights; // OrderedDict equivalent
     bool is_first_connection = true;
 
@@ -91,13 +92,13 @@ class KeyFrameGraph : public inheritable_enable_shared_from_this<KeyFrameGraph> 
     void set_parent(KeyFramePtr keyframe);
     void set_parent_no_lock(KeyFramePtr keyframe);
 
-    std::set<KeyFramePtr> get_children() const;
+    IdSet<KeyFrame> get_children() const;
     KeyFramePtr get_parent() const;
     bool has_child(const KeyFramePtr keyframe) const;
 
     // Loop edges methods
     void add_loop_edge(KeyFramePtr keyframe);
-    std::set<KeyFramePtr> get_loop_edges() const;
+    IdSet<KeyFrame> get_loop_edges() const;
 
     // Covisibility methods
     void reset_covisibility();
