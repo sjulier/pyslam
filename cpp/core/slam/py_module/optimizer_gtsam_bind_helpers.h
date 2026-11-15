@@ -192,9 +192,9 @@ optimize_sim3_wrapper_gtsam(KeyFramePtr kf1, KeyFramePtr kf2,
 // Wrapper for optimize_essential_graph to return double (mean_squared_error)
 inline double optimize_essential_graph_wrapper_gtsam(
     MapPtr map_object, KeyFramePtr loop_keyframe, KeyFramePtr current_keyframe,
-    const std::unordered_map<KeyFramePtr, Sim3Pose> &non_corrected_sim3_map,
-    const std::unordered_map<KeyFramePtr, Sim3Pose> &corrected_sim3_map,
-    const std::unordered_map<KeyFramePtr, std::vector<KeyFramePtr>> &loop_connections,
+    const IdHashMap<KeyFrame, Sim3Pose> &non_corrected_sim3_map,
+    const IdHashMap<KeyFrame, Sim3Pose> &corrected_sim3_map,
+    const IdHashMap<KeyFrame, std::vector<KeyFramePtr>> &loop_connections,
     bool fix_scale, py::object print_fun = py::none(), bool verbose = false) {
 
     py::gil_scoped_release release;

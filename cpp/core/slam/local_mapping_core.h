@@ -19,6 +19,7 @@
 #pragma once
 
 #include "map.h"
+#include "id_containers.h"
 #include "smart_pointers.h"
 #include <set>
 #include <atomic>
@@ -74,7 +75,7 @@ class LocalMappingCore {
                                              const KeyFramePtr &kf_to_remove, float dist);
 
   private:
-    std::unordered_set<MapPointPtr> recently_added_points_;
+    IdHashSet<MapPoint> recently_added_points_;
     Map *map_ = nullptr;
     SensorType sensor_type_;
 

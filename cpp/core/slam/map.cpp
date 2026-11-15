@@ -123,7 +123,7 @@ void Map::delete_map() {
 }
 
 // Point operations
-std::unordered_set<MapPointPtr> Map::get_points() const {
+IdHashSet<MapPoint> Map::get_points() const {
     std::lock_guard<MapMutex> lock(_lock);
     return points;
 }
@@ -584,7 +584,7 @@ bool LocalMapBase::is_empty() const {
     return keyframes.empty();
 }
 
-std::unordered_set<MapPointPtr> LocalMapBase::get_points() const {
+IdHashSet<MapPoint> LocalMapBase::get_points() const {
     std::lock_guard<MapMutex> lock(_lock);
     return points;
 }
@@ -605,10 +605,10 @@ int LocalMapBase::num_keyframes() const {
 }
 
 template <typename Container>
-std::tuple<KeyFrameIdSet, std::unordered_set<MapPointPtr>, KeyFrameIdSet>
+std::tuple<KeyFrameIdSet, IdHashSet<MapPoint>, KeyFrameIdSet>
 LocalMapBase::update_from_keyframes(const Container &local_keyframes) {
     KeyFrameIdSet good_keyframes;
-    std::unordered_set<MapPointPtr> good_points;
+    IdHashSet<MapPoint> good_points;
     KeyFrameIdSet ref_keyframes;
 
     // Filter out bad keyframes
@@ -659,7 +659,7 @@ LocalMapBase::get_frame_covisibles(const FramePtr &frame) {
     }
 
     // Count keyframes viewing the points, preserving first-seen order (Counter behavior)
-    std::unordered_map<KeyFramePtr, int> viewing_keyframes;
+    IdHashMap<KeyFrame, int> viewing_keyframes;
     for (const auto &p : frame_points) {
         const auto point_viewing_keyframes = p->keyframes();
         for (const auto &kf : point_viewing_keyframes) {
@@ -729,7 +729,7 @@ LocalMapBase::get_frame_covisibles(const FramePtr &frame) {
         }
     }
 
-    std::unordered_set<MapPointPtr> local_points;
+    IdHashSet<MapPoint> local_points;
 
     int count = 0;
     for (const auto &kf : local_keyframes) {
@@ -763,7 +763,7 @@ std::vector<KeyFramePtr> LocalWindowMap::get_best_neighbors(const KeyFramePtr &k
     return map->get_last_keyframes(N);
 }
 
-std::tuple<KeyFrameIdSet, std::unordered_set<MapPointPtr>, KeyFrameIdSet>
+std::tuple<KeyFrameIdSet, IdHashSet<MapPoint>, KeyFrameIdSet>
 LocalWindowMap::update(const KeyFramePtr &kf_ref) {
     // the copy taken under the lock: the member can change in another thread meanwhile
     const KeyFrameIdSet local_keyframes = update_keyframes(kf_ref);
@@ -796,7 +796,7 @@ std::vector<KeyFramePtr> LocalCovisibilityMap::get_best_neighbors(const KeyFrame
     return kf_ref->get_best_covisible_keyframes(N);
 }
 
-std::tuple<KeyFrameIdSet, std::unordered_set<MapPointPtr>, KeyFrameIdSet>
+std::tuple<KeyFrameIdSet, IdHashSet<MapPoint>, KeyFrameIdSet>
 LocalCovisibilityMap::update(const KeyFramePtr &kf_ref) {
     // the copy taken under the lock: tracking (after a relocalisation), local BA and a map reset
     // all change the member, from different threads

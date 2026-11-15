@@ -38,6 +38,7 @@
 
 #include "eigen_aliases.h"
 #include "frame.h"
+#include "id_containers.h"
 #include "smart_pointers.h"
 
 namespace pyslam {
@@ -68,7 +69,7 @@ class MapPointBase {
     Map *map = nullptr; // Pointer to Map object
 
     // Observations
-    std::map<KeyFramePtr, int> _observations;
+    IdMap<KeyFrame, int> _observations;
     FrameViews _frame_views;
 
     // Status flags

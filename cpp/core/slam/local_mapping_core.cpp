@@ -313,7 +313,7 @@ int LocalMappingCore::fuse_map_points(float descriptor_distance_sigma) {
 
     // 1. Get direct neighbors
     auto local_keyframes = map_->local_map->get_best_neighbors(kf_cur_, num_neighbors);
-    std::set<KeyFramePtr> target_kfs;
+    IdSet<KeyFrame> target_kfs;
     for (const auto &kf : local_keyframes) {
         if (kf == kf_cur_ || kf->is_bad()) {
             continue;
@@ -339,7 +339,7 @@ int LocalMappingCore::fuse_map_points(float descriptor_distance_sigma) {
     }
 
     // 4. Fuse all target keyframes' points into current keyframe
-    std::set<MapPointPtr> fuse_candidates;
+    IdSet<MapPoint> fuse_candidates;
     for (const auto &kf : target_kfs) {
         auto points = kf->get_points();
         for (const auto &p : points) {

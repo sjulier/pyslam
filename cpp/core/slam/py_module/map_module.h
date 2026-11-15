@@ -149,7 +149,7 @@ inline void map_load_wrapper(MapPtr map, const std::string &filename) {
 }
 
 // Wrapper for LocalMapBase::update_from_keyframes template method
-inline std::tuple<pyslam::KeyFrameIdSet, std::unordered_set<pyslam::MapPointPtr>,
+inline std::tuple<pyslam::KeyFrameIdSet, pyslam::IdHashSet<pyslam::MapPoint>,
                   pyslam::KeyFrameIdSet>
 local_map_update_from_keyframes_wrapper(pyslam::LocalMapBase &self,
                                         const pyslam::KeyFrameIdSet &local_keyframes) {
@@ -178,7 +178,7 @@ local_window_map_get_best_neighbors_wrapper(pyslam::LocalWindowMap &self,
     return self.get_best_neighbors(kf_ref, N);
 }
 
-inline std::tuple<KeyFrameIdSet, std::unordered_set<MapPointPtr>, KeyFrameIdSet>
+inline std::tuple<KeyFrameIdSet, IdHashSet<MapPoint>, KeyFrameIdSet>
 local_window_map_update_wrapper(pyslam::LocalWindowMap &self, const KeyFramePtr &kf_ref = nullptr) {
     py::gil_scoped_release gil_release;
     return self.update(kf_ref);
@@ -198,7 +198,7 @@ local_covisibility_map_get_best_neighbors_wrapper(pyslam::LocalCovisibilityMap &
     return self.get_best_neighbors(kf_ref, N);
 }
 
-inline std::tuple<KeyFrameIdSet, std::unordered_set<MapPointPtr>, KeyFrameIdSet>
+inline std::tuple<KeyFrameIdSet, IdHashSet<MapPoint>, KeyFrameIdSet>
 local_covisibility_map_update_wrapper(pyslam::LocalCovisibilityMap &self,
                                       const KeyFramePtr &kf_ref) {
     py::gil_scoped_release gil_release;
