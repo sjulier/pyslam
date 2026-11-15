@@ -164,7 +164,8 @@ pyqtgraph = "*"
 pyside6 = "*"
 pyopengl = "*"
 pygame = "*"
-glfw = "*"
+glfw = "*"  # the GLFW C library
+pyglfw = "*"  # its Python binding: the Replica renderer's viewer (a debug option); also the MonoGS GUI
 pyglm = "*"
 rerun-sdk = ">=0.23,<0.23.2"  # needs set_time/Scalars (0.23); 0.23.2+ declares numpy >= 2
 viser = "*"
@@ -172,6 +173,7 @@ imgviz = "==1.2.6"
 scikit-learn = "*"  # Patch-NetVLAD (place recognition, default level)
 trimesh = "*"
 plyfile = "*"
+wgpu-py = ">=0.33,<0.34"  # the Replica renderer (sjulier/Replica-Dataset) that drives pySLAM in the same process
 
 # ---------------------------------------------------------------------------
 # torch: deep learning stack shared by the learned components
@@ -308,7 +310,6 @@ openai-clip = "*"      # YOLOE's text encoder imports clip; else ultralytics pip
 # native Windows: none of these (Gaussian splatting and the 3R models need an NVIDIA GPU); a platform list
 # here would make pixi solve the Linux environments again, so the packages are Linux and macOS only instead
 [feature.recon3d.target.unix.dependencies]
-pyglfw = "*"  # Python binding of GLFW (the conda package `glfw` is the C library): MonoGS GUI
 rootutils = "*"  # Fast3R
 torchinfo = "*"
 plotly = "*"
