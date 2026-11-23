@@ -65,8 +65,10 @@ if [ "$PIXI_ACTIVATED" = true ]; then
         PIXI_NVCC_BIN_DIR=$(dirname "$PIXI_NVCC")
     fi
     
-    # Add nvcc binary directory to PATH so CUDA detection can find it
-    if [ -n "$PIXI_NVCC_BIN_DIR" ] && [ -d "$PIXI_NVCC_BIN_DIR" ]; then
+    # Add nvcc binary directory to PATH so CUDA detection can find it. Not when it is on PATH already: a
+    # system nvcc (/usr/bin/nvcc) would put /usr/bin first and hide the environment's python behind the system's
+    case ":$PATH:" in *":$PIXI_NVCC_BIN_DIR:"*) PIXI_NVCC_ON_PATH=1 ;; *) PIXI_NVCC_ON_PATH= ;; esac
+    if [ -n "$PIXI_NVCC_BIN_DIR" ] && [ -d "$PIXI_NVCC_BIN_DIR" ] && [ -z "$PIXI_NVCC_ON_PATH" ]; then
         export PATH="$PIXI_NVCC_BIN_DIR${PATH:+:$PATH}"
         echo "[pixi_cuda_config] Added CUDA nvcc bin directory to PATH: $PIXI_NVCC_BIN_DIR"
     fi
