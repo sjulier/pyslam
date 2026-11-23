@@ -1,0 +1,87 @@
+# Build pySLAM's native Windows (win-64-cpu) bundles for the course release comp0227-2026-lab06, on a
+# clean GitHub Windows runner, and test them from a fresh checkout. Nothing is uploaded to the
+# native-bundles release: the bundles come back as this run's artifact, for review and upload by hand.
+name: win-64 native bundles (comp0227-2026-lab06)
+
+on:
+  push:
+    branches: [ci/win-bundles-lab06]
+  workflow_dispatch:
+
+env:
+  PYSLAM_COMMIT: fd8f4dd08f128524dd4629c0905ea5e9db2e9410          # comp0227-2026-lab06-candidate, the commit the bundles are for
+  PIXI_VERSION: v0.81.0
+  PIXI_CACHE_DIR: D:\pixi-cache  # D: has more room than C: on the hosted runners
+  PYTHONUTF8: "1"
+
+jobs:
+  bundles:
+    runs-on: windows-2022         # Visual Studio 2022 Enterprise, found by conda-forge's compiler activation
+    timeout-minutes: 350
+    steps:
+      - name: pySLAM at the release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PYSLAM_COMMIT }}
+          path: pyslam
+
+      - name: pixi
+        shell: pwsh
+        run: |
+          $env:PIXI_VERSION = "${{ env.PIXI_VERSION }}"
+          iwr -useb https://pixi.sh/install.ps1 | iex
+          "$env:USERPROFILE\.pixi\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: keys
+        working-directory: pyslam
+        run: |
+          pixi --version
+          git log --oneline -1
+          pixi run python scripts\native_bundle.py key
+          pixi run python -c "import shutil, sys; print('python', sys.version.split()[0], '| cl:', shutil.which('cl'))"
+
+      - name: build from source
+        working-directory: pyslam
+        env:
+          PYSLAM_NATIVE_BUNDLE: "0"
+          PYSLAM_BUILD_JOBS: "4"
+        run: pixi run build
+
+      - name: pack
+        working-directory: pyslam
+        env:
+          PYSLAM_NATIVE_DIR: ${{ github.workspace }}\bundles
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true; $ErrorActionPreference = "Stop"
+          pixi run python scripts\native_bundle.py pack prereq
+          pixi run python scripts\native_bundle.py pack pyslam
+          dir ${{ github.workspace }}\bundles
+
+      - name: upload the bundles (before the test, so that they are kept if it fails)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyslam-win-64-cpu-bundles-lab06
+          path: bundles/
+          retention-days: 30
+
+      - name: fresh checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PYSLAM_COMMIT }}
+          path: fresh
+
+      - name: test - install the bundles into the fresh checkout, as a student would
+        working-directory: fresh
+        env:
+          PYSLAM_NATIVE_URL: ${{ github.workspace }}\bundles
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true; $ErrorActionPreference = "Stop"
+          pixi run -e default-win build
+          pixi run -e default-win check
+          pixi run -e default-win check-native
+          pixi run -e default-win python -c "import wgpu; print('wgpu', wgpu.__version__)"
+
+      - name: test - a short headless SLAM run
+        working-directory: fresh
+        continue-on-error: true
+        run: pixi run -e default-win slam --headless
